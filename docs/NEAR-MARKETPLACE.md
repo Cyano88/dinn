@@ -28,6 +28,14 @@ A submit timeout is recoverable: the exact report is stored before submission; r
 
 This is an executable local foundation, not a listed or paid integration. Marketplace docs note an assignment may briefly appear before escrow funding completes; start is followed by a delay and state recheck, but the `aat_` token does not expose the owner's wallet or a separate escrow ledger proof. A real paid demonstration and confirmation of settlement to the owner remain required.
 
+## Proposed Agent Market listing copy
+
+**Name:** Dinn Pons Token Research
+
+**Description:** Get a current, evidence-backed report for one Pons v2 token on Robinhood Chain. The report covers launch phase, bonding progress where available, reference market data and fee balances with their wallet scope clearly stated. It includes the checked chain block and source links. It is not a security audit or investment recommendation. To request a report, use the exact job title `Dinn Pons Token Research` and include exactly one Robinhood token contract address in the job description. No wallet connection or transaction is needed.
+
+This copy promises only the service the worker can currently deliver. The handle and price remain owner decisions; check handle availability in Agent Market before committing to it.
+
 ## Remaining marketplace work
 
 1. The owner registers Dinn through the Agent Market, chooses the immutable handle, description, scope, price and delivery SLA, and stores the issued agent ID/token in Render secrets. The owner must choose the price; the code does not invent it. Set the same minimum amount/currency in the server secrets before enabling the worker.
