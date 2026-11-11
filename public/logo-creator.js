@@ -44,7 +44,7 @@ export function mountLogoCreator({host,getContext,onAccept,onDiscard}){
 
    if(result.state==='generating'){status.textContent='Creating your preview. You can close this step and return later.';timer=setTimeout(()=>poll(id,run,c),2500);return;}
 
-   busy=false;pending=null;show(result);status.textContent=result.state==='ready'?'Select this logo or try another.':result.error||'The result is uncertain. Check before trying again.';
+   busy=false;pending=null;if(result.accepted&&result.url)await onAccept(result);if(!current(run,c))return;show(result);status.textContent=result.accepted&&result.url?'Logo selected. It will be included when you review your launch.':result.state==='ready'?'Select this logo or try another.':result.error||'The result is uncertain. Check before trying again.';
 
   }catch(error){if(current(run,c)){busy=false;if(error.message==='Logo not found.'){pending=null;candidate=null;localStorage.removeItem(key(c));buttons();status.textContent='No saved generation was found for this account. You can create a new preview.';}else{buttons();status.textContent=error.message+' Your request is saved; reopen this step to check it before retrying.';}}}
 

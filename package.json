@@ -30,7 +30,7 @@
     "esbuild": "^0.28.2"
   },
   "overrides": {
-    "ws@>=8.0.0 <8.21.0": "8.22.1"
+    "ws": "8.22.1"
   },
   "optionalDependencies": {
     "@foundry-rs/anvil-win32-amd64": "1.7.1"
