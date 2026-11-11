@@ -57,3 +57,7 @@ Real browser checks reached Google Accounts sign-in and X OAuth authorization us
 42 application tests passed, including testnet execution isolation. Follow-up HTTP/auth tests passed after adding HEAD support for Privy COOP checks and allowing the documented WalletConnect Explorer endpoint used by the SDK. SDK WalletConnect discovery is not an enabled user login method.
 
 Sources: https://www.alchemy.com/rpc/elysium-testnet ; https://ascendlaunch.gitbook.io/docs/developers/mainnet-contracts ; https://docs.privy.io/security/implementation-guide/content-security-policy
+
+## Direct social sign-in
+
+The X and Google entry buttons use Privy `useLoginWithOAuth().initOAuth` directly. This bypasses Privy's intermediate login chooser while keeping the existing app, account identity, wallet creation and OAuth callback handling. Buttons disable during redirect initialization and failures remain retryable. Browser verification with the real SDK observed navigation to `accounts.google.com/o/oauth2/v2/auth` and `x.com/i/oauth2/authorize`; provider navigation was intercepted before credentials or consent. A completed user login is a separate check.
