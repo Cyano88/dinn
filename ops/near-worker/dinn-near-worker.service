@@ -10,7 +10,7 @@ Group=dinnworker
 WorkingDirectory=/opt/dinn-near-worker/app
 Environment=HOME=/home/dinnworker
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-ExecStart=/usr/bin/node --env-file=/etc/dinn-near-worker/worker.env scripts/near-worker.mjs
+ExecStart=/usr/bin/env node --env-file=/etc/dinn-near-worker/worker.env scripts/near-worker.mjs
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

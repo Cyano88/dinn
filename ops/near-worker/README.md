@@ -14,7 +14,7 @@ The worker needs outbound HTTPS to Agent Market and Robinhood Chain RPC, plus a 
 
 ## Requirements
 
-- Node.js 22 or later at `/usr/bin/node`.
+- Node.js 22 or later available on the service's configured `PATH`.
 - Dinn PostgreSQL database with the schema in `migrations/20261111_dinn_near_worker.sql`.
 - A separate PostgreSQL worker login with CONNECT and schema USAGE, SELECT/INSERT/UPDATE on `dinn_near_work`, INSERT on `dinn_near_work_events`, and USAGE on `dinn_near_work_events_id_seq`. Apply the schema and grants using the database owner; do not give the worker DDL or owner privileges.
 - Registered Dinn `NEAR_AGENT_ID` and private `NEAR_AGENT_TOKEN`.
