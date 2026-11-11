@@ -6,6 +6,7 @@ import {checkWalletSigning} from '../src/signing-probe.mjs';
 import {createRoot} from 'react-dom/client';
 import {createPortal} from 'react-dom';
 import {PrivyProvider,usePrivy,useWallets,useCreateWallet,useSignTransaction,useConnectWallet,useLoginWithOAuth} from '@privy-io/react-auth';
+const oauthReturn=new URLSearchParams(window.location.search).has('privy_oauth_code');
 const emit=detail=>window.dispatchEvent(new CustomEvent('launchflow:auth',{detail}));
 class Boundary extends Component{
  state={failed:false};
@@ -22,7 +23,11 @@ function Account({accountHost,networkName,networkId}){
  const probeBusy=useRef(false),identityRef=useRef('');
  const diagnostic=networkId===99901&&['localhost','127.0.0.1'].includes(window.location.hostname)&&new URLSearchParams(window.location.search).get('wallet-check')==='1';
  const [error,setError]=useState(''),[working,setWorking]=useState(false),[copied,setCopied]=useState(false);
- const {initOAuth,loading:oauthLoading}=useLoginWithOAuth({onError:()=>setError('Sign-in did not complete. Please try again.')});
+ const [oauthPending,setOAuthPending]=useState(oauthReturn);
+ const {initOAuth,loading:oauthLoading}=useLoginWithOAuth({onError:()=>{setOAuthPending(false);setError('Sign-in did not complete. Please try again.');}});
+ useEffect(()=>{if(authenticated)setOAuthPending(false);},[authenticated]);
+ useEffect(()=>{if(!oauthPending)return;const timer=setTimeout(()=>{setOAuthPending(false);setError('Sign-in is taking longer than expected. Please try again.');},30000);return()=>clearTimeout(timer);},[oauthPending]);
+ const authPending=!ready||(!authenticated&&(oauthPending||oauthLoading));
  const menuRef=useRef(null);
  useEffect(()=>{
   const close=e=>{const menu=menuRef.current;if(!menu?.open)return;if(e.type==='keydown'){if(e.key!=='Escape')return;menu.open=false;menu.querySelector('summary')?.focus();}else if(!menu.contains(e.target))menu.open=false;};
@@ -54,7 +59,7 @@ function Account({accountHost,networkName,networkId}){
   const version=++connectionVersion.current;
   const current=()=>!cancelled&&version===connectionVersion.current;
   if(privyError){emit({state:'error',authenticated:false});return;}
-  if(!ready){emit({state:'loading',authenticated:false});return;}
+  if(authPending){emit({state:'loading',authenticated:false});return;}
   if(!authenticated){emit({state:'signed-out',authenticated:false});return;}
   if(!walletsReady){emit({state:'loading',authenticated:true,userId:user?.id});return;}
   if(!selected){setWalletStatus(preference?'Reconnect your selected wallet or choose Dinn wallet.':'Your Dinn wallet is getting ready.');emit({state:'wallet-needed',authenticated:true,userId:user?.id});return;}
@@ -68,10 +73,10 @@ function Account({accountHost,networkName,networkId}){
    if(launchChoice.current?.user===user?.id&&launchChoice.current?.key===selectedKey){launchChoice.current=null;window.dispatchEvent(new CustomEvent('dinn:launch-wallet-selected',{detail:{userId:user.id,address:selected.address,label:selected.walletClientType==='privy'?'Dinn wallet':selected.meta?.name||'External wallet'}}));}
   }).catch(()=>{if(current()){setWalletStatus('Reconnect your wallet and approve the network connection to continue.');emit({state:'wallet-needed',authenticated:true,userId:user?.id});}});
   return()=>{cancelled=true;dispose?.();};
- },[ready,walletsReady,authenticated,selectedKey,user?.id,privyError,networkId,retry]);
+ },[ready,authPending,walletsReady,authenticated,selectedKey,user?.id,privyError,networkId,retry]);
  async function run(fn){setError('');setWorking(true);try{await fn();}catch{setError('That action could not complete. Please try again.');}finally{setWorking(false);}}
  if(privyError)return <p className="auth-error" role="alert">Sign-in could not load. Reload this page to try again.</p>;
- if(!ready)return null;
+ if(authPending)return null;
  if(!authenticated)return <><div className="signin-actions"><button className="social-login" disabled={!ready||working||oauthLoading} onClick={()=>run(()=>initOAuth({provider:'twitter'}))}><img className="social-symbol" src="/brand/x.svg" alt="" width="20" height="20"/>Continue with X</button><button className="social-login" disabled={!ready||working||oauthLoading} onClick={()=>run(()=>initOAuth({provider:'google'}))}><img className="social-symbol" src="/brand/google.svg" alt="" width="20" height="20"/>Continue with Google</button></div>{!ready&&<p className="auth-status" role="status">Preparing sign-in…</p>}{error&&<p className="auth-error" role="alert">{error}</p>}</>;
  const label=user?.twitter?.username?'@'+user.twitter.username:user?.google?.name||user?.google?.email||'My account';
  const menu=<details ref={menuRef} className="account-menu"><summary aria-label="Account menu"><span className="account-avatar">{label.replace('@','').slice(0,1).toUpperCase()}</span><span className="account-label">{label}</span><span aria-hidden="true">⌄</span></summary><div className="account-popover"><strong>{label}</strong>{embedded?<><p className="account-address">{embedded.address}</p><button className="subtle" disabled={working} onClick={()=>run(async()=>{await navigator.clipboard.writeText(embedded.address);setCopied(true);})}>{copied?'Address copied':'Copy wallet address'}</button><span className="sr" role="status">{copied?'Wallet address copied to clipboard.':''}</span><p>Embedded wallet &middot; {networkName}</p><button className="subtle" disabled={working} onClick={()=>run(()=>exportWallet({address:embedded.address}))}>Back up wallet</button></>:<div className="wallet-setup"><p>Create your wallet to use it for your launch.</p><button className="subtle" disabled={working||!walletsReady} onClick={()=>run(()=>createWallet())}>Create wallet</button></div>}
