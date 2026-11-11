@@ -9,11 +9,12 @@ import {createPortal} from 'react-dom';
 import {PrivyProvider,usePrivy,useWallets,useCreateWallet,useSignTransaction,useConnectWallet,useLoginWithOAuth} from '@privy-io/react-auth';
 const oauthReturn=new URLSearchParams(window.location.search).has('privy_oauth_code');
 const emit=detail=>window.dispatchEvent(new CustomEvent('launchflow:auth',{detail}));
+function AuthRecovery(){return <><p className="auth-error" role="alert">Sign-in could not connect. Your saved drafts are still here.</p><button className="social-login" onClick={()=>window.location.reload()}>Retry sign-in</button></>;}
 class Boundary extends Component{
  state={failed:false};
  static getDerivedStateFromError(){return {failed:true};}
  componentDidCatch(){emit({state:'error',authenticated:false});}
- render(){return this.state.failed?<p className="auth-error" role="alert">Sign-in could not load. Reload this page to try again.</p>:this.props.children;}
+ render(){return this.state.failed?<AuthRecovery/>:this.props.children;}
 }
 function Account({accountHost,networkName,networkId,walletConnectProjectId}){
  const {ready,authenticated,user,logout,linkGoogle,linkTwitter,exportWallet,error:privyError}=usePrivy();
@@ -76,7 +77,7 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
   return()=>{cancelled=true;dispose?.();};
  },[ready,authPending,walletsReady,authenticated,selectedKey,user?.id,privyError,networkId,retry]);
  async function run(fn){setError('');setWorking(true);try{await fn();}catch{setError('That action could not complete. Please try again.');}finally{setWorking(false);}}
- if(privyError)return <p className="auth-error" role="alert">Sign-in could not load. Reload this page to try again.</p>;
+ if(privyError)return <AuthRecovery/>;
  if(authPending)return null;
  if(!authenticated)return <><div className="signin-actions"><button className="social-login" disabled={!ready||working||oauthLoading} onClick={()=>run(()=>initOAuth({provider:'twitter'}))}><img className="social-symbol" src="/brand/x.svg" alt="" width="20" height="20"/>Continue with X</button><button className="social-login" disabled={!ready||working||oauthLoading} onClick={()=>run(()=>initOAuth({provider:'google'}))}><img className="social-symbol" src="/brand/google.svg" alt="" width="20" height="20"/>Continue with Google</button></div>{!ready&&<p className="auth-status" role="status">Preparing sign-in…</p>}{error&&<p className="auth-error" role="alert">{error}</p>}</>;
  const label=user?.twitter?.username?'@'+user.twitter.username:user?.google?.name||user?.google?.email||'My account';

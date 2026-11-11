@@ -24,6 +24,7 @@ import {cleanBrief,cleanPonsSettings,nextField,workspaceCommand} from './pons-fl
 import {receiveChat} from './chat.js';
 
 const $=id=>document.getElementById(id);
+$('drafts-view').append($('summary-panel'));
 
 const metadataIds=socialFields.map(k=>'launch-'+k);
 
@@ -81,7 +82,7 @@ document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>view(b.dataset
 
 $('start-brief').onclick=$('pons-draft').onclick=()=>{view('assistant');$('prompt').value='create a token';$('chat').requestSubmit();};
 
-$('chat-review').onclick=()=>{closeTokenPanel();$('review-launch').click();};
+$('chat-review').onclick=()=>{$('review-launch').click();};
 
 $('prompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('chat').requestSubmit();}});
 
@@ -105,7 +106,7 @@ function showLaunchStage(step,persist=true){
 
  if(user&&persist)save('launch-conversation',{step:['preparing','review'].includes(step)?'purchase':step,name:brief.name,symbol:brief.symbol,linkIndex:launchLinkIndex});
 
- if(step){view('assistant');closeTokenPanel();$('welcome').hidden=true;requestAnimationFrame(()=>launchConversation.scrollIntoView({block:'start'}));}
+ if(step){view('assistant');$('welcome').hidden=true;requestAnimationFrame(()=>launchConversation.scrollIntoView({block:'start'}));}
 
 }
 
@@ -418,9 +419,9 @@ function saveSettings(){if(user)save('pons-settings',{values:Object.fromEntries(
 
 function restoreSettings(){let saved;try{saved=JSON.parse(read('pons-settings'));}catch{}for(const k of [...economicFields.map(v=>v[0]),'launch-logo',...metadataIds]){const v=typeof saved?.values?.[k]==='string'?saved.values[k]:'';if(k==='launch-config'&&v&&!Array.from($(k).options).some(o=>o.value===v))$(k).add(new Option('Config '+v+' (recheck at review)',v));$(k).value=v;}launchStep=economicFields.some(([k])=>k===saved?.launchStep)?saved.launchStep:null;launchOptions=null;}
 
-function closeTokenPanel(){if(innerWidth>900){$('summary-panel').hidden=true;$('assistant-view').classList.remove('has-draft');}$('assistant-view').classList.remove('summary-open');$('summary-toggle').setAttribute('aria-expanded','false');$('summary-backdrop').hidden=true;}
 
-function renderTokenSummary(){const has=Object.keys(brief).length>0||!!awaiting;$('summary-panel').hidden=!has;$('summary-toggle').hidden=!has;$('assistant-view').classList.toggle('has-draft',has);$('token-name').textContent=brief.name||'Untitled token';$('token-avatar').textContent=brief.symbol?.slice(0,2)||'-';$('token-meta').textContent=(brief.symbol?'$'+brief.symbol+' · ':'')+'Pons / Robinhood Chain';const rows=[['brief-name','Token name',brief.name],['brief-symbol','Ticker',brief.symbol],['brief-description','Description',brief.description],...economicFields.map(([id,label])=>[id,label,$(id).value||undefined])];const count=rows.filter(r=>r[2]!==undefined).length;$('progress').value=count;$('progress-label').textContent=count+' of 8 settings';$('summary').replaceChildren();for(const [id,label,value] of rows){const row=document.createElement('div');row.className='summary-row';const name=document.createElement('span');name.textContent=label;const button=document.createElement('button');button.textContent=value===undefined?'Not set':id==='launch-pair'?(pairCandidates.find(a=>a.address.toLowerCase()===value?.toLowerCase())?.symbol||value):id==='launch-tax'?value+'%':id==='launch-buyback'?(value==='true'?'Enabled':'Disabled'):value||'None';button.title=button.textContent;button.setAttribute('aria-label','Edit '+label);button.onclick=()=>{view('assistant');closeTokenPanel();if(id.startsWith('brief-')){awaiting=id.slice(6);launchStep=null;setupActive=true;submitChoice('I want to change '+({name:'name',symbol:'ticker',description:'description'})[awaiting]);}else{awaiting=null;launchStep=id;askEconomic();}$('prompt').focus();};row.append(name,button);$('summary').append(row);}$('chat-review').disabled=count!==8;$('summary-note').textContent=count===8?'Next: add optional logo and links, then review.':'Complete your settings in chat to review.';}
+
+function renderTokenSummary(){const has=Object.keys(brief).length>0||!!awaiting;$('summary-panel').hidden=!has;$('token-name').textContent=brief.name||'Untitled token';$('token-avatar').textContent=brief.symbol?.slice(0,2)||'-';$('token-meta').textContent=(brief.symbol?'$'+brief.symbol+' · ':'')+'Pons / Robinhood Chain';const rows=[['brief-name','Token name',brief.name],['brief-symbol','Ticker',brief.symbol],['brief-description','Description',brief.description],...economicFields.map(([id,label])=>[id,label,$(id).value||undefined])];const count=rows.filter(r=>r[2]!==undefined).length;$('progress').value=count;$('progress-label').textContent=count+' of 8 settings';$('summary').replaceChildren();for(const [id,label,value] of rows){const row=document.createElement('div');row.className='summary-row';const name=document.createElement('span');name.textContent=label;const button=document.createElement('button');button.textContent=value===undefined?'Not set':id==='launch-pair'?(pairCandidates.find(a=>a.address.toLowerCase()===value?.toLowerCase())?.symbol||value):id==='launch-tax'?value+'%':id==='launch-buyback'?(value==='true'?'Enabled':'Disabled'):value||'None';button.title=button.textContent;button.setAttribute('aria-label','Edit '+label);button.onclick=()=>{view('assistant');if(id.startsWith('brief-')){awaiting=id.slice(6);launchStep=null;setupActive=true;submitChoice('I want to change '+({name:'name',symbol:'ticker',description:'description'})[awaiting]);}else{awaiting=null;launchStep=id;askEconomic();}$('prompt').focus();};row.append(name,button);$('summary').append(row);}$('chat-review').disabled=count!==8;$('summary-note').textContent=count===8?'Next: add optional logo and links, then review.':'Complete your settings in chat to review.';}
 
 function choice(label,fn){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=fn;$('choices').append(b);}
 
@@ -444,9 +445,9 @@ function renderSetupChoices(){$('choices').hidden=!!launchConversationStep;$('ch
 
 function askEconomic(){submitChoice('I want to change '+(economicFields.find(([k])=>k===launchStep)?.[1]||'my launch settings'));}
 
-$('summary-toggle').onclick=()=>{if(innerWidth>900){const visible=$('summary-panel').hidden;$('summary-panel').hidden=!visible;$('assistant-view').classList.toggle('has-draft',visible);return;}const open=!$('assistant-view').classList.contains('summary-open');$('assistant-view').classList.toggle('summary-open',open);$('summary-backdrop').hidden=!open;$('summary-toggle').setAttribute('aria-expanded',String(open));};$('summary-close').onclick=$('summary-backdrop').onclick=closeTokenPanel;
 
-$('welcome-launchpads').onclick=()=>view('launchpads');$('summary-profile').textContent='Logo & social links';$('summary-profile').onclick=$('attach-details').onclick=openLaunchProfile;$('new-launch').textContent='Continue setup';$('new-launch').onclick=()=>{view('assistant');closeTokenPanel();submitChoice('resume setup');};$('close-review').onclick=()=>showLaunchStage(null);
+
+$('welcome-launchpads').onclick=()=>view('launchpads');$('summary-profile').textContent='Logo & social links';$('summary-profile').onclick=$('attach-details').onclick=openLaunchProfile;$('new-launch').textContent='Continue setup';$('new-launch').onclick=()=>{view('assistant');submitChoice('resume setup');};$('close-review').onclick=()=>showLaunchStage(null);
 
 
 
@@ -497,5 +498,5 @@ function renderToolResult(body,result){
 
 function renderToolDirectory(capabilities){const host=$('tool-directory');host.replaceChildren();for(const [id,c]of Object.entries(capabilities||{})){const card=document.createElement('article');card.className='pad-card';const h=document.createElement('h3');h.textContent=c.title;const status=document.createElement('span');status.className='badge';status.textContent=c.status;const p=document.createElement('p');p.textContent=c.description;card.append(status,h,p);if(['launch','inspect','balance','transaction','options','dex'].includes(id)){const b=document.createElement('button');b.className='subtle';b.textContent='Ask Dinn';b.onclick=()=>{view('assistant');const prompts={launch:'I want to launch',inspect:'check a token',balance:'check my balance',transaction:'How do I check a transaction?',dex:'Prepare DEX Screener profile',options:'show launch options'};submitChoice(prompts[id]);};card.append(b);}host.append(card);}}
 
-try{const [config,status]=await Promise.all([fetch('/api/auth/config').then(r=>r.json()),fetch('/api/status').then(r=>r.json())]);draftSync.configure(status.draftSyncEnabled);renderToolDirectory(status.capabilities);if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}const {mountEmbeddedAuth}=await import('/auth/entry.js');mountEmbeddedAuth($('embedded-auth'),config,$('account-controls'));}catch{$('session-loading').hidden=true;$('auth-gate').hidden=false;$('embedded-auth').textContent='Sign-in could not load. Refresh to try again.';}
+try{const [config,status]=await Promise.all([fetch('/api/auth/config').then(r=>r.json()),fetch('/api/status').then(r=>r.json())]);draftSync.configure(status.draftSyncEnabled);renderToolDirectory(status.capabilities);if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}const {mountEmbeddedAuth}=await import('/auth/entry.js');mountEmbeddedAuth($('embedded-auth'),config,$('account-controls'));}catch{$('session-loading').hidden=true;$('auth-gate').hidden=false;$('embedded-auth').replaceChildren();const note=document.createElement('p');note.textContent='Sign-in could not connect. Your saved drafts are still here.';const retry=document.createElement('button');retry.className='social-login';retry.textContent='Retry sign-in';retry.onclick=()=>location.reload();$('embedded-auth').append(note,retry);}
 
