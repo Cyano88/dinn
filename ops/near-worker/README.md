@@ -1,6 +1,6 @@
 ﻿# Dinn NEAR Agent Market worker on a shared VPS
 
-The marketplace hosts Dinn's A2A endpoint. This service polls assignments every 45 seconds and has no public HTTP listener. It must not share PolyDesk's Linux user, home directory, environment, logs, database credentials, wallet session, worker state, or systemd unit.
+The marketplace hosts Dinn's A2A endpoint. Dinn's public Render app verifies signed marketplace webhooks and sends a PostgreSQL notification; this isolated VPS service listens for that signal and polls assignments every 45 seconds as recovery. The VPS needs no public listener. It must not share PolyDesk's Linux user, home directory, environment, logs, database credentials, wallet session, worker state, or systemd unit.
 
 ## Isolation
 
@@ -18,6 +18,7 @@ The worker needs outbound HTTPS to Agent Market and Robinhood Chain RPC, plus a 
 - Dinn PostgreSQL database with the schema in `migrations/20261111_dinn_near_worker.sql`.
 - A separate PostgreSQL worker login with CONNECT and schema USAGE, SELECT/INSERT/UPDATE on `dinn_near_work`, INSERT on `dinn_near_work_events`, and USAGE on `dinn_near_work_events_id_seq`. Apply the schema and grants using the database owner; do not give the worker DDL or owner privileges.
 - Registered Dinn `NEAR_AGENT_ID` and private `NEAR_AGENT_TOKEN`.
+- A 32+ character `NEAR_MARKET_WEBHOOK_SECRET` configured only on the public Render app. Register the Render HTTPS URL `https://<dinn-render-host>/api/near-market/webhook` with Agent Market using account-owner access; the webhook secret is not the `aat_` worker token.
 - Owner-approved `NEAR_WORKER_ESCROW_TOKEN` (`USD` or `USDC`) and `NEAR_WORKER_MIN_ESCROW`.
 - Confirmed memory, disk, egress and monitoring capacity on the VPS.
 
@@ -53,7 +54,7 @@ sudo systemctl enable --now dinn-near-worker
 sudo systemctl status dinn-near-worker --no-pager
 ```
 
-Do not enable the service until listing credentials, database access, escrow currency and minimum, release revision, VPS headroom and monitoring are confirmed. Inspect logs with `journalctl -u dinn-near-worker`; logs contain only worker status and sanitized error classes.
+Do not enable the service until listing credentials, webhook delivery, database access, escrow currency and minimum, release revision, VPS headroom and monitoring are confirmed. The Render app requires `NEAR_MARKET_WEBHOOK_SECRET` and the same `DATABASE_URL` database; it does not receive the worker's `NEAR_AGENT_TOKEN`. The worker's listener uses PostgreSQL `LISTEN` only; it adds no table grants. Inspect logs with `journalctl -u dinn-near-worker`; logs contain only worker status and sanitized error classes.
 
 ## Rollback
 

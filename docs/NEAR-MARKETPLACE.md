@@ -32,7 +32,9 @@ A live report for one supported Pons v2 token on Robinhood Chain: launch phase, 
 
 ## Worker foundation implemented
 
-`src/near-market-client.mjs`, `src/near-worker-store.mjs`, and `src/near-worker.mjs` implement the self-hosted pull worker against the current marketplace OpenAPI contract. PostgreSQL stores assignment leases, exact prepared deliverables and an event trail. The poll interval is 45 seconds.
+`src/near-market-client.mjs`, `src/near-worker-store.mjs`, and `src/near-worker.mjs` implement the self-hosted worker against the current marketplace REST contract. PostgreSQL stores assignment leases, exact prepared deliverables and an event trail. It polls every 45 seconds for recovery.
+
+The current A2A per-call flow also requires a public HTTPS webhook. `POST /api/near-market/webhook` verifies the raw-body HMAC signature, timestamp and delivery id, then emits a PostgreSQL notification. The VPS worker listens for that notification and immediately re-reads the assignment through the authenticated REST API; it never trusts webhook text as instructions. Polling remains the recovery path if a webhook is missed or PostgreSQL notifications disconnect. The webhook secret belongs only on the Render app. The VPS has no inbound port and holds the `aat_` token.
 
 The worker is disabled unless `NEAR_WORKER_ENABLED=true`, `DATABASE_URL`, `NEAR_AGENT_ID`, a server-side `NEAR_AGENT_TOKEN`, and owner-chosen `NEAR_WORKER_ESCROW_TOKEN` (`USD` or `USDC`) plus `NEAR_WORKER_MIN_ESCROW` are configured. Assignments below the configured minimum or in another currency are ignored. Never put the token in the browser or repository. No HTTP endpoint exposes it. There is no local marketplace credential or registered ID, so the worker is currently off.
 
@@ -52,11 +54,11 @@ This is an executable local foundation, not a listed or paid integration. The A2
 
 **Suggested handle:** `dinn-pons-token-research` (the public lookup currently returns not found; registration is the final availability check).
 
-The marketplace's current A2A setup requires a live `per_call` pricing plan marked as default before the agent can go live. The plan price is USD and callers pay 1:1 in USDC through x402; the published platform fee is currently 5% of completed jobs. A2A private instant hires arrive with `origin: a2a`. The worker must be configured for USDC for this x402 route. Handle, price, delivery SLA and refund policy remain owner decisions. See the [A2A/x402 flow](https://market.near.ai/skill/flows/a2a-x402.md) and [standardized job terms](https://market.near.ai/job-terms).
+The marketplace's current A2A setup requires a live `per_call` pricing plan marked as default before the agent can go live. The plan price is USD and callers pay 1:1 in USDC through x402; the published platform fee is currently 5% of completed jobs. At the proposed `$0.10` price, the current platform fee is `$0.005`, leaving `$0.095` before any other applicable payout effects. A2A private instant hires arrive with `origin: a2a`. The worker must be configured for USDC and a `$0.10` minimum escrow for this x402 route. The price is the user's latest input; handle, delivery SLA and listing refund policy still need owner decisions. See the [A2A/x402 flow](https://market.near.ai/skill/flows/a2a-x402.md) and [standardized job terms](https://market.near.ai/job-terms).
 
 ## Remaining marketplace work
 
-1. The account owner registers Dinn in the Agent Market web app with the chosen immutable handle, name `Dinn Pons Token Research`, and Research category. Registration mints an `aat_` token shown once; store it directly in Render, never in the repository or chat.
+1. The account owner registers Dinn in the Agent Market web app with the chosen immutable handle, name `Dinn Pons Token Research`, and Research category. Registration mints an `aat_` token shown once; store it directly in the VPS environment, never in the repository or chat.
 2. Create a live default `per_call` plan with the owner-approved USD price and SLA, then publish the listing. The marketplace hosts the A2A card and x402 endpoint; Dinn's direct JSON API is not that endpoint.
 3. Configure the worker with isolated PostgreSQL storage, agent ID, `aat_` token, the approved minimum escrow and `USDC` for x402. It remains off until all settings are present.
 4. Exercise an actual A2A hire. Confirm the private instant assignment is handled once, the report matches its stored evidence, and the marketplace records delivery.

@@ -21,18 +21,27 @@ try{
  });
 }catch(error){await store.close();throw error;}
 
-let stopping=false,activePoll=null;
+let stopping=false,activePoll=null,pollAgain=false;
+let stopListening=null;
 async function poll(){
- if(stopping||activePoll)return;
+ if(stopping)return;
+ if(activePoll){pollAgain=true;return activePoll;}
  activePoll=(async()=>{
-  try{
-   const result=await worker.runOnce();
-   if(result.results.some(item=>item.state==='submitted'))console.log('NEAR worker submitted a report; payout awaits buyer acceptance.');
-  }catch(error){console.error('NEAR worker poll failed:',error.code||error.name||'error');}
+  do{
+   pollAgain=false;
+   try{
+    const result=await worker.runOnce();
+    if(result.results.some(item=>item.state==='submitted'))console.log('NEAR worker submitted a report; payout awaits buyer acceptance.');
+   }catch(error){console.error('NEAR worker poll failed:',error.code||error.name||'error');}
+  }while(pollAgain&&!stopping);
  })();
- try{await activePoll;}finally{activePoll=null;}
+ try{await activePoll;}finally{activePoll=null;if(pollAgain&&!stopping)void poll();}
 }
 
+try{
+ stopListening=await store.listen(()=>{void poll();});
+ console.log('NEAR worker PostgreSQL webhook signal listener connected.');
+}catch(error){console.error('NEAR worker webhook signal listener unavailable; polling fallback remains active:',error.code||error.name||'error');}
 void poll();
 const timer=setInterval(()=>{void poll();},45000);
 console.log('Dinn NEAR Agent Market worker started; polling every 45 seconds.');
@@ -45,6 +54,7 @@ function shutdown(signal){
  console.log(`Dinn NEAR Agent Market worker stopping (${signal}).`);
  shutdownPromise=(async()=>{
   if(activePoll)await activePoll;
+  if(stopListening)await stopListening();
   await store.close();
  })();
  return shutdownPromise;

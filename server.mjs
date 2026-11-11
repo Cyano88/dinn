@@ -36,6 +36,7 @@ import {streamChat,validateChat,chatMessages,clarifySupplyRequest,tokenChatResul
 import {readLaunchReceipt} from './src/launch-receipt.mjs';
 import {embeddedAuthConfig,contentSecurityPolicy} from './src/auth-config.mjs';
 import {createServer} from 'node:http';
+import {verifyNearMarketWebhook} from './src/near-market-webhook.mjs';
 import {readFile} from 'node:fs/promises';
 import {resolve,extname} from 'node:path';
 import {draftPlan,capabilities,validateLaunch,CHAIN_ID} from './src/domain.mjs';
@@ -62,6 +63,7 @@ const launchRpcUrl=onboardingOnly?undefined:process.env.ELYSIUM_RPC_URL;
 const launchEnabled=ascendLaunchEnabled();
 function json(res,status,data){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(data));}
 async function body(req,limit=16000){const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>limit)throw new Error('Request too large.');chunks.push(chunk);}return JSON.parse(Buffer.concat(chunks).toString('utf8'));}
+async function rawBody(req,limit=32768){const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>limit)throw new Error('Request too large.');chunks.push(chunk);}return Buffer.concat(chunks);}
 async function buildPlan(message){let result;for await(const event of streamChat({message},{productMode:true})){if(event.type==='done')result=event.result;}return result;}
 let walletReadStarts=[];
 const server=createServer(async(req,res)=>{
@@ -70,6 +72,21 @@ const server=createServer(async(req,res)=>{
   res.setHeader('Referrer-Policy','no-referrer');
   res.setHeader('Content-Security-Policy',contentSecurityPolicy(authConfig));
   const path=new URL(req.url,'http://localhost').pathname;
+  if(req.method==='POST'&&path==='/api/near-market/webhook'){
+   if(req.headers['content-type']?.split(';')[0]!=='application/json')return json(res,415,{error:'JSON required.'});
+   let event;
+   try{event=verifyNearMarketWebhook({headers:req.headers,rawBody:await rawBody(req),secret:process.env.NEAR_MARKET_WEBHOOK_SECRET});}
+   catch(error){const code=error.code||'';const status=code==='WEBHOOK_NOT_CONFIGURED'?503:code==='WEBHOOK_UNAUTHORIZED'?401:code==='WEBHOOK_EXPIRED'?408:400;return json(res,status,{error:status===503?'Marketplace webhook is not configured.':'Invalid marketplace webhook.'});}
+   if(event.event!=='webhook.ping'){
+    try{
+     if(!process.env.DATABASE_URL)throw Error('Dinn PostgreSQL is not configured.');
+     if(!nearMarketNotifierPromise){const {createNearMarketNotifier}=await import('./src/near-market-notify.mjs');nearMarketNotifierPromise=createNearMarketNotifier();}
+     let notifier;try{notifier=await nearMarketNotifierPromise;}catch(error){nearMarketNotifierPromise=null;throw error;}
+     await notifier.notify(event.event);
+    }catch{return json(res,503,{error:'Marketplace webhook could not be queued.'});}
+   }
+   res.writeHead(204,{'cache-control':'no-store'});return res.end();
+  }
   if(isPausedRoute(path)||path==='/execution/entry.js')return json(res,410,{error:pausedMessage,code:'COMING_SOON'});
   if(req.method==='HEAD' && path==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});return res.end();}
   if(req.method==='GET' && path==='/api/tools')return json(res,200,{tools:productTools,capabilities:productCapabilities,chainId:4663,canSign:false});
@@ -143,17 +160,27 @@ const server=createServer(async(req,res)=>{
   res.writeHead(200,{'content-type':types[extname(file)],'cache-control':'no-store'});res.end(await readFile(resolve(publicDir,file)));
  }catch(e){json(res,400,{error:e.shortMessage||e.message||'Request failed.'});}
 });
-let nearWorkerTimer,nearWorkerStore;
+let nearWorkerTimer,nearWorkerStore,nearWorkerStopListening,nearMarketNotifierPromise;
 async function startNearWorker(){
  if(process.env.NEAR_WORKER_ENABLED!=='true')return;
  try{
   nearWorkerStore=await createNearWorkerStore();
   const worker=createNearWorker({client:createNearMarketClient({token:process.env.NEAR_AGENT_TOKEN}),agentId:process.env.NEAR_AGENT_ID,minimumEscrow:process.env.NEAR_WORKER_MIN_ESCROW,escrowToken:process.env.NEAR_WORKER_ESCROW_TOKEN,store:nearWorkerStore});
-  let polling=false;const poll=async()=>{if(polling)return;polling=true;try{const result=await worker.runOnce();if(result.results.some(x=>x.state==='submitted'))console.log('NEAR worker submitted a verified-scope report; payout awaits buyer acceptance.');}catch(error){console.error('NEAR worker poll failed:',error.code||error.name||'error');}finally{polling=false;}};
+  let polling=false,pollAgain=false;const poll=async()=>{if(polling){pollAgain=true;return;}polling=true;try{do{pollAgain=false;try{const result=await worker.runOnce();if(result.results.some(x=>x.state==='submitted'))console.log('NEAR worker submitted a verified-scope report; payout awaits buyer acceptance.');}catch(error){console.error('NEAR worker poll failed:',error.code||error.name||'error');}}while(pollAgain);}finally{polling=false;if(pollAgain)void poll();}};
+  try{nearWorkerStopListening=await nearWorkerStore.listen(()=>{void poll();});console.log('NEAR worker PostgreSQL webhook signal listener connected.');}
+  catch(error){console.error('NEAR worker webhook signal listener unavailable; polling fallback remains active:',error.code||error.name||'error');}
   void poll();nearWorkerTimer=setInterval(poll,45000);nearWorkerTimer.unref();console.log('NEAR Agent Market worker enabled.');
  }catch(error){console.error('NEAR worker remains disabled:',error.message);await nearWorkerStore?.close().catch(()=>{});nearWorkerStore=null;}
 }
 server.listen(port,host,()=>{console.log(`Dinn preview: http://${host}:${port}`);void startNearWorker();});
-for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{clearInterval(nearWorkerTimer);const stop=()=>server.close(()=>process.exit(0));if(nearWorkerStore)void nearWorkerStore.close().finally(stop);else stop();});
+for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{
+ clearInterval(nearWorkerTimer);
+ void (async()=>{
+  if(nearWorkerStopListening)await nearWorkerStopListening().catch(()=>{});
+  if(nearWorkerStore)await nearWorkerStore.close().catch(()=>{});
+  if(nearMarketNotifierPromise)await (await nearMarketNotifierPromise).close().catch(()=>{});
+  server.close(()=>process.exit(0));
+ })();
+});
 
 
