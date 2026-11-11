@@ -40,7 +40,7 @@ The worker is disabled unless `NEAR_WORKER_ENABLED=true`, `DATABASE_URL`, `NEAR_
 
 For isolated VPS operation, scripts/near-worker.mjs starts the worker without Dinn's HTTP server. The separate service account, systemd unit, database migration, and least-privilege role setup are documented in [ops/near-worker/README.md](../ops/near-worker/README.md). The VPS deployment remains inactive until the registered agent credentials and Dinn database access are securely provisioned.
 
-For safety, automatic delivery only recognizes a non-test research hire with title exactly `Dinn Token Research`, no attachments, one explicit token address, sufficient escrow in the configured currency, and a known marketplace origin: public `standard` jobs, private `instant` hires through the marketplace, or private `instant` A2A hires (`origin: a2a`). It rejects competitions, other private jobs and unknown origins. For A2A calls, it reads the address from the job brief and, when present, the untruncated buyer's direct message; ambiguous, attached or truncated briefs are rejected. It binds the worker ID, job ID and assignment ID, starts the assignment, waits briefly for the marketplace's award/funding race, refreshes the assignment, creates and persists the evidence report, then refreshes status again before submitting. It leaves rework untouched.
+For safety, automatic delivery only recognizes a non-test research hire with title exactly `Dinn`, no attachments, one explicit token address, sufficient escrow in the configured currency, and a known marketplace origin: public `standard` jobs, private `instant` hires through the marketplace, or private `instant` A2A hires (`origin: a2a`). It rejects competitions, other private jobs and unknown origins. For A2A calls, it reads the address from the job brief and, when present, the untruncated buyer's direct message; ambiguous, attached or truncated briefs are rejected. It binds the worker ID, job ID and assignment ID, starts the assignment, waits briefly for the marketplace's award/funding race, refreshes the assignment, creates and persists the evidence report, then refreshes status again before submitting. It leaves rework untouched.
 
 A submit timeout is recoverable: the exact report is stored before submission; retrying identical Markdown is idempotent per the marketplace contract. Later polls reconcile submitted deliverable bytes against the saved report. `accepted` is recorded as `accepted-payout-pending`; the worker never claims that accepted means funds reached the owner's wallet. Cancellation and dispute resolution are recorded separately. The worker does not bid, message buyers, attach/download files, or handle competitions.
 
@@ -48,9 +48,9 @@ This is an executable local foundation, not a listed or paid integration. The A2
 
 ## Proposed Agent Market listing copy
 
-**Name:** Dinn Token Research
+**Name:** Dinn
 
-**Description:** Get a current, evidence-backed report for one Pons v2 token on Robinhood Chain. The report covers launch phase, bonding progress where available, reference market data and fee balances with their wallet scope clearly stated. It includes the checked chain block and source links. It is not a security audit or investment recommendation. For A2A calls, include exactly one Robinhood token contract address in the request text. For a standard marketplace job, use the title `Dinn Token Research` and include exactly one token contract address in the job description. No wallet connection or transaction is needed.
+**Description:** Get a current, evidence-backed report for one Pons v2 token on Robinhood Chain. The report covers launch phase, bonding progress where available, reference market data and fee balances with their wallet scope clearly stated. It includes the checked chain block and source links. It is not a security audit or investment recommendation. For A2A calls, include exactly one Robinhood token contract address in the request text. For a standard marketplace job, use the title `Dinn` and include exactly one token contract address in the job description. No wallet connection or transaction is needed.
 
 **Suggested handle:** `dinn-pons-token-research` (the public lookup currently returns not found; registration is the final availability check).
 
@@ -58,7 +58,7 @@ The marketplace's current A2A setup requires a live `per_call` pricing plan mark
 
 ## Remaining marketplace work
 
-1. The account owner registers Dinn in the Agent Market web app with the chosen immutable handle, name `Dinn Token Research`, and Research category. Registration mints an `aat_` token shown once; store it directly in the VPS environment, never in the repository or chat.
+1. The account owner registers Dinn in the Agent Market web app with the chosen immutable handle, name `Dinn`, and Research category. Registration mints an `aat_` token shown once; store it directly in the VPS environment, never in the repository or chat.
 2. Create a live default `per_call` plan with the owner-approved USD price and SLA, then publish the listing. The marketplace hosts the A2A card and x402 endpoint; Dinn's direct JSON API is not that endpoint.
 3. Configure the worker with isolated PostgreSQL storage, agent ID, `aat_` token, the approved minimum escrow and `USDC` for x402. It remains off until all settings are present.
 4. Exercise an actual A2A hire. Confirm the private instant assignment is handled once, the report matches its stored evidence, and the marketplace records delivery.

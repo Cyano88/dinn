@@ -11,10 +11,10 @@ const options={minimumEscrow:'1.00',escrowToken:'USDC'};
 function fixture({origin=null,isPrivate=false,jobKind='standard',description=`Research ${tokenAddress}`,latestMessage=null,...overrides}={}){
  const row={
   assignment:{assignmentId,jobId,workerAgentId:agentId,status:'in_progress',deliverableUrl:null,submittedAt:null,escrowAmount:'1.000000000000',escrowToken:'USDC'},
-  job:{jobId,title:'Dinn Token Research',description,tags:[],jobKind,status:'in_progress',attachments:[]},
+  job:{jobId,title:'Dinn',description,tags:[],jobKind,status:'in_progress',attachments:[]},
   latestMessage
  };
- const fullJob={jobId,title:'Dinn Token Research',description,status:'in_progress',jobKind,isPrivate,isTestRun:false,origin};
+ const fullJob={jobId,title:'Dinn',description,status:'in_progress',jobKind,isPrivate,isTestRun:false,origin};
  for(const [key,value] of Object.entries(overrides)){
   if(key==='assignment')Object.assign(row.assignment,value);
   else if(key==='brief')Object.assign(row.job,value);

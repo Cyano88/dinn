@@ -21,8 +21,8 @@ function requestedTokenAddress(row,job){
 }
 export function eligibleNearResearchJob(row,fullJob,agentId,{minimumEscrow,escrowToken}={}){
  const a=row?.assignment,j=row?.job;
- if(!uuid(a?.assignmentId)||!uuid(a?.jobId)||!uuid(a?.workerAgentId)||a.jobId!==j?.jobId||a.workerAgentId!==agentId||a.status!=='in_progress'||a.deliverableUrl||a.submittedAt||!['standard','instant'].includes(j?.jobKind)||j.attachments?.length||fullJob?.isTestRun!==false||fullJob?.jobId!==a.jobId||fullJob?.status!=='in_progress'||fullJob.title!=='Dinn Token Research'||!supportedResearchJobSurface(j,fullJob))return null;
- if(j.title!=='Dinn Token Research'||typeof j.description!=='string'||j.description.length>4000)return null;
+ if(!uuid(a?.assignmentId)||!uuid(a?.jobId)||!uuid(a?.workerAgentId)||a.jobId!==j?.jobId||a.workerAgentId!==agentId||a.status!=='in_progress'||a.deliverableUrl||a.submittedAt||!['standard','instant'].includes(j?.jobKind)||j.attachments?.length||fullJob?.isTestRun!==false||fullJob?.jobId!==a.jobId||fullJob?.status!=='in_progress'||fullJob.title!=='Dinn'||!supportedResearchJobSurface(j,fullJob))return null;
+ if(j.title!=='Dinn'||typeof j.description!=='string'||j.description.length>4000)return null;
  const amount=escrowUnits(a.escrowAmount),minimum=escrowUnits(minimumEscrow),address=requestedTokenAddress(row,fullJob);
  if(!address||amount===null||minimum===null||minimum<=0n||amount<minimum||a.escrowToken!==escrowToken)return null;
  return {address};
