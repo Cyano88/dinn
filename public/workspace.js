@@ -382,7 +382,7 @@ function invalidateLaunch(){launchRevision++;reviewed=null;prepared=null;$('laun
 function launchKey(){return 'dinn.pons.pending.v1:4663:'+account?.toLowerCase();}
 
 $('chat-thread').append($('launch-recovery'));$('launch-recovery').classList.add('chat-launch-recovery');
-const launchActivity=mountLaunchActivity({getAccount:()=>account,getEpoch:()=>epoch,getRecord:()=>{try{return JSON.parse(localStorage.getItem(launchKey()));}catch{return null;}},setRecord:r=>localStorage.setItem(launchKey(),JSON.stringify(r)),api,onResearch:address=>{selectedToken=address;view('assistant');submitChoice('check token '+address);},onDex:address=>{selectedToken=address;view('assistant');submitChoice('Prepare DEX Screener profile for '+address);}});
+const launchActivity=mountLaunchActivity({onPonsWallet:()=>view('wallet'),getAccount:()=>account,getEpoch:()=>epoch,getRecord:()=>{try{return JSON.parse(localStorage.getItem(launchKey()));}catch{return null;}},setRecord:r=>localStorage.setItem(launchKey(),JSON.stringify(r)),api,onResearch:address=>{selectedToken=address;view('assistant');submitChoice('check token '+address);},onDex:address=>{selectedToken=address;view('assistant');submitChoice('Prepare DEX Screener profile for '+address);}});
 
 function restoreLaunch(){launchActivity.restore();}
 

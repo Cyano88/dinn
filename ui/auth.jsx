@@ -1,4 +1,5 @@
 export {getAccessToken} from '@privy-io/react-auth';
+import PonsConnect from './pons-connect.jsx';
 import {base,arbitrum,optimism} from 'viem/chains';
 import {walletKey,selectDeployer,connectDeployer} from '../src/deployer-wallet.mjs';
 import {checkWalletSigning} from '../src/signing-probe.mjs';
@@ -14,7 +15,7 @@ class Boundary extends Component{
  componentDidCatch(){emit({state:'error',authenticated:false});}
  render(){return this.state.failed?<p className="auth-error" role="alert">Sign-in could not load. Reload this page to try again.</p>:this.props.children;}
 }
-function Account({accountHost,networkName,networkId}){
+function Account({accountHost,networkName,networkId,walletConnectProjectId}){
  const {ready,authenticated,user,logout,linkGoogle,linkTwitter,exportWallet,error:privyError}=usePrivy();
  const {wallets,ready:walletsReady}=useWallets();
  const {createWallet}=useCreateWallet();
@@ -90,7 +91,7 @@ function Account({accountHost,networkName,networkId}){
  {wallets.filter(wallet=>wallet.walletClientType!=='privy').map(wallet=><button className="subtle" type="button" key={walletKey(wallet)} onClick={()=>selectLaunchWallet(wallet)}>{wallet.meta?.name||'External wallet'} <span>{short(wallet.address)}</span></button>)}
  <button id="connect-launch-wallet" className="subtle" type="button" onClick={()=>{setWalletError('');connectWallet({walletChainType:'ethereum-only',walletList:['detected_ethereum_wallets','metamask'],description:'Connect the wallet you want to use for your launch.'});}}>Connect external wallet</button>
  {walletStatus&&<p role="status">{walletStatus} {selected&&<button className="subtle" type="button" onClick={()=>selectLaunchWallet(selected)}>Reconnect</button>}</p>}{walletError&&<p role="alert">{walletError}</p>}</div>;
- return <>{createPortal(menu,accountHost)}{deployerHost&&createPortal(picker,deployerHost)}</>;
+ return <><PonsConnect projectId={walletConnectProjectId} userId={user?.id} wallet={embedded} launchWallet={selected}/>{createPortal(menu,accountHost)}{deployerHost&&createPortal(picker,deployerHost)}</>;
 
 }
 export function mountEmbeddedAuth(element,config,accountHost){
@@ -99,6 +100,6 @@ export function mountEmbeddedAuth(element,config,accountHost){
  root.render(<Boundary><PrivyProvider appId={config.appId} config={{
  loginMethods:['twitter','google'],appearance:{theme:'light',accentColor:'#344b3b',logo:'/favicon.svg',landingHeader:'Sign in to Dinn',loginMessage:'Access your account and embedded wallet.'},
  embeddedWallets:{showWalletUIs:true,ethereum:{createOnLogin:'all-users'}},defaultChain:network,supportedChains:[network]
- }}><Account accountHost={accountHost} networkName={config.chainName} networkId={config.chainId}/></PrivyProvider></Boundary>);
+ }}><Account accountHost={accountHost} networkName={config.chainName} networkId={config.chainId} walletConnectProjectId={config.walletConnectProjectId}/></PrivyProvider></Boundary>);
  return ()=>root.unmount();
 }

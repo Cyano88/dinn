@@ -1,9 +1,9 @@
 ﻿const hash=v=>typeof v==='string'&&/^0x[0-9a-f]{64}$/i.test(v);const address=v=>typeof v==='string'&&/^0x[0-9a-f]{40}$/i.test(v)&&!/^0x0{40}$/i.test(v);
 export function confirmedLaunchToken(result){return result?.state==='verified'&&result.chainId===4663&&hash(result.hash)&&address(result.token)&&address(result.curve)?result.token:null;}
-export function mountLaunchActivity({getAccount,getEpoch,getRecord,setRecord,api,onResearch,onDex,doc=document,interval=5000}){
+export function mountLaunchActivity({getAccount,getEpoch,getRecord,setRecord,api,onResearch,onDex,onPonsWallet=()=>{},doc=document,interval=5000}){
  const $=id=>doc.getElementById(id);let timer=null,controller=null,revision=0,attempts=0,token=null;
  const identity=r=>JSON.stringify({hash:r?.hash,configuration:r?.configuration,quote:r?.quote});
- function hideActions(){token=null;$('launch-next-actions').hidden=true;$('launched-contract').removeAttribute('href');}
+ function hideActions(){token=null;$('launch-next-actions').hidden=true;$('launched-contract').removeAttribute('href');$('launched-pons').removeAttribute('href');}
  function stop(){revision++;clearTimeout(timer);controller?.abort();controller=null;hideActions();}
  function schedule(){if(attempts>=12){$('launch-activity').textContent+=' Automatic checking paused. Use Check status to continue.';return;}timer=setTimeout(()=>refresh(false),interval);}
  async function refresh(manual=true){clearTimeout(timer);controller?.abort();const rev=++revision,epoch=getEpoch(),account=getAccount(),r=getRecord();hideActions();if(!r||!account)return;
@@ -17,7 +17,7 @@ export function mountLaunchActivity({getAccount,getEpoch,getRecord,setRecord,api
    const verifiedToken=confirmedLaunchToken(result);if(result.state==='verified'&&!verifiedToken)throw Error('Confirmed receipt did not include valid deployed contracts.');const next={...r,hash:txHash,phase:result.state==='pending'?'submitted':result.state,result};setRecord(next);$('recover-hash').value=txHash;
    const labels={pending:'Transaction pending or not yet found. Checking again automatically…',confirming:'Launch mined. Waiting for confirmation…',verified:'Launch confirmed on Robinhood Chain.',reverted:'Launch transaction reverted. No successful token launch was verified.'};$('launch-activity').textContent=labels[result.state];
    token=verifiedToken;
-   if(token){$('launch-activity').textContent+=' Token: '+token+'. Next: open View token, or explore its activity below.';$('launched-contract').href='https://robinhoodchain.blockscout.com/token/'+token;$('launch-next-actions').hidden=false;}
+   if(token){$('launch-activity').textContent+=' Token: '+token+'. Next: open View token, or explore its activity below.';$('launched-contract').href='https://robinhoodchain.blockscout.com/token/'+token;$('launched-pons').href='https://ponsfamily.com/launchpad/'+token;$('pons-handoff-note').textContent='On Pons, connect your launch wallet: '+account+'. Opening this page does not connect a wallet.';$('launch-next-actions').hidden=false;}
    else if(['pending','confirming'].includes(result.state))schedule();
   }catch(e){if(rev===revision&&epoch===getEpoch()&&e.name!=='AbortError'){$('launch-activity').textContent='Status check incomplete: '+e.message+' No transaction was sent.';if(!manual&&attempts<3)schedule();}}
   finally{if(rev===revision){controller=null;$('check-receipt').disabled=false;}}
@@ -26,6 +26,7 @@ export function mountLaunchActivity({getAccount,getEpoch,getRecord,setRecord,api
   $('launch-activity').textContent=({rejected:'Wallet request declined.',reverted:'Saved reverted transaction.',verified:'Rechecking the previously confirmed launch…',confirming:'Rechecking launch confirmation…',submitted:'Checking submitted launch…','awaiting-wallet':'Wallet outcome is unknown. Check wallet activity before retrying.',unknown:'Wallet outcome is unknown. Check wallet activity before retrying.'})[r.phase]||'Saved launch requires a receipt check.';
   if(hash(r.hash)&&!['rejected','reverted'].includes(r.phase))refresh(false);
  }
+ $('connect-launched-pons').onclick=()=>{if(token)onPonsWallet();};
  $('check-receipt').onclick=()=>refresh(true);$('research-launched').onclick=()=>{if(token)onResearch(token);};$('dex-launched').onclick=()=>{if(token)onDex(token);};
  return {restore,stop,refresh};
 }

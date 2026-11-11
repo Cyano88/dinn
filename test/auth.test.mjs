@@ -12,6 +12,9 @@ test('public RPC cannot add CSP directives or embedded credentials',()=>{
  const config=embeddedAuthConfig({PRIVY_APP_ID:'public-app-123',ROBINHOOD_PUBLIC_RPC_URL:'https://rpc.example/path?param=value'});
  const csp=contentSecurityPolicy(config);assert.match(csp,/https:\/\/rpc.example/);assert.ok(!csp.includes('param=value'));assert.ok(!csp.includes('unsafe-eval'));
  assert.ok(!contentSecurityPolicy(embeddedAuthConfig({})).includes('privy.io'));
+ assert.ok(!contentSecurityPolicy(config).includes('wss://relay.walletconnect.com'));
+ const wc=embeddedAuthConfig({PRIVY_APP_ID:'public-app-123',DINN_WALLETCONNECT_PROJECT_ID:'a'.repeat(32)});assert.equal(wc.walletConnectProjectId,'a'.repeat(32));assert.ok(contentSecurityPolicy(wc).includes('wss://relay.walletconnect.com'));
+ assert.throws(()=>embeddedAuthConfig({DINN_WALLETCONNECT_PROJECT_ID:'invalid'}));
 });
 
 test('testnet onboarding is explicit and does not expose the private RPC',()=>{

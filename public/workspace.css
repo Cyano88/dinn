@@ -57,3 +57,5 @@ select{font:inherit;border:1px solid #dce3dd;border-radius:8px;padding:12px;back
 .signin-description a{color:inherit;text-decoration:underline;text-underline-offset:3px}.signin-description a:hover{color:#294d38}.signin-description a:focus-visible{outline:2px solid #52665a;outline-offset:3px;border-radius:2px}
 
 #pons-review-dialog{overflow-y:auto;scrollbar-width:none}#pons-review-dialog::-webkit-scrollbar{display:none}
+
+.pons-connect{border-top:1px solid #dce3dd;margin-top:28px;padding-top:20px;max-width:620px}.pons-connect input{display:block;box-sizing:border-box;width:100%;padding:12px;margin:8px 0 12px}.pons-connect button{margin:6px 10px 6px 0}.pons-request{border:1px solid #dce3dd;border-radius:16px;padding:24px;max-width:600px;width:calc(100vw - 48px);max-height:85dvh;overflow:auto}.pons-request pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:45dvh;overflow:auto;font-size:12px;background:#f4f7f4;padding:16px}.pons-request::backdrop{background:#14251e66}
