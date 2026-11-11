@@ -1,0 +1,28 @@
+[Unit]
+Description=Dinn NEAR Agent Market worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dinnworker
+Group=dinnworker
+WorkingDirectory=/opt/dinn-near-worker/app
+Environment=HOME=/home/dinnworker
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/node --env-file=/etc/dinn-near-worker/worker.env scripts/near-worker.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadOnlyPaths=/opt/dinn-near-worker/app
+
+[Install]
+WantedBy=multi-user.target

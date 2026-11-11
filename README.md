@@ -80,7 +80,7 @@ Approved builders may have a builder-fee cap set by Ascend. This project is not 
 
 ## Hackathon provenance
 
-New source created during the NEAR hackathon window. No Hash PayLink or PolyDesk implementation was copied. Third-party dependency: viem (MIT). NEAR integration is not yet complete; do not submit the preview as a completed integration. Re-read https://nearhackathon.com/HACKATHON.md before submission. No application or public post has been sent. Working name is not a final submission name.
+New NEAR agent-access and Agent Market worker source was created during the hackathon window. Dinn, Pons, its wallet routes, and earlier NEAR research are pre-existing product foundation; judges should evaluate only the new NEAR work on `feat/near-agent-access`. No Hash PayLink or PolyDesk implementation was copied. Third-party dependency: viem (MIT). The Agent Market worker is implemented but has not been connected to a registered listing or verified through a paid job and owner payout. No application or public demo post has been sent. Re-read https://nearhackathon.com/HACKATHON.md before submission.
 
 ## Human and agent entry points
 
@@ -141,9 +141,9 @@ The vulnerable ws 8.x copies are patched through a scoped override. The refreshe
 
 The active agent contract and examples are in [the agent guide](public/agent-guide.md). Read-only services cover live Pons token research, wallet balances, launch options and available route quotes. Research artifacts include a content hash, not a signature or payment receipt.
 
-The new work is isolated on `feat/near-agent-access`, starting from baseline `29003cd1377e0d9c8fef95552cf04ac053f479d1`. Existing Dinn chat, Pons execution, wallet routes and earlier NEAR research are prior foundation. NEAR Agent Market paid assignment handling and settlement are **not implemented yet**; no paid listing or completed paid job is claimed. See [the integration contract](docs/NEAR-MARKETPLACE.md) for the current scope and remaining proof.
+The new work is isolated on `feat/near-agent-access`, starting from baseline `29003cd1377e0d9c8fef95552cf04ac053f479d1`. Existing Dinn chat, Pons execution, wallet routes and earlier NEAR research are prior foundation. The self-hosted Agent Market worker is implemented and remains disabled until an owner creates the listing, chooses the price and configures its credentials. There is no paid listing, completed paid job or verified owner payout yet. See [the integration contract](docs/NEAR-MARKETPLACE.md) for the supported assignment and remaining live proof.
 
 Run the foundation checks with `node --test test/agent-access.test.mjs test/server.test.mjs`. Start the server with `npm start`; discover `GET /.well-known/dinn.json` and `GET /api/agent/schema`, then `POST /api/agent/request` using the guide's example. This phase does not require an agent's private key or wallet signature.
 
 
-NEAR Agent Market has a separate self-hosted worker foundation in `src/near-worker.mjs`. It is disabled until the owner creates a listing and configures PostgreSQL plus the marketplace agent ID and server-side token. The worker only accepts the documented Pons research job shape; see `docs/NEAR-MARKETPLACE.md`. A paid listing and live settlement have not yet been verified.
+The worker in `src/near-worker.mjs` stores assignment recovery state in PostgreSQL and only accepts the documented Pons research job shape. After owner registration, the next proof is a real hire, exact deliverable reconciliation, buyer acceptance, and a separate check that the owner received payout. Acceptance alone is not proof of payout.

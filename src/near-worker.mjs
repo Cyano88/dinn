@@ -4,13 +4,28 @@ import {agentAccessRequest} from './agent-access.mjs';
 const TOKEN_RE=/0x[0-9a-fA-F]{40}/g;
 
 function escrowUnits(value){if(typeof value!=='string'||!/^\d+(?:\.\d{1,12})?$/.test(value))return null;const [whole,fraction='']=value.split('.');return BigInt(whole)*10n**12n+BigInt((fraction+'0'.repeat(12)).slice(0,12));}
+function supportedResearchJobSurface(brief,job){
+ if(!job||brief?.jobKind!==job.jobKind)return false;
+ if(job.origin===null)return job.jobKind==='standard'&&job.isPrivate===false||job.jobKind==='instant'&&job.isPrivate===true;
+ return job.origin==='a2a'&&job.jobKind==='instant'&&job.isPrivate===true;
+}
+function requestedTokenAddress(row,job){
+ const brief=row?.job,sources=[brief?.description];
+ if(job.origin==='a2a'&&row.latestMessage!=null){
+  const message=row.latestMessage;
+  if(message.senderSide!=='buyer'||message.origin!=='direct'||message.truncated!==false||message.attachments?.length||typeof message.body!=='string'||message.body.length>4000)return null;
+  sources.push(message.body);
+ }
+ const addresses=[...new Set(sources.flatMap(value=>typeof value==='string'?[...value.matchAll(TOKEN_RE)].map(match=>match[0].toLowerCase()):[]))];
+ return addresses.length===1?addresses[0]:null;
+}
 export function eligibleNearResearchJob(row,fullJob,agentId,{minimumEscrow,escrowToken}={}){
  const a=row?.assignment,j=row?.job;
- if(!uuid(a?.assignmentId)||!uuid(a?.jobId)||!uuid(a?.workerAgentId)||a.jobId!==j?.jobId||a.workerAgentId!==agentId||a.status!=='in_progress'||a.deliverableUrl||a.submittedAt||j.jobKind==='competition'||j.attachments?.length||fullJob?.isTestRun!==false||fullJob?.jobId!==a.jobId||fullJob?.status!=='in_progress'||fullJob.jobKind==='competition'||fullJob.isPrivate!==false)return null;
+ if(!uuid(a?.assignmentId)||!uuid(a?.jobId)||!uuid(a?.workerAgentId)||a.jobId!==j?.jobId||a.workerAgentId!==agentId||a.status!=='in_progress'||a.deliverableUrl||a.submittedAt||!['standard','instant'].includes(j?.jobKind)||j.attachments?.length||fullJob?.isTestRun!==false||fullJob?.jobId!==a.jobId||fullJob?.status!=='in_progress'||fullJob.title!=='Dinn Pons Token Research'||!supportedResearchJobSurface(j,fullJob))return null;
  if(j.title!=='Dinn Pons Token Research'||typeof j.description!=='string'||j.description.length>4000)return null;
- const amount=escrowUnits(a.escrowAmount),minimum=escrowUnits(minimumEscrow);const addresses=j.description.match(TOKEN_RE)||[];
- if(addresses.length!==1||amount===null||minimum===null||minimum<=0n||amount<minimum||a.escrowToken!==escrowToken)return null;
- return {address:addresses[0]};
+ const amount=escrowUnits(a.escrowAmount),minimum=escrowUnits(minimumEscrow),address=requestedTokenAddress(row,fullJob);
+ if(!address||amount===null||minimum===null||minimum<=0n||amount<minimum||a.escrowToken!==escrowToken)return null;
+ return {address};
 }
 
 export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=process.env.NEAR_AGENT_ID,minimumEscrow=process.env.NEAR_WORKER_MIN_ESCROW,escrowToken=process.env.NEAR_WORKER_ESCROW_TOKEN,store,client,report=agentAccessRequest,now=()=>new Date(),wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){

@@ -26,7 +26,7 @@ Legacy `plan` and `pons.brief` responses remain available with their existing re
 
 ## NEAR Agent Market
 
-Not listed or connected yet. The direct endpoint is a free public preview. A planned paid worker will bind an authenticated assignment to the requested deliverable, persist progress, verify current funding/cancellation state and submit only the completed agreed work. Marketplace payment never authorizes use of a buyer's token wallet. Do not invent an agent handle, price, listing, paid result or hosted A2A endpoint.
+Not listed or connected yet. The direct endpoint is a free public preview. A self-hosted paid worker is implemented but remains disabled until the account owner registers the agent and configures its server-side credentials. The marketplace hosts the A2A card and x402 endpoint; this direct JSON API is not that endpoint. Marketplace payment never authorizes use of a buyer's token wallet. Do not invent an agent handle, price, listing, paid result or hosted A2A endpoint.
 
 ## Human wallet actions
 
@@ -35,4 +35,4 @@ The Dinn application separately offers Pons launch review, simulation and explic
 
 ## Marketplace worker status
 
-A self-hosted NEAR Agent Market worker is implemented but disabled until Dinn has an owner-created marketplace listing and credentials. It only processes non-test Pons research assignments with a positive USD/USDC escrow, exact title `Dinn Pons Token Research`, and one token contract address in the description. Other assignments are ignored. It stores recovery state in PostgreSQL. Acceptance is reported as payout pending; it is not proof of payment to the owner. See `docs/NEAR-MARKETPLACE.md` in the repository for deployment setup and remaining live proof.
+A self-hosted NEAR Agent Market worker is implemented but disabled until Dinn has an owner-created marketplace listing and credentials. It only processes non-test Pons research hires with exact title `Dinn Pons Token Research`, a single token address and sufficient escrow in the configured currency. Supported sources are public standard jobs, private instant marketplace hires and private instant A2A hires. Other private jobs, competitions and ambiguous or incomplete A2A briefs are ignored. It stores recovery state in PostgreSQL. Acceptance is reported as payout pending; it is not proof of payment to the owner. See `docs/NEAR-MARKETPLACE.md` in the repository for deployment setup and remaining live proof.
