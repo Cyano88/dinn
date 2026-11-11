@@ -26,3 +26,9 @@ The local development environment now uses the hosted public origin for accepted
 `/api/drafts/get` and `/api/drafts/save` require a verified Privy bearer token. The server derives ownership from the token; callers cannot supply another owner. Writes use optimistic revisions, returning HTTP 409 when another tab has saved a newer copy. The browser retains three recovery snapshots when resolving conflicting copies and retries interrupted sync without dropping local edits.
 
 Portable state includes token details, settings, links, selected logo references, chat, optional purchase and the active setup step. It excludes prepared/signed transactions, pending wallet records, wallet providers and wallet-selection preferences. Restoring a cloud draft invalidates any open review. The local server uses `DINN_DRAFT_SYNC_URL=https://dinn-pasy.onrender.com` to forward authenticated sync requests; database credentials never enter the browser.
+
+### Draft-sync release verification
+
+Commit `5d51eb3` is live on Render. The release passed 272 tests; browser fixtures verified local import, fresh-browser restoration, preserved logo URL and explicit conflict resolution with backup. An isolated test record in the actual Render PostgreSQL database verified insert, read and stale-revision rejection, then was removed. The temporary database IP allowlist entry was removed. Hosted and local draft endpoints reject anonymous requests; a request with an invalid token forwarded through the local proxy reaches the hosted verifier and returns 401. The hosted sign-in page loads without runtime errors.
+
+The original user's local draft must be imported by refreshing its signed-in local tab and waiting for `Saved to your account`; that specific migration is not proven by the fixture checks.
