@@ -1,4 +1,4 @@
-﻿export const productCapabilities={
+export const productCapabilities={
  launch:{title:'Launch a token',status:'wallet-approval',description:'Pons ETH and approved ERC-20 pair launch setup, current economics, simulation, explicit wallet approval and exact receipt verification.'},
  inspect:{title:'Check a token or contract',status:'read-only',description:'Robinhood Chain bytecode, TS (total supply), SC (source verification), reported owner and proxy indicators. Not a security audit.'},
  balance:{title:'Read wallet balance',status:'read-only',description:'Native ETH balance on Robinhood Chain, with checked block.'},
@@ -9,8 +9,9 @@
  buy:{title:'Buy tokens',status:'coming-soon',description:'Pons trading adapter not connected. Old Elysium/Montra swaps are paused.'},
  sell:{title:'Sell tokens',status:'coming-soon',description:'Pons trading adapter not connected; sellability is not established by a contract read.'},
  claim:{title:'Check and claim Pons fees',status:'wallet-approval',description:'Supported Pons v2 escrow balance, separate pending distribution, claim review, wallet approval and payout receipt verification.'},
- transfer:{title:'Send tokens',status:'coming-soon',description:'Pons wallet transfers are not connected; old Elysium transfers are paused.'},
- fund:{title:'Bridge or fund',status:'coming-soon',description:'No verified Robinhood funding adapter; old Elysium bridge/deposit paths are paused.'},
+ transfer:{title:'Send tokens',status:'wallet-approval',description:'Send native ETH or ERC-20 holdings on Robinhood Chain with amount, recipient, gas and receipt verification.'},
+ fund:{title:'Bridge or fund',status:'wallet-approval',description:'Relay quotes from Base or Arbitrum ETH, USDC and USDT to Robinhood Chain. Source confirmation and destination delivery are separate.'},
+ swap:{title:'Swap assets',status:'wallet-approval',description:'Relay routes on Robinhood Chain where liquidity exists; Base and Arbitrum swaps are limited to ETH, USDC and USDT. Explicit quote review and wallet approval; unsupported routes remain unavailable.'},
  dex:{title:'DEX Screener profile',status:'external-checkout',description:'Get a checkout link with Robinhood Chain and token address prefilled. Optional profile notes are copyable. Complete details and payment on DEX Screener; check public order status here.'}
 };
 const tool=(name,description,properties={},required=[])=>({type:'function',function:{name,description,parameters:{type:'object',properties,required,additionalProperties:false}}});
@@ -29,6 +30,8 @@ export const productTools=[
  tool('open_launch_review','Offer a button to review the saved launch. Never signs or sends.'),
  tool('dex_service_status','Read public DEX Screener profile orders and published information for a Robinhood token. Does not prove this user paid.',{address},['address']),
  tool('open_dex_profile','Look up onchain token identity and reported project metadata, use AI to draft a description, and offer a populated review. Requires a token address. No submission or payment.',{address}),
+ tool('open_wallet_action','Offer a chat review for a send, bridge or swap. This tool never submits transactions.',{kind:{type:'string',enum:['send','bridge','swap']}},['kind']),
+ tool('wallet_portfolio','Read wallet assets and estimated values on Robinhood Chain, Base or Arbitrum.',{account:address,network:{type:'string',enum:['4663','8453','42161']}}),
  tool('open_wallet','Offer a button to the wallet view.'),
  tool('open_launchpads','Offer a button to the launchpad list.')
 ];

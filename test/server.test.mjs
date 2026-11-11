@@ -9,7 +9,7 @@ test('HTTP preview rejects mutation and preserves draft-only boundaries',async()
  try{
   await Promise.race([once(child.stdout,'data'),once(child,'exit').then(()=>{throw new Error('Server exited before startup');}),new Promise((_,reject)=>{const t=setTimeout(()=>reject(new Error('Startup timeout')),15000);t.unref();})]);
   const root=`http://127.0.0.1:${port}`;
-  const status=await(await fetch(`${root}/api/status`)).json();assert.equal(status.broadcastEnabled,true);assert.equal(status.aiConfigured,false);assert.equal(status.authChainId,4663);assert.equal(status.onboardingOnly,false);assert.equal(status.walletTransfersEnabled,false);assert.equal(status.swapsEnabled,false);
+  const status=await(await fetch(`${root}/api/status`)).json();assert.equal(status.broadcastEnabled,true);assert.equal(status.aiConfigured,false);assert.equal(status.authChainId,4663);assert.equal(status.onboardingOnly,false);assert.equal(status.walletTransfersEnabled,true);assert.equal(status.swapsEnabled,true);
   const auth=await(await fetch(root+'/api/auth/config')).json();assert.equal(auth.enabled,false);assert.equal(auth.appId,null);assert.equal(auth.rpcUrl,'https://rpc.mainnet.chain.robinhood.com/');assert.deepEqual(auth.loginMethods,['twitter','google']);
   assert.equal((await fetch(root+'/ui/auth.jsx')).status,404);
   const head=await fetch(root,{method:'HEAD'});assert.equal(head.status,200);assert.equal(await head.text(),'');
@@ -48,7 +48,7 @@ test('legacy testnet flags cannot change Pons network or unpause Elysium routes'
   await Promise.race([once(child.stdout,'data'),once(child,'exit').then(()=>{throw Error('Server exited');}),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('Startup timeout')),15000);timer.unref();})]);
   const root='http://127.0.0.1:14318';
   const status=await(await fetch(root+'/api/status')).json();
-  assert.equal(status.broadcastEnabled,true);assert.equal(status.rpcConfigured,false);assert.equal(status.onboardingOnly,false);assert.equal(status.authChainId,4663);
+  assert.equal(status.broadcastEnabled,true);assert.equal(status.rpcConfigured,true);assert.equal(status.onboardingOnly,false);assert.equal(status.authChainId,4663);
   const auth=await(await fetch(root+'/api/auth/config')).json();
   assert.equal(auth.enabled,true);assert.equal(auth.chainId,4663);assert.equal(auth.testnet,false);
   assert.ok(!JSON.stringify({status,auth}).includes('SECRET'));assert.equal((await fetch(root+'/api/launch/preflight',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,410);

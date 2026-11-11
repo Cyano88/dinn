@@ -40,6 +40,7 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
  useEffect(()=>setCopied(false),[user?.id]);
  const embedded=wallets.find(wallet=>wallet.walletClientType==='privy');
  const [selection,setSelection]=useState(null),[retry,setRetry]=useState(0),[walletStatus,setWalletStatus]=useState(''),[walletError,setWalletError]=useState('');
+ useEffect(()=>{const restored=()=>setRetry(value=>value+1);window.addEventListener('dinn:wallet-network-restored',restored);return()=>window.removeEventListener('dinn:wallet-network-restored',restored);},[]);
  const connectionVersion=useRef(0),launchChoice=useRef(null);
  const preferenceKey='dinn.deployer.v1:'+user?.id;
  let stored='';try{stored=localStorage.getItem(preferenceKey)||'';}catch{}
@@ -100,7 +101,7 @@ export function mountEmbeddedAuth(element,config,accountHost){
  const root=createRoot(element);
  root.render(<Boundary><PrivyProvider appId={config.appId} config={{
  loginMethods:['twitter','google'],appearance:{theme:'light',accentColor:'#344b3b',logo:'/favicon.svg',landingHeader:'Sign in to Dinn',loginMessage:'Access your account and embedded wallet.'},
- embeddedWallets:{showWalletUIs:true,ethereum:{createOnLogin:'all-users'}},defaultChain:network,supportedChains:[network]
+ embeddedWallets:{showWalletUIs:true,ethereum:{createOnLogin:'all-users'}},defaultChain:network,supportedChains:[network,base,arbitrum]
  }}><Account accountHost={accountHost} networkName={config.chainName} networkId={config.chainId} walletConnectProjectId={config.walletConnectProjectId}/></PrivyProvider></Boundary>);
  return ()=>root.unmount();
 }

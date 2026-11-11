@@ -1,4 +1,4 @@
-﻿import test from 'node:test';import assert from 'node:assert/strict';
+import test from 'node:test';import assert from 'node:assert/strict';
 import {briefTurn} from '../public/pons-flow.js';
 import {ponsReview,ponsSimulate,ponsReceipt} from '../src/pons-launch.mjs';
 import {requestPonsLaunch} from '../ui/pons-execution.js';
@@ -57,7 +57,7 @@ test('ERC20 opening purchase quotes actual decimals and requires exact approval 
  const sufficient=stockBuy(100000n);assert.equal((await ponsPurchaseApproval({configuration:stockConfig,quote:q},{client:sufficient,now})).required,false);await ponsSimulate({configuration:stockConfig,quote:q},{client:sufficient,now});
 });
 test('purchase approval wallet cannot broaden spender or spend, and uncertain submission cannot repeat',async()=>{
- const c=stockBuy(),quote=await ponsReview(stockConfig,{client:c,now}),p={...await ponsPurchaseApproval({configuration:stockConfig,quote},{client:c,now}),expiresAt:Date.now()+60000};let raw=null,sends=0;const args={prepared:p,configuration:stockConfig,provider:{request:async({method})=>{if(method==='eth_accounts')return [account];if(method==='eth_chainId')return '0x1237';sends++;throw Error('disconnected');}},storage:{getItem:()=>raw,setItem:(_k,v)=>raw=v},key:'approval',isCurrent:()=>true,withLock:fn=>fn()};
+ const c=stockBuy(),quote=await ponsReview(stockConfig,{client:c,now}),p={...await ponsPurchaseApproval({configuration:stockConfig,quote},{client:c,now}),expiresAt:Date.now()+60000};let raw=null,sends=0;const args={prepared:p,configuration:stockConfig,provider:{request:async({method})=>{if(method==='eth_accounts')return [account];if(method==='eth_chainId')return '0x1237';sends++;throw Error('disconnected');}},storage:{getItem:k=>k==='approval'?raw:null,setItem:(_k,v)=>raw=v},key:'approval',isCurrent:()=>true,withLock:fn=>fn()};
  await assert.rejects(requestPonsApproval({...args,prepared:{...p,transaction:{...p.transaction,to:account}}}),/differs/);assert.equal(sends,0);assert.equal((await requestPonsApproval(args)).phase,'unknown');await assert.rejects(requestPonsApproval(args),/saved approval/);assert.equal(sends,1);
 });
 test('approval receipt rejects unrelated calldata and verifies canonical confirmation',async()=>{

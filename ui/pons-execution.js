@@ -1,8 +1,10 @@
+export {mountRobinhoodWallet,submitRobinhoodWallet} from './robinhood-wallet.js';
 export {mountPonsClaims,requestPonsClaim} from './pons-claims.js';
 ﻿import {assertPrepared,same,hashValid} from '../src/pons-call.mjs';
 export async function requestPonsLaunch({prepared,configuration,provider,storage,key,isCurrent,withLock}){
  if(typeof withLock!=='function')throw Error('This browser cannot lock launch submissions.');
  return withLock(async()=>{
+ const walletAction=JSON.parse(storage.getItem('dinn.robinhood.wallet.v1:'+configuration.account.toLowerCase())||'null');if(walletAction&&!['verified','refunded','reverted','rejected'].includes(walletAction.state))throw Error('Resolve your saved wallet transfer, bridge or swap first.');
  const old=storage.getItem(key);if(old&&!['verified','reverted','rejected'].includes(JSON.parse(old).phase))throw Error('Resolve the saved launch before submitting another.');
  const approval=storage.getItem('dinn.pons.approval.v1:4663:'+configuration.account.toLowerCase());if(approval&&!['verified','reverted','rejected'].includes(JSON.parse(approval).phase))throw Error('Resolve the saved purchase approval before launching.');
  const tx=assertPrepared(prepared,configuration);
@@ -19,6 +21,7 @@ export async function requestPonsLaunch({prepared,configuration,provider,storage
 export async function requestPonsApproval({prepared,configuration,provider,storage,key,isCurrent,withLock}){
  if(typeof withLock!=='function')throw Error('This browser cannot lock approval submissions.');
  return withLock(async()=>{
+ const walletAction=JSON.parse(storage.getItem('dinn.robinhood.wallet.v1:'+configuration.account.toLowerCase())||'null');if(walletAction&&!['verified','refunded','reverted','rejected'].includes(walletAction.state))throw Error('Resolve your saved wallet transfer, bridge or swap first.');
  const old=storage.getItem(key);if(old&&!['verified','reverted','rejected'].includes(JSON.parse(old).phase))throw Error('Check the saved approval before submitting another.');
  const launch=storage.getItem('dinn.pons.pending.v1:4663:'+configuration.account.toLowerCase());if(launch&&!['verified','reverted','rejected'].includes(JSON.parse(launch).phase))throw Error('Resolve the saved launch before approving another purchase.');
  const {approvalTransaction,purchaseQuote}=await import('../src/pons-purchase.mjs');

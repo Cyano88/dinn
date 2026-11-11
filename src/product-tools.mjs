@@ -1,3 +1,4 @@
+import {robinhoodBalances} from './robinhood-wallet.mjs';
 import {ponsTokenState,tokenStateMessage} from './pons-token-state.mjs';
 import {manageLaunchDraft,draftIntent} from './launch-draft.mjs';
 import {prepareDexProfile} from './dex-profile-preparation.mjs';
@@ -30,6 +31,8 @@ async function executeTool(name,args={},context={},dependencies={}){
  const canClaim=addr(context.walletAccount)&&BigInt(data.claimableWei)>0n;
  return {message:tokenStateMessage(data,args.focus|| (name==='review_pons_claim'?'fees':'market')),tokenState:data,tokenAddress:address,data,actions:canClaim&&name==='review_pons_claim'?[{id:'claim',address,title:'Review fee claim'}]:[]};
  }
+ if(name==='open_wallet_action')return {message:'Review the '+args.kind+' details in chat, then approve in your wallet when ready.',actions:[{id:args.kind}]};
+ if(name==='wallet_portfolio'){if(!addr(account))return {message:'Choose your wallet first.',actions:[{id:'wallet'}]};const data=await (dependencies.portfolio||robinhoodBalances)({account,chainId:Number(args.network||4663)});return {message:data.network+' balances:\n'+data.assets.map(a=>a.symbol+': '+(a.balance===null?'unavailable':a.balance)).join('\n')+'\nChecked at block '+data.blockNumber+'.'+(data.discovery==='unavailable'?' Token discovery was unavailable.':''),data,actions:[{id:'wallet'}]};}
  if(name==='wallet_balance'){if(!addr(account))return {message:'Open your connected wallet to check its ETH balance, or provide a wallet address.',actions:[{id:'wallet',title:actionTitles.wallet}]};const data=await (dependencies.balance||robinhoodBalance)({account});return {message:`${data.balance} ETH on Robinhood Chain for ${data.account}. Checked at block ${data.blockNumber}.`,data,actions:[{id:'wallet',title:actionTitles.wallet}]};}
  if(name==='launch_options'){const data=await (dependencies.readiness||ponsReadiness)(addr(account)?{account}:{});return {message:`Pons has ${data.configs.length} enabled launch configurations. Launch fee: ${data.launchFee} ETH, plus gas. Creator tax cap: ${Number(data.maxCreatorTaxBps)/100}%. ${data.accountCanLaunch===false?'This wallet cannot currently launch. ':''}Checked on Robinhood Chain at block ${data.blockNumber}.`,data,actions:[{id:'launch',title:actionTitles.launch}]};}
  if(name==='inspect_token'){if(!args.address)return {message:'Which Robinhood token or contract should I check? Send its address.',data:{state:'needs-token-address',chainId:4663,requiredField:'token or contract address',focus:args.focus||'overview'},actions:[]};if(!addr(args.address))throw Error('Use one nonzero contract address.');const data=await (dependencies.inspect||inspectCachedToken)(args.address,{rpc:context.env?.ROBINHOOD_RPC_URL||PONS_RPC,chainId:4663,signal:context.signal,fresh:true});const focus={source:'sc',supply:'ts',locks:'lock',owner:'owner',sellability:'sell'}[args.focus]||'';return {message:inspectionSummary(data,focus),data:{...data,focus:args.focus||'overview'},inspection:{...data,focus:args.focus||'overview'},actions:[]};}
@@ -39,6 +42,8 @@ function previousDexAddress(history=[]){for(let i=history.length-1;i>=0;i--){con
 export function directProductIntent(text,context={}){
  if(/^(?:open )?wallet[.!]?$/i.test(text.trim()))return {name:'open_wallet',args:{}};
  if(/^(?:open )?(?:launch )?review[.!]?$/i.test(text.trim()))return {name:'open_launch_review',args:{}};
+ if(/\b(?:bridge|swap|send (?:tokens|eth|usdc|usdt)|transfer (?:tokens|eth))\b/i.test(text)&&!/^(?:what|why|explain|how does)\b/i.test(text.trim()))return {name:'open_wallet_action',args:{kind:/bridge/i.test(text)?'bridge':/swap/i.test(text)?'swap':'send'}};
+ if(/\b(?:wallet assets|portfolio|all balances|balances on base|balances on arbitrum|balance on base|balance on arbitrum)\b/i.test(text))return {name:'wallet_portfolio',args:{network:/arbitrum/i.test(text)?'42161':/base/i.test(text)?'8453':'4663'}};
  if(draftIntent({...context,message:text}))return {name:'manage_launch_draft',args:{}};
  const t=text.trim(),addresses=t.match(/0x[0-9a-f]{40}(?![0-9a-f])/gi)||[],hash=t.match(/0x[0-9a-f]{64}(?![0-9a-f])/i)?.[0];
  if(/\b(?:on|chain|network)\s+(?:ethereum|base|solana|arbitrum|polygon|bsc|hyperliquid)\b/i.test(t))return {message:'Only Robinhood Chain (4663) is connected for these checks. No read was performed on another network.',actions:[]};

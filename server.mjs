@@ -1,3 +1,5 @@
+import {robinhoodBalances,prepareRobinhoodSend,walletSourceReceipt} from './src/robinhood-wallet.mjs';
+import {robinhoodRouteQuote,prepareRobinhoodRoute,robinhoodRouteStatus} from './src/robinhood-routes.mjs';
 import {ponsTokenState,preparePonsClaim,ponsClaimReceipt} from './src/pons-token-state.mjs';
 import {createDraftService} from './src/draft-service.mjs';
 import {inferenceAccess} from './src/inference-access.mjs';
@@ -82,6 +84,8 @@ const server=createServer(async(req,res)=>{
    if(path==='/api/chat'||path==='/api/agent/request'&&data.service==='plan'){const denied=await checkInferenceAccess(req);if(denied)return json(res,denied.status,{error:denied.error});}
    if(path==='/api/dex/logo-download'){const image=await downloadDexLogo(data);res.writeHead(200,{'content-type':image.type,'content-disposition':'attachment; filename="'+image.filename+'"','cache-control':'no-store'});return res.end(image.bytes);}
    if(path==='/api/tools/run'){if(Object.keys(data).some(k=>!['name','args','walletAccount'].includes(k)))throw Error('Unknown tool request field.');walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);if(walletReadStarts.length>=40)return json(res,429,{error:'Tool checks are busy.'});walletReadStarts.push(Date.now());return json(res,200,await executeProductTool(data.name,data.args,{walletAccount:data.walletAccount,env:process.env}));}
+   const robinhoodWalletRoutes={'/api/robinhood/wallet/balances':robinhoodBalances,'/api/robinhood/wallet/prepare':prepareRobinhoodSend,'/api/robinhood/wallet/receipt':walletSourceReceipt,'/api/robinhood/route/quote':robinhoodRouteQuote,'/api/robinhood/route/prepare':prepareRobinhoodRoute,'/api/robinhood/route/status':robinhoodRouteStatus};
+   if(robinhoodWalletRoutes[path]){walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);if(walletReadStarts.length>=80)return json(res,429,{error:'Wallet checks are busy. Try again shortly.'});walletReadStarts.push(Date.now());try{return json(res,200,await robinhoodWalletRoutes[path](data));}catch(e){return json(res,400,{error:e.name==='Error'&&!/https?:|api.key|Bearer/i.test(e.message)?e.message:'Wallet provider could not complete this check. No transaction was sent.'});}}
    if(path==='/api/pons/brief')return json(res,200,ponsBrief(data));
    if(['/api/pons/token-state','/api/pons/fees/prepare','/api/pons/fees/receipt','/api/pons/purchase-usd','/api/pons/approval','/api/pons/approval-receipt','/api/pons/pair','/api/pons/review','/api/pons/simulate','/api/pons/receipt','/api/pons/readiness','/api/robinhood/balance'].includes(path)){
     walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);
