@@ -1,0 +1,11 @@
+﻿import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validateLaunch,draftPlan} from '../src/domain.mjs';
+import {simulateLaunch} from '../src/ascend.mjs';
+const valid={name:'Orbit',symbol:'ORBT',pair:'USDC',feePercent:'2',account:'0x1111111111111111111111111111111111111111',recipient:'0x2222222222222222222222222222222222222222',cto:false};
+test('multi-action request creates separate drafts without execution',()=>{const p=draftPlan('Launch ORBT, buy, lock holdings, burn, sell, claim fees and fund through NEAR; pay for DEX');assert.equal(p.actions.length,8);assert.equal(p.mode,'guided');assert.equal(p.actions.find(a=>a.id==='burn').status,'blocked');});
+test('launch supply and builder fees cannot be changed by model output',()=>{assert.throws(()=>validateLaunch({...valid,supply:'100'}));assert.throws(()=>validateLaunch({...valid,builderFee:1000}));assert.equal(validateLaunch(valid).supply,'1000000000');assert.equal(validateLaunch(valid).builderFee,0);});
+test('launch requires explicit recipient, fee and takeover decision',()=>{for(const bad of [{recipient:'0x'+'0'.repeat(40)},{feePercent:'0.99'},{feePercent:'10.01'},{feePercent:'1e1'},{feePercent:'NaN'},{cto:'false'},{pair:'ETH'},{symbol:'<script>'},{name:'\n'},{account:'not a wallet'}])assert.throws(()=>validateLaunch({...valid,...bad}));});
+test('fee units and explicit boolean preserved',()=>{assert.equal(validateLaunch({...valid,feePercent:'1.25'}).feePips,12500);assert.equal(validateLaunch(valid).cto,false);});
+test('no RPC cannot yield a pretend transaction',async()=>{await assert.rejects(simulateLaunch(valid,''),/not configured/);});
+test('empty and oversized prompts rejected',()=>{assert.throws(()=>draftPlan(''));assert.throws(()=>draftPlan('x'.repeat(6001)));});

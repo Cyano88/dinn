@@ -1,0 +1,33 @@
+﻿import {parseAbi,formatUnits} from 'viem';import {blockscoutRead} from './blockscout.mjs';
+const abi=parseAbi(['function balanceOf(address) view returns(uint256)','function decimals() view returns(uint8)']);
+const valid=v=>typeof v==='string'&&/^0x[0-9a-f]{40}$/i.test(v);
+const same=(a,b)=>valid(a)&&valid(b)&&a.toLowerCase()===b.toLowerCase();
+const clean=v=>String(v||'').replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g,'').slice(0,40);
+const integer=v=>typeof v==='string'&&/^\d{1,78}$/.test(v);
+function priceUnits(value){if(typeof value!=='string'||!/^\d{1,18}(?:\.\d{1,30})?$/.test(value))return null;const [a,b='']=value.split('.');return BigInt(a)*10n**18n+BigInt((b+'0'.repeat(18)).slice(0,18));}
+const usd=(raw,decimals,price)=>price===null?null:raw*price/(10n**BigInt(decimals));
+async function pool(items,fn){let cursor=0;const out=[];await Promise.all(Array.from({length:Math.min(3,items.length)},async()=>{while(cursor<items.length){const i=cursor++;out[i]=await fn(items[i],i);}}));return out;}
+export async function researchHolders(address,{client,blockNumber,decimals,rawSupply,protocol,env=process.env,fetchImpl=fetch,signal,read=blockscoutRead}={}){
+ const base={status:'unavailable',rows:[],chainId:4663,blockNumber:String(blockNumber),checkedAt:new Date().toISOString(),sourceUrl:'https://robinhoodchain.blockscout.com/token/'+address+'?tab=holders',scope:'Robinhood Chain only; not total cross-chain wallet wealth.'};
+ if(!valid(address)||!Number.isInteger(decimals)||decimals<0||decimals>255||!integer(rawSupply))return {...base,reason:'Token decimals or supply are unavailable.'};
+ let response;try{response=await read('tokens/'+address+'/holders',{env,fetchImpl,signal});}catch(e){return {...base,reason:e.message};}
+ if(!Array.isArray(response.items))return {...base,reason:'Holder index returned an unexpected response.'};
+ const seen=new Set(),candidates=[];for(const item of response.items){const holder=item?.address?.hash;if(!valid(holder)||!integer(item.value)||seen.has(holder.toLowerCase()))continue;seen.add(holder.toLowerCase());candidates.push({address:holder,indexedRaw:item.value});if(candidates.length===10)break;}
+ if(!candidates.length)return {...base,reason:'No holder candidates were returned by the indexer; this is not proof there are no holders.'};
+ const safe=async fn=>{try{return await fn();}catch{return null;}};
+ const rows=await pool(candidates,async item=>{
+  const [balance,eth,code]=await Promise.all([safe(()=>client.readContract({address,abi,functionName:'balanceOf',args:[item.address],blockNumber})),safe(()=>client.getBalance({address:item.address,blockNumber})),safe(()=>client.getCode({address:item.address,blockNumber}))]);
+  const infrastructure=same(item.address,protocol?.curve),sink=/^0x(?:0{40}|0{36}dead)$/i.test(item.address);const kind=infrastructure?'Pons bonding curve':same(item.address,protocol?.deployer)?'Factory-recorded deployer':sink?'Conventional sink address':code===null?'Address type unavailable':code&&code!=='0x'?'Contract':'Address without deployed code';
+  const row={address:item.address,kind,infrastructure,sink,balance:typeof balance==='bigint'?formatUnits(balance,decimals):null,sharePercent:typeof balance==='bigint'&&BigInt(rawSupply)>0n?formatUnits(balance*1000000n/BigInt(rawSupply),4):null,ethBalance:typeof eth==='bigint'?formatUnits(eth,18):null,otherTokens:[],portfolioStatus:infrastructure?'Not expanded for the protocol curve':sink?'Not expanded for a conventional sink address':'unavailable',balanceVerified:typeof balance==='bigint'};
+  if(infrastructure||sink)return {row,raw:balance};
+  const portfolio=[];let nextPage=null;try{for(let page=0;page<3;page++){const result=await read('addresses/'+item.address+'/tokens',{env,fetchImpl,signal,query:{type:'ERC-20',...(nextPage||{})}});if(!Array.isArray(result.items))throw Error('Wallet token index returned an unexpected response.');portfolio.push(...result.items.slice(0,100));nextPage=result.next_page_params;if(!nextPage)break;}}catch(e){row.portfolioStatus=e.message;return {row,raw:balance};}
+  const tokens=[],tokenSeen=new Set();let unpriced=0;
+  for(const asset of portfolio.slice(0,500)){const t=asset?.token,d=Number(t?.decimals),token=t?.address_hash||t?.address;if(t?.type!=='ERC-20'||!valid(token)||same(token,address)||tokenSeen.has(token.toLowerCase())||!integer(asset.value)||!Number.isInteger(d)||d<0||d>255)continue;tokenSeen.add(token.toLowerCase());const price=priceUnits(t.exchange_rate);if(price===null||price<=0n){unpriced++;continue;}tokens.push({address:token,symbol:clean(t.symbol),decimals:d,price,estimate:usd(BigInt(asset.value),d,price)});}
+  tokens.sort((a,b)=>a.estimate>b.estimate?-1:a.estimate<b.estimate?1:0);
+  for(const token of tokens.slice(0,3)){const [balance,actualDecimals]=await Promise.all([safe(()=>client.readContract({address:token.address,abi,functionName:'balanceOf',args:[item.address],blockNumber})),safe(()=>client.readContract({address:token.address,abi,functionName:'decimals',blockNumber}))]);if(typeof balance!=='bigint'||Number(actualDecimals)!==token.decimals)continue;const value=usd(balance,token.decimals,token.price);row.otherTokens.push({address:token.address,symbol:token.symbol,balance:formatUnits(balance,token.decimals),estimatedUsd:formatUnits(value,18)});}
+  row.portfolioStatus='Top three other priced ERC-20 candidates from '+portfolio.length+' indexed records'+(nextPage?' (more pages not scanned)':'')+'; balances rechecked onchain. USD prices are indexer estimates, not executable quotes.';row.unpricedTokens=unpriced;row.portfolioTruncated=!!nextPage;return {row,raw:balance};
+ });
+ rows.sort((a,b)=>typeof a.raw!=='bigint'?1:typeof b.raw!=='bigint'?-1:a.raw>b.raw?-1:a.raw<b.raw?1:0);
+ const verified=rows.filter(x=>typeof x.raw==='bigint'),sum=verified.reduce((n,x)=>n+x.raw,0n),nonInfrastructure=verified.filter(x=>!x.row.infrastructure&&!x.row.sink).reduce((n,x)=>n+x.raw,0n);
+ return {...base,status:verified.length===rows.length&&rows.every(x=>x.row.infrastructure||x.row.sink||x.row.portfolioStatus.startsWith('Top three')&&!x.row.portfolioTruncated)?'available':'partial',rows:rows.map(x=>x.row),topSharePercent:BigInt(rawSupply)>0n?formatUnits(sum*1000000n/BigInt(rawSupply),4):null,nonInfrastructureSharePercent:BigInt(rawSupply)>0n?formatUnits(nonInfrastructure*1000000n/BigInt(rawSupply),4):null,ranking:'Top 10 indexer candidates, re-ranked by balance at the checked block. Indexer lag can omit holders; this is not a complete holder census.',concentrationScope:'Non-infrastructure share excludes the factory-bound curve and conventional sink addresses; unidentified contracts may remain.',reason:null};
+}

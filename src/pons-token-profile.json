@@ -1,0 +1,16 @@
+{
+  "name": "PonsV2LauncherToken",
+  "file": "contracts/src/v2/PonsV2LauncherToken.sol",
+  "compiler": "v0.8.35+commit.47b9dedd",
+  "settingsHash": "60d192f9b95132a9d70d4f94f1fe1837ba0ab5d39dd428ab58db5519dcf0e944",
+  "abiHash": "f8245a60c34049c22dc0f16369aec2ea0acfe731c89dd064dc5c409de222ebb1",
+  "sources": {
+    "contracts/src/v2/PonsV2LauncherToken.sol": "f3642bd24ecbcd902d7a09e9fa91100b0ac93723f0bfa41b66241c091b094c3e",
+    "contracts/lib/openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Burnable.sol": "2e6108a11184dd0caab3f3ef31bd15fed1bc7e4c781a55bc867ccedd8474565c",
+    "contracts/lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol": "01b6f5c4fa45fd38822b286ecef6daf983d27306dd6362496fa71b3e4600b72c",
+    "contracts/lib/openzeppelin-contracts/contracts/interfaces/draft-IERC6093.sol": "fa7068f56bc180571a6095be6eaef06d51dbe81e30cb128397d993c9599ecc30",
+    "contracts/lib/openzeppelin-contracts/contracts/utils/Context.sol": "847fda5460fee70f56f4200f59b82ae622bb03c79c77e67af010e31b7e2cc5b6",
+    "contracts/lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol": "0b7132f17d14d1d84b41b0bb429be62dafdff00fd3470f68724d8018eb07f57a",
+    "contracts/lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol": "50f34ae16a067a41c2c1091445d11d63788e54c717677cb6d6b0e4cdea2ad21d"
+  }
+}

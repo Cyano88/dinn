@@ -1,0 +1,18 @@
+﻿node_modules/
+.env
+.env.*
+!.env.example
+*.log
+.playwright-cli/
+output/playwright/
+public/auth/
+public/execution/
+output/build/
+
+.dinn-data/
+output/logo-evaluation/
+output/logo-live/
+
+# Local diagnostics, deployment state and generated browser bundles
+output/
+public/pons/

@@ -1,0 +1,12 @@
+﻿import test from 'node:test';
+import assert from 'node:assert/strict';
+import {agentRequest,manifest} from '../src/agent-service.mjs';
+import {draftPlan,validateLaunch} from '../src/domain.mjs';
+const deps={plan:async message=>draftPlan(message),simulate:async()=>{throw new Error('Simulation must not be called');}};
+const valid={name:'Orbit',symbol:'ORBT',pair:'USDC',feePercent:'2',account:'0x1111111111111111111111111111111111111111',recipient:'0x2222222222222222222222222222222222222222',cto:false};
+test('human and terminal planning share the same action logic',async()=>{const r=await agentRequest({service:'plan',input:{message:'launch and buy'},requestId:'r-1'},deps);assert.deepEqual(r.result,draftPlan('launch and buy'));assert.equal(r.broadcast,false);assert.equal(r.charged,false);assert.equal(r.requestId,'r-1');});
+test('agent collects missing fields instead of inventing wallet or terms',async()=>{const r=await agentRequest({service:'launch.review',input:{name:'Orbit',symbol:'ORBT'}},deps);assert.equal(r.status,'needs_input');assert.deepEqual(r.missingFields,['pair','feePercent','account','recipient','cto']);});
+test('complete review preserves user configuration and stops before execution',async()=>{const r=await agentRequest({service:'launch.review',input:valid},deps);assert.deepEqual(r.result.configuration,validateLaunch(valid));assert.equal(r.status,'review_ready');assert.equal(r.next.type,'user_review');});
+test('private keys, payment proofs and execute flags are rejected',async()=>{for(const extra of [{privateKey:'do-not-send'},{paymentProof:'paid'},{execute:true}])await assert.rejects(agentRequest({service:'launch.review',input:{...valid,...extra}},deps),/Unsupported launch field/);});
+test('unsupported paid or trading operation cannot invoke adapter',async()=>{await assert.rejects(agentRequest({service:'sell',input:valid},deps),/Unsupported service/);await assert.rejects(agentRequest({service:'launch.review',input:valid,payment:true},deps),/Expected service/);});
+test('manifest never claims marketplace registration or payment support',()=>{const m=manifest();assert.equal(m.marketplace.status,'not-listed');assert.equal(m.marketplace.agentId,null);assert.equal(m.payment.paymentRequired,false);assert.equal(m.authorization.broadcastEnabled,false);});

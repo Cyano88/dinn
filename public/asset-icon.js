@@ -1,0 +1,3 @@
+export function assetIcon(asset){const el=document.createElement('span');el.className='asset-avatar';paintAssetIcon(el,asset);return el;}
+export function paintAssetIcon(el,asset){const url=asset.address==='native'?'/brand/hype.svg':safeIcon(asset.imageUrl);const key=asset.address+':'+url+':'+asset.symbol;if(el.dataset.icon===key)return;el.dataset.icon=key;el.textContent=(asset.symbol||'?').slice(0,2);if(!url)return;const img=new Image();img.alt='';img.referrerPolicy='no-referrer';img.onload=()=>{if(el.dataset.icon===key)el.replaceChildren(img);};img.src=url;}
+function safeIcon(value){try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&!u.port&&['api.montramarkets.xyz','ipfs.filebase.io'].includes(u.hostname)?u.href:'';}catch{return '';}}

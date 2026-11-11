@@ -1,0 +1,7 @@
+﻿export function assertNoOtherPending(storage,intent,own){
+ const suffix=intent.chainId+':'+intent.account.toLowerCase();
+ for(const prefix of ['dinn.transfer.v1:','dinn.swap.v1:','dinn.market.v1:','dinn.fees.v1:']){if(prefix===own)continue;const raw=storage.getItem(prefix+suffix);if(!raw)continue;let r;try{r=JSON.parse(raw);}catch{throw Error('Another saved transaction is unreadable. Resolve it before sending.');}if(!['confirmed','reverted','rejected'].includes(r.state))throw Error('Resolve the previous wallet transaction before starting another action.');}
+ if(own!=='dinn.deposit.v1:'){const raw=storage.getItem('dinn.deposit.v1:999:'+intent.account.toLowerCase());if(raw){let r;try{r=JSON.parse(raw);}catch{throw Error('Saved deposit is unreadable.');}if(!['confirmed','reverted','rejected'].includes(r.state))throw Error('Resolve the pending deposit before starting another action.');}}
+ if(own!=='dinn.bridge.v1:'){const raw=storage.getItem('dinn.bridge.v1:'+intent.account.toLowerCase());if(raw){let r;try{r=JSON.parse(raw);}catch{throw Error('Saved bridge is unreadable.');}if(!['completed','refunded','reverted','rejected'].includes(r.state))throw Error('Resolve the pending bridge before another wallet action.');}}
+ const launch=own==='launchflow.pending.v1'?null:storage.getItem('launchflow.pending.v1');if(launch){let r;try{r=JSON.parse(launch);}catch{throw Error('Saved launch tracking is unreadable.');}if(!['verified','reverted','rejected'].includes(r.phase))throw Error('Resolve the pending launch before sending another transaction.');}
+}

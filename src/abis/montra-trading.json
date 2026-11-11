@@ -1,0 +1,106 @@
+[
+  {
+    "type": "event",
+    "name": "Swapped",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "sender",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "recipient",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "zeroForOne",
+        "type": "bool",
+        "indexed": false
+      },
+      {
+        "name": "amountIn",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "amountOut",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "function",
+    "name": "swapExactIn",
+    "inputs": [
+      {
+        "name": "s",
+        "type": "tuple",
+        "internalType": "struct LaunchRouter.ExactIn",
+        "components": [
+          {
+            "name": "key",
+            "type": "tuple",
+            "internalType": "struct PoolKey",
+            "components": [
+              {
+                "name": "currency0",
+                "type": "address"
+              },
+              {
+                "name": "currency1",
+                "type": "address"
+              },
+              {
+                "name": "fee",
+                "type": "uint24"
+              },
+              {
+                "name": "tickSpacing",
+                "type": "int24"
+              },
+              {
+                "name": "hooks",
+                "type": "address"
+              }
+            ]
+          },
+          {
+            "name": "zeroForOne",
+            "type": "bool"
+          },
+          {
+            "name": "amountIn",
+            "type": "uint128"
+          },
+          {
+            "name": "minAmountOut",
+            "type": "uint128"
+          },
+          {
+            "name": "recipient",
+            "type": "address"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "amountOut",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "payable"
+  }
+]

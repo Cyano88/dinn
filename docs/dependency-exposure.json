@@ -1,0 +1,114 @@
+{
+  "generatedAt": "2026-11-06T18:31:01.830Z",
+  "lockfileSha256": "47727064a2115174cc4d96cbb67e7cd5ab5ee0c145d150bfcf39aa8c8068188d",
+  "counts": {
+    "info": 0,
+    "low": 0,
+    "moderate": 7,
+    "high": 21,
+    "critical": 0,
+    "total": 28
+  },
+  "findings": [
+    {
+      "name": "decode-uri-component",
+      "severity": "high",
+      "advisories": [
+        {
+          "title": "decode-uri-component: Denial of service via exponential decoding of malformed percent-encoded input",
+          "url": "https://github.com/advisories/GHSA-vcc3-ghjq-m6fr",
+          "range": "<=0.4.2"
+        },
+        {
+          "title": "decode-uri-component vulnerable to denial of service via quadratic replacement of percent-encoded runs",
+          "url": "https://github.com/advisories/GHSA-qr28-fpjm-wq7f",
+          "range": "<=0.5.0"
+        }
+      ],
+      "installedNodes": [
+        "node_modules/decode-uri-component"
+      ],
+      "bundled": []
+    },
+    {
+      "name": "uuid",
+      "severity": "moderate",
+      "advisories": [
+        {
+          "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided",
+          "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+          "range": "<11.1.1"
+        }
+      ],
+      "installedNodes": [
+        "node_modules/@metamask/eth-json-rpc-provider/node_modules/uuid",
+        "node_modules/@metamask/json-rpc-engine/node_modules/uuid",
+        "node_modules/@metamask/json-rpc-middleware-stream/node_modules/uuid",
+        "node_modules/@metamask/providers/node_modules/uuid",
+        "node_modules/@metamask/utils/node_modules/uuid",
+        "node_modules/uuid"
+      ],
+      "bundled": []
+    },
+    {
+      "name": "zod",
+      "severity": "high",
+      "advisories": [
+        {
+          "title": "Zod can exhaust memory while validating oversized constrained collections",
+          "url": "https://github.com/advisories/GHSA-mrhx-c7xc-m3w5",
+          "range": "<4.6.6"
+        }
+      ],
+      "installedNodes": [
+        "node_modules/@wagmi/connectors/node_modules/@reown/appkit-wallet/node_modules/zod",
+        "node_modules/@wagmi/connectors/node_modules/zod",
+        "node_modules/x402/node_modules/zod",
+        "node_modules/zod"
+      ],
+      "bundled": [
+        {
+          "input": "node_modules/x402/node_modules/zod/v3/external.js",
+          "output": "public/auth/chunk-5RQ2W5B3.js",
+          "bytes": 1747
+        },
+        {
+          "input": "node_modules/x402/node_modules/zod/v3/helpers/util.js",
+          "output": "public/auth/chunk-5RQ2W5B3.js",
+          "bytes": 1700
+        },
+        {
+          "input": "node_modules/x402/node_modules/zod/v3/ZodError.js",
+          "output": "public/auth/chunk-5RQ2W5B3.js",
+          "bytes": 1660
+        },
+        {
+          "input": "node_modules/x402/node_modules/zod/v3/locales/en.js",
+          "output": "public/auth/chunk-5RQ2W5B3.js",
+          "bytes": 3022
+        },
+        {
+          "input": "node_modules/x402/node_modules/zod/v3/errors.js",
+          "output": "public/auth/chunk-5RQ2W5B3.js",
+          "bytes": 53
+        },
+        {
+          "input": "node_modules/x402/node_modules/zod/v3/helpers/parseUtil.js",
+          "output": "public/auth/chunk-5RQ2W5B3.js",
+          "bytes": 1459
+        },
+        {
+          "input": "node_modules/x402/node_modules/zod/v3/helpers/errorUtil.js",
+          "output": "public/auth/chunk-5RQ2W5B3.js",
+          "bytes": 129
+        },
+        {
+          "input": "node_modules/x402/node_modules/zod/v3/types.js",
+          "output": "public/auth/chunk-5RQ2W5B3.js",
+          "bytes": 49720
+        }
+      ]
+    }
+  ],
+  "limitation": "Bundle presence is not runtime exploitability. Absence from this browser bundle does not establish safety of other consumers. This report does not approve a release."
+}

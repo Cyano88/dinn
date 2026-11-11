@@ -1,0 +1,11 @@
+# Dinn
+Multi-launchpad AI workspace. Pons on Robinhood Chain is the first integration in development. Ascend and Montra on Elysium: Coming soon.
+- Agent guide: /agent-guide.md
+- Manifest: /.well-known/launchflow.json
+- Schema: /api/agent/schema
+- Status: /api/status
+Pons ETH and approved ERC-20 pair launches use explicit review, simulation and wallet approval. Trading, bridging and fee claims remain disabled.
+
+DEX Screener profile preparation, external checkout handoff and public order/metadata checks are available. No automatic purchase or submission.
+
+DEX profile drafting: open_dex_profile with a token address reads contract identity and available GeckoTerminal metadata, then uses inference to draft a description. Reported project claims require review; missing links stay blank. If inference fails, source-based text is returned. Only network and address are prefilled externally.

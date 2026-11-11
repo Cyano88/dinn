@@ -1,0 +1,237 @@
+[
+  {
+    "type": "function",
+    "name": "tokenView",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct LaunchLens.PoolView",
+        "components": [
+          {
+            "name": "key",
+            "type": "tuple",
+            "internalType": "struct PoolKey",
+            "components": [
+              {
+                "name": "currency0",
+                "type": "address"
+              },
+              {
+                "name": "currency1",
+                "type": "address"
+              },
+              {
+                "name": "fee",
+                "type": "uint24"
+              },
+              {
+                "name": "tickSpacing",
+                "type": "int24"
+              },
+              {
+                "name": "hooks",
+                "type": "address"
+              }
+            ]
+          },
+          {
+            "name": "config",
+            "type": "tuple",
+            "internalType": "struct LaunchHook.PoolConfig",
+            "components": [
+              {
+                "name": "totalFeePips",
+                "type": "uint24"
+              },
+              {
+                "name": "lpFeePips",
+                "type": "uint24"
+              },
+              {
+                "name": "protocolFeePips",
+                "type": "uint24"
+              },
+              {
+                "name": "exists",
+                "type": "bool"
+              },
+              {
+                "name": "quoteIsCurrency0",
+                "type": "bool"
+              },
+              {
+                "name": "liquiditySealed",
+                "type": "bool"
+              },
+              {
+                "name": "seeded",
+                "type": "bool"
+              },
+              {
+                "name": "feeLocked",
+                "type": "bool"
+              },
+              {
+                "name": "earlyBuyFeeUntil",
+                "type": "uint40"
+              },
+              {
+                "name": "graduationTick",
+                "type": "int24"
+              },
+              {
+                "name": "lpLineTick",
+                "type": "int24"
+              },
+              {
+                "name": "stage",
+                "type": "uint8",
+                "internalType": "enum LaunchHook.Stage"
+              },
+              {
+                "name": "lpCrossedAt",
+                "type": "uint32"
+              },
+              {
+                "name": "lpHeldSeconds",
+                "type": "uint16"
+              },
+              {
+                "name": "totalFeeMinPips",
+                "type": "uint24"
+              },
+              {
+                "name": "totalFeeMaxPips",
+                "type": "uint24"
+              },
+              {
+                "name": "liquidityPolicy",
+                "type": "address"
+              },
+              {
+                "name": "seedTickLower",
+                "type": "int24"
+              },
+              {
+                "name": "seedTickUpper",
+                "type": "int24"
+              },
+              {
+                "name": "earlyBuyFeeStartPips",
+                "type": "uint24"
+              },
+              {
+                "name": "earlyBuyFeeWindow",
+                "type": "uint32"
+              },
+              {
+                "name": "seedLiquidity",
+                "type": "uint128"
+              },
+              {
+                "name": "recipient",
+                "type": "address"
+              }
+            ]
+          },
+          {
+            "name": "sqrtPriceX96",
+            "type": "uint160"
+          },
+          {
+            "name": "tick",
+            "type": "int24"
+          },
+          {
+            "name": "poolLpFee",
+            "type": "uint24"
+          },
+          {
+            "name": "activeLiquidity",
+            "type": "uint128"
+          },
+          {
+            "name": "totalFee",
+            "type": "uint24"
+          },
+          {
+            "name": "lpFee",
+            "type": "uint24"
+          },
+          {
+            "name": "protocolFee",
+            "type": "uint24"
+          },
+          {
+            "name": "creatorFee",
+            "type": "uint24"
+          },
+          {
+            "name": "effectiveTotalFee",
+            "type": "uint256"
+          },
+          {
+            "name": "buyFee",
+            "type": "uint24"
+          },
+          {
+            "name": "buyEffectiveTotalFee",
+            "type": "uint256"
+          },
+          {
+            "name": "coreProtocolFeeZeroForOne",
+            "type": "uint24"
+          },
+          {
+            "name": "coreProtocolFeeOneForZero",
+            "type": "uint24"
+          },
+          {
+            "name": "pendingCreator",
+            "type": "uint256"
+          },
+          {
+            "name": "tab",
+            "type": "uint256"
+          },
+          {
+            "name": "harvestableQuote",
+            "type": "uint256"
+          },
+          {
+            "name": "harvestableToken",
+            "type": "uint256"
+          },
+          {
+            "name": "pendingProtocol",
+            "type": "uint256"
+          },
+          {
+            "name": "graduationProgressBps",
+            "type": "uint256"
+          },
+          {
+            "name": "lpLineProgressBps",
+            "type": "uint256"
+          },
+          {
+            "name": "lpLineHeldSeconds",
+            "type": "uint256"
+          },
+          {
+            "name": "lpLineHoldSeconds",
+            "type": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  }
+]

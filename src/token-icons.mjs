@@ -1,0 +1,1 @@
+export function tokenIcon(value){try{const u=new URL(value);if(u.protocol==='https:'&&!u.username&&!u.password&&!u.port&&['api.montramarkets.xyz','ipfs.filebase.io'].includes(u.hostname))return {imageUrl:u.href};}catch{}return {};}

@@ -1,0 +1,50 @@
+[
+  {
+    "type": "function",
+    "name": "quoteExactIn",
+    "inputs": [
+      {
+        "name": "key",
+        "type": "tuple",
+        "internalType": "struct PoolKey",
+        "components": [
+          {
+            "name": "currency0",
+            "type": "address"
+          },
+          {
+            "name": "currency1",
+            "type": "address"
+          },
+          {
+            "name": "fee",
+            "type": "uint24"
+          },
+          {
+            "name": "tickSpacing",
+            "type": "int24"
+          },
+          {
+            "name": "hooks",
+            "type": "address"
+          }
+        ]
+      },
+      {
+        "name": "zeroForOne",
+        "type": "bool"
+      },
+      {
+        "name": "amountIn",
+        "type": "uint128"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  }
+]
