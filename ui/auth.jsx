@@ -32,7 +32,7 @@ function Account({accountHost,networkName,networkId}){
  useEffect(()=>setCopied(false),[user?.id]);
  const embedded=wallets.find(wallet=>wallet.walletClientType==='privy');
  const [selection,setSelection]=useState(null),[retry,setRetry]=useState(0),[walletStatus,setWalletStatus]=useState('');
- const connectionVersion=useRef(0);
+ const connectionVersion=useRef(0),launchChoice=useRef(null);
  const preferenceKey='dinn.deployer.v1:'+user?.id;
  let stored='';try{stored=localStorage.getItem(preferenceKey)||'';}catch{}
  const preference=selection&&selection.user===user?.id?selection.key:stored;
@@ -43,7 +43,8 @@ function Account({accountHost,networkName,networkId}){
   const key=walletKey(wallet);try{localStorage.setItem(preferenceKey,key);}catch{}
   setSelection({user:user?.id,key});setRetry(value=>value+1);
  }
- const {connectWallet}=useConnectWallet({onSuccess:({wallet})=>{if(wallet.type==='ethereum')chooseWallet(wallet);},onError:()=>setError('Wallet connection did not complete. Try again when ready.')});
+ function selectLaunchWallet(wallet){launchChoice.current={user:user?.id,key:walletKey(wallet)};chooseWallet(wallet);}
+ const {connectWallet}=useConnectWallet({onSuccess:({wallet})=>{if(wallet.type==='ethereum')selectLaunchWallet(wallet);},onError:()=>setError('Wallet connection did not complete. Try again when ready.')});
  const identity=authenticated?user?.id+':'+embedded?.address:'';identityRef.current=identity;
  useEffect(()=>{identityRef.current=identity;setProbeStatus('');return()=>{identityRef.current='';};},[identity]);
  async function probe(){if(probeBusy.current)return;probeBusy.current=true;setWorking(true);setProbeStatus('Review the sign-only check in your wallet.');const started=identityRef.current;try{const result=await checkWalletSigning({address:embedded?.address,signTransaction,isCurrent:()=>identityRef.current===started});if(identityRef.current===started)setProbeStatus(result.message);}catch{if(identityRef.current===started)setProbeStatus('Signing was not verified. The request may have been declined or the wallet may reject this diagnostic. Nothing was broadcast.');}finally{probeBusy.current=false;setWorking(false);}} 
@@ -63,6 +64,7 @@ function Account({accountHost,networkName,networkId}){
    if(!current()||!connection.isValid()){connection.dispose();return;}
    dispose=connection.dispose;setWalletStatus('');
    emit({state:'connected',authenticated:true,userId:user?.id,provider:connection.provider,address:selected.address,source:selected.walletClientType==='privy'?'embedded':'external'});
+   if(launchChoice.current?.user===user?.id&&launchChoice.current?.key===selectedKey){launchChoice.current=null;window.dispatchEvent(new CustomEvent('dinn:launch-wallet-selected',{detail:{userId:user.id,address:selected.address,label:selected.walletClientType==='privy'?'Dinn wallet':selected.meta?.name||'External wallet'}}));}
   }).catch(()=>{if(current()){setWalletStatus('Reconnect your wallet and approve the network connection to continue.');emit({state:'wallet-needed',authenticated:true,userId:user?.id});}});
   return()=>{cancelled=true;dispose?.();};
  },[ready,walletsReady,authenticated,selectedKey,user?.id,privyError,networkId,retry]);
@@ -77,11 +79,11 @@ function Account({accountHost,networkName,networkId}){
  {diagnostic&&embedded&&<section><p>Local signing check: zero value, to your own address, Elysium mainnet. The gas limit is deliberately too low to execute. No broadcast.</p><button className="subtle" disabled={working} onClick={probe}>Check transaction signing</button><p role="status">{probeStatus}</p></section>}<p>Link accounts here to keep the same wallet.</p><div className="signout"><button className="subtle" disabled={working} onClick={()=>run(async()=>{await logout();emit({state:'signed-out',authenticated:false});})}>Sign out</button></div>{error&&<p className="auth-error" role="alert">{error}</p>}</div></details>;
  const deployerHost=document.getElementById('deployer-controls');
  const short=address=>address.slice(0,6)+'...'+address.slice(-4);
- const picker=<div className="deployer-picker"><label htmlFor="deployer-wallet">Launch wallet</label><select id="deployer-wallet" value={selectedKey||'unavailable'} disabled={!walletsReady} onChange={event=>{const wallet=wallets.find(w=>walletKey(w)===event.target.value);if(wallet)chooseWallet(wallet);}}>
- {!selected&&<option value="unavailable">Selected wallet unavailable</option>}
- {wallets.map(wallet=><option key={walletKey(wallet)} value={walletKey(wallet)}>{wallet.walletClientType==='privy'?'Dinn wallet':wallet.meta?.name||wallet.walletClientType} &middot; {short(wallet.address)}</option>)}
- </select><button className="subtle" type="button" onClick={()=>connectWallet({walletChainType:'ethereum-only',walletList:['detected_ethereum_wallets','metamask'],description:'Connect the wallet you want to use for your launch.'})}>Connect external wallet</button>
- {walletStatus&&<p role="status">{walletStatus} {selected&&<button className="subtle" type="button" onClick={()=>chooseWallet(selected)}>Reconnect</button>}</p>}{error&&<p role="alert">{error}</p>}</div>;
+ const picker=<div className="deployer-picker">
+ {embedded&&<button id="use-dinn-wallet" className="primary" type="button" disabled={!walletsReady} onClick={()=>selectLaunchWallet(embedded)}>Dinn wallet <span>{short(embedded.address)}</span></button>}
+ {wallets.filter(wallet=>wallet.walletClientType!=='privy').map(wallet=><button className="subtle" type="button" key={walletKey(wallet)} onClick={()=>selectLaunchWallet(wallet)}>{wallet.meta?.name||'External wallet'} <span>{short(wallet.address)}</span></button>)}
+ <button id="connect-launch-wallet" className="subtle" type="button" onClick={()=>connectWallet({walletChainType:'ethereum-only',walletList:['detected_ethereum_wallets','metamask'],description:'Connect the wallet you want to use for your launch.'})}>Connect external wallet</button>
+ {walletStatus&&<p role="status">{walletStatus} {selected&&<button className="subtle" type="button" onClick={()=>selectLaunchWallet(selected)}>Reconnect</button>}</p>}{error&&<p role="alert">{error}</p>}</div>;
  return <>{createPortal(menu,accountHost)}{deployerHost&&createPortal(picker,deployerHost)}</>;
 
 }
