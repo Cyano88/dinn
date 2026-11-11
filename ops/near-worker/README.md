@@ -31,11 +31,14 @@ sudo install -d -o root -g root -m 0755 /opt/dinn-near-worker/app
 sudo install -d -o root -g root -m 0755 /etc/dinn-near-worker
 ```
 
-Place the approved Dinn checkout in `/opt/dinn-near-worker/app`, then install production dependencies:
+Place the approved Dinn checkout in `/opt/dinn-near-worker/app`, then install only the worker's runtime dependencies. Its source imports only `pg` and `viem`; installing the full Dinn web application's wallet packages adds unrelated production dependencies and vulnerabilities.
 
 ```sh
-sudo npm --prefix /opt/dinn-near-worker/app ci --omit=dev
+sudo npm --prefix /opt/dinn-near-worker/app/ops/near-worker ci --omit=dev --ignore-scripts
+sudo ln -s ops/near-worker/node_modules /opt/dinn-near-worker/app/node_modules
 ```
+
+If the checkout already has an app-level `node_modules` directory, replace it with the isolated link only after the worker dependency install succeeds.
 
 Apply the migration as the database owner and provision the restricted worker login. Create `/etc/dinn-near-worker/worker.env` from `worker.env.example` with that login's connection string, Agent Market credentials, and approved escrow settings. Use the VPS's secure administration channel. Set ownership to `root:dinnworker` and mode `0640`. Never commit or paste secret values into chat.
 
