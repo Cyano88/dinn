@@ -53,3 +53,5 @@ select{font:inherit;border:1px solid #dce3dd;border-radius:8px;padding:12px;back
 .draft-sync{padding:6px 20px;color:#617168;font-size:11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.draft-sync[hidden]{display:none}.draft-sync button{font-size:11px;padding:4px 8px}
 
 #launch-wallet-step .deployer-picker{padding:0;border:0;gap:8px}#launch-wallet-step .deployer-picker button{margin:4px 8px 4px 0}#launch-wallet-step .deployer-picker button span{display:block;font-size:11px;opacity:.8;margin-top:3px}#launch-wallet-step .deployer-picker>button{margin-left:0}#launch-wallet-step .deployer-picker p{margin:8px 0}
+
+.signin-description a{color:inherit;text-decoration:underline;text-underline-offset:3px}.signin-description a:hover{color:#294d38}.signin-description a:focus-visible{outline:2px solid #52665a;outline-offset:3px;border-radius:2px}
