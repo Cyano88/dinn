@@ -19,7 +19,7 @@ test('HTTP preview rejects mutation and preserves draft-only boundaries',async()
   assert.equal((await post('/api/plan',{message:'launch'},{origin:'https://evil.example'})).status,403);
   assert.equal((await post('/api/launch/receipt',{hash:'bad',configuration:{}})).status,410);
   assert.equal((await fetch(root+'/launches.js')).status,200);
-  assert.equal((await fetch(root+'/chat.js')).status,200);assert.equal((await fetch(root+'/market-execution.js')).status,200);
+  assert.equal((await fetch(root+'/draft-sync.js')).status,200);assert.equal((await fetch(root+'/draft-data.js')).status,200);assert.equal((await fetch(root+'/chat.js')).status,200);assert.equal((await fetch(root+'/market-execution.js')).status,200);
   const chat=await post('/api/chat',{message:'hello',history:[],draft:{name:'Orbit',cto:false}});
   assert.match(chat.headers.get('content-type'),/application\/x-ndjson/);
   const events=(await chat.text()).trim().split('\n').map(s=>JSON.parse(s));

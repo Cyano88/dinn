@@ -1,3 +1,4 @@
+import {createDraftSync} from './draft-sync.js';
 import {usdTotal} from './purchase-usd.js';
 import {launchLinkSteps,parseLaunchLink} from './launch-link-chat.js';
 import {mountLogoCreator} from './logo-creator.js';
@@ -42,7 +43,23 @@ const key=kind=>'dinn.multi.'+kind+'.v1:'+user;
 
 function read(kind){try{return localStorage.getItem(key(kind));}catch{return null;}}
 
-function save(kind,value){localStorage.setItem(key(kind),JSON.stringify(value));}
+function save(kind,value){localStorage.setItem(key(kind),JSON.stringify(value));draftSync.changed(kind);}
+
+const syncHost=document.createElement('div');syncHost.className='draft-sync';syncHost.hidden=true;
+const syncText=document.createElement('span');syncText.setAttribute('role','status');
+const accountDraftButton=document.createElement('button'),localDraftButton=document.createElement('button'),syncRetry=document.createElement('button');
+accountDraftButton.textContent='Use account draft';localDraftButton.textContent='Keep this draft';syncRetry.textContent='Retry sync';
+for(const button of [accountDraftButton,localDraftButton,syncRetry]){button.type='button';button.className='subtle';}
+syncHost.append(syncText,accountDraftButton,localDraftButton,syncRetry);$('deployer-controls').after(syncHost);
+const draftSync=createDraftSync({storage:localStorage,request:async(action,data,id)=>{
+ if(user!==id)throw Error('Account changed.');const {getAccessToken}=await import('/auth/entry.js');const token=await getAccessToken();if(user!==id)throw Error('Account changed.');if(!token)throw Error('Sign in again to sync your draft.');
+ const response=await fetch('/api/drafts/'+action,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify(data),signal:AbortSignal.timeout(20000)});const result=await response.json();if(!response.ok){const error=Error(result.error||'Could not sync your draft.');error.status=response.status;throw error;}return result;
+},onStatus:({state,message})=>{syncHost.hidden=state==='disabled';syncText.textContent=message;accountDraftButton.hidden=localDraftButton.hidden=state!=='conflict';syncRetry.hidden=state!=='error';},onApply:id=>{
+ if(id!==user)return;epoch++;controller?.abort();launchBusy=false;setupBusy=false;logoCreator.reset();invalidateLaunch();showLaunchStage(null,false);restore();restoreSettings();renderTokenSummary();renderSetupChoices();restoreLaunchConversation();
+}});
+accountDraftButton.onclick=()=>void draftSync.useAccount();localDraftButton.onclick=()=>void draftSync.keepLocal();syncRetry.onclick=()=>void draftSync.refresh();
+window.addEventListener('focus',()=>void draftSync.refresh());
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')void draftSync.flush();});
 
 async function api(path,data,signal){const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data),signal});const v=await r.json();if(!r.ok)throw Error(v.error||'Could not complete the request.');return v;}
 
@@ -165,7 +182,7 @@ $('refresh-balance').onclick=()=>check($('refresh-balance'),$('wallet-status'),'
 
 $('copy-address').onclick=async()=>{try{if(!account)throw Error('Open your wallet first.');await navigator.clipboard.writeText(account);$('wallet-status').textContent='Address copied.';}catch(err){$('wallet-status').textContent=err.message;}};
 
-window.addEventListener('launchflow:auth',e=>{const d=e.detail;const nextUser=d.authenticated?(d.userId||d.address):null;if(nextUser===user&&d.state==='connected'&&d.address===account&&d.provider===provider)return;showLaunchStage(null,false);if($('pons-review-dialog').open)$('pons-review-dialog').close();epoch++;launchBusy=false;logoCreator.reset();controller?.abort();launchActivity.stop();selectedToken=null;account=d.address||null;provider=d.provider||null;invalidateLaunch();user=d.authenticated?(d.userId||account):null;const loading=d.state==='loading';$('session-loading').hidden=!loading;$('auth-gate').hidden=loading||!!user;$('workspace').hidden=loading||!user;$('workspace').inert=loading||!user;history=[];$('messages').replaceChildren();for(const id of ['feedback','brief-status','pons-status','wallet-status'])$(id).textContent='';$('wallet-address').textContent=account||'Your wallet is getting ready.';$('wallet-balance').textContent=' -  ETH';if(user){restore();restoreLaunch();restoreSettings();if(account){let prior;try{prior=JSON.parse(read('last-deployer'));}catch{}const recipient=$('launch-recipient');if(prior&&recipient.value.toLowerCase()===prior.toLowerCase()){recipient.value=account;saveSettings();}save('last-deployer',account);}renderTokenSummary();renderSetupChoices();restoreLaunchConversation();}else {brief={};awaiting=null;syncBrief();}if(!user)for(const f of ['name','symbol','description'])$('brief-'+f).value='';});
+window.addEventListener('launchflow:auth',e=>{const d=e.detail;const nextUser=d.authenticated?(d.userId||d.address):null;if(nextUser===user&&d.state==='connected'&&d.address===account&&d.provider===provider)return;showLaunchStage(null,false);if($('pons-review-dialog').open)$('pons-review-dialog').close();epoch++;launchBusy=false;logoCreator.reset();controller?.abort();launchActivity.stop();selectedToken=null;account=d.address||null;provider=d.provider||null;invalidateLaunch();user=d.authenticated?(d.userId||account):null;const loading=d.state==='loading';$('session-loading').hidden=!loading;$('auth-gate').hidden=loading||!!user;$('workspace').hidden=loading||!user;$('workspace').inert=loading||!user;history=[];$('messages').replaceChildren();for(const id of ['feedback','brief-status','pons-status','wallet-status'])$(id).textContent='';$('wallet-address').textContent=account||'Your wallet is getting ready.';$('wallet-balance').textContent=' -  ETH';if(user){restore();restoreLaunch();restoreSettings();if(account){let prior;try{prior=JSON.parse(read('last-deployer'));}catch{}const recipient=$('launch-recipient');if(prior&&recipient.value.toLowerCase()===prior.toLowerCase()){recipient.value=account;saveSettings();}save('last-deployer',account);}renderTokenSummary();renderSetupChoices();restoreLaunchConversation();}else {brief={};awaiting=null;syncBrief();}if(!user)for(const f of ['name','symbol','description'])$('brief-'+f).value='';draftSync.start(user);});
 
 ﻿let reviewed=null,prepared=null,launchBusy=false,launchRevision=0;
 
@@ -472,5 +489,5 @@ function renderToolResult(body,result){
 
 function renderToolDirectory(capabilities){const host=$('tool-directory');host.replaceChildren();for(const [id,c]of Object.entries(capabilities||{})){const card=document.createElement('article');card.className='pad-card';const h=document.createElement('h3');h.textContent=c.title;const status=document.createElement('span');status.className='badge';status.textContent=c.status;const p=document.createElement('p');p.textContent=c.description;card.append(status,h,p);if(['launch','inspect','balance','transaction','options','dex'].includes(id)){const b=document.createElement('button');b.className='subtle';b.textContent='Ask Dinn';b.onclick=()=>{view('assistant');const prompts={launch:'I want to launch',inspect:'check a token',balance:'check my balance',transaction:'How do I check a transaction?',dex:'Prepare DEX Screener profile',options:'show launch options'};submitChoice(prompts[id]);};card.append(b);}host.append(card);}}
 
-try{const [config,status]=await Promise.all([fetch('/api/auth/config').then(r=>r.json()),fetch('/api/status').then(r=>r.json())]);renderToolDirectory(status.capabilities);if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}const {mountEmbeddedAuth}=await import('/auth/entry.js');mountEmbeddedAuth($('embedded-auth'),config,$('account-controls'));}catch{$('session-loading').hidden=true;$('auth-gate').hidden=false;$('embedded-auth').textContent='Sign-in could not load. Refresh to try again.';}
+try{const [config,status]=await Promise.all([fetch('/api/auth/config').then(r=>r.json()),fetch('/api/status').then(r=>r.json())]);draftSync.configure(status.draftSyncEnabled);renderToolDirectory(status.capabilities);if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}const {mountEmbeddedAuth}=await import('/auth/entry.js');mountEmbeddedAuth($('embedded-auth'),config,$('account-controls'));}catch{$('session-loading').hidden=true;$('auth-gate').hidden=false;$('embedded-auth').textContent='Sign-in could not load. Refresh to try again.';}
 

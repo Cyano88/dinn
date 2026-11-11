@@ -1,6 +1,6 @@
 # Dinn
 
-Conversational Pons token launches on Robinhood Chain (4663), with Privy sign-in, embedded or external browser wallets, optional opening purchases, USD reference estimates, and 0G token-logo previews. Production runs on Render with PostgreSQL for persistent images. Drafts are currently stored per account in the browser.
+Conversational Pons token launches on Robinhood Chain (4663), with Privy sign-in, embedded or external browser wallets, optional opening purchases, USD reference estimates, and 0G token-logo previews. Production runs on Render with PostgreSQL for persistent images. Drafts and chat history sync to the signed-in account in PostgreSQL, with a local recovery cache. Wallet connection preferences and pending transactions stay local.
 
 Run `npm ci`, `npm test`, then `npm start`. Configure `.env` from `.env.example`; never commit credentials. Build with `npm run build` before serving. See [deployer wallets](docs/DEPLOYER-WALLETS.md), [logo hosting](docs/LOGO-INTEGRATION.md), and [opening purchases](docs/OPENING-PURCHASE.md).
 

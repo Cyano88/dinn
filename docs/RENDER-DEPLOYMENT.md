@@ -11,7 +11,7 @@ Logo generation remains a restricted pilot for verified user IDs. VIP staking/NF
 
 Privy must allow the production origin alongside local development origins. Google/X login must be tested by the user. Browser wallet connection, asset approval and launch signing remain user-controlled. A funded launch has not yet been completed.
 
-Drafts and pending transaction records are browser-origin-local. Deploying the server does not transfer those records to the hosted origin. Keep the original local browser session for recovery; no wallet key or signing authority is transferred by deployment. PostgreSQL currently persists generated images and their usage records, not chat or draft history.
+Drafts and chat history now sync per verified Privy account in PostgreSQL. Opening the original local page imports its draft when the account has no saved draft. Conflicting copies require an explicit choice and keep a local recovery copy. Pending transaction records, wallet connection preferences and signing authority remain browser-origin-local.
 
 The hosted legal pages are drafts unless permanent policy URLs are configured. Deployment is not a claim that public-launch legal/product review or funded end-to-end validation is complete.
 
@@ -19,4 +19,10 @@ The hosted legal pages are drafts unless permanent policy URLs are configured. D
 
 Code commit `b85cb457514dd41fd13d1b0b6a7b677aafd3dc4d` is live. `/api/status` and Pons readiness returned HTTP 200; auth config reported chain 4663 and enabled sign-in. The accepted PNG returned HTTP 200 and matched the local bytes exactly. Anonymous chat returned HTTP 401. A real browser loaded Google/X sign-in controls without runtime errors. Privy allowed domains includes the Render origin. 265 tests passed before deployment; npm 10 clean-install validation passed after correcting the websocket override/lockfile mismatch.
 
-The local development environment now uses the hosted public origin for accepted logo URLs. Reopening the logo step hydrates the accepted public URL into the existing local draft. This does not transfer the draft to the hosted origin.
+The local development environment now uses the hosted public origin for accepted logo URLs. Reopening the logo step hydrates the accepted public URL into the existing local draft. With account draft sync enabled, reopening the local page also imports the draft through the authenticated hosted API.
+
+## Account draft sync
+
+`/api/drafts/get` and `/api/drafts/save` require a verified Privy bearer token. The server derives ownership from the token; callers cannot supply another owner. Writes use optimistic revisions, returning HTTP 409 when another tab has saved a newer copy. The browser retains three recovery snapshots when resolving conflicting copies and retries interrupted sync without dropping local edits.
+
+Portable state includes token details, settings, links, selected logo references, chat, optional purchase and the active setup step. It excludes prepared/signed transactions, pending wallet records, wallet providers and wallet-selection preferences. Restoring a cloud draft invalidates any open review. The local server uses `DINN_DRAFT_SYNC_URL=https://dinn-pasy.onrender.com` to forward authenticated sync requests; database credentials never enter the browser.
