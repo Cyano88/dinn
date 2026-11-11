@@ -37,20 +37,20 @@ function Account({accountHost,networkName,networkId}){
  useEffect(()=>{if(!copied)return;const timer=setTimeout(()=>setCopied(false),2000);return()=>clearTimeout(timer);},[copied]);
  useEffect(()=>setCopied(false),[user?.id]);
  const embedded=wallets.find(wallet=>wallet.walletClientType==='privy');
- const [selection,setSelection]=useState(null),[retry,setRetry]=useState(0),[walletStatus,setWalletStatus]=useState('');
+ const [selection,setSelection]=useState(null),[retry,setRetry]=useState(0),[walletStatus,setWalletStatus]=useState(''),[walletError,setWalletError]=useState('');
  const connectionVersion=useRef(0),launchChoice=useRef(null);
  const preferenceKey='dinn.deployer.v1:'+user?.id;
  let stored='';try{stored=localStorage.getItem(preferenceKey)||'';}catch{}
  const preference=selection&&selection.user===user?.id?selection.key:stored;
  const selected=selectDeployer(wallets,preference),selectedKey=walletKey(selected);
  function chooseWallet(wallet){
-  connectionVersion.current++;setWalletStatus('Connecting wallet...');setError('');
+  connectionVersion.current++;setWalletStatus('Connecting wallet...');setWalletError('');
   emit({state:'wallet-changing',authenticated:true,userId:user?.id});
   const key=walletKey(wallet);try{localStorage.setItem(preferenceKey,key);}catch{}
   setSelection({user:user?.id,key});setRetry(value=>value+1);
  }
  function selectLaunchWallet(wallet){launchChoice.current={user:user?.id,key:walletKey(wallet)};chooseWallet(wallet);}
- const {connectWallet}=useConnectWallet({onSuccess:({wallet})=>{if(wallet.type==='ethereum')selectLaunchWallet(wallet);},onError:()=>setError('Wallet connection did not complete. Try again when ready.')});
+ const {connectWallet}=useConnectWallet({onSuccess:({wallet})=>{if(wallet.type==='ethereum')selectLaunchWallet(wallet);},onError:()=>setWalletError('External wallet connection did not complete. Your selected launch wallet has not changed.')});
  const identity=authenticated?user?.id+':'+embedded?.address:'';identityRef.current=identity;
  useEffect(()=>{identityRef.current=identity;setProbeStatus('');return()=>{identityRef.current='';};},[identity]);
  async function probe(){if(probeBusy.current)return;probeBusy.current=true;setWorking(true);setProbeStatus('Review the sign-only check in your wallet.');const started=identityRef.current;try{const result=await checkWalletSigning({address:embedded?.address,signTransaction,isCurrent:()=>identityRef.current===started});if(identityRef.current===started)setProbeStatus(result.message);}catch{if(identityRef.current===started)setProbeStatus('Signing was not verified. The request may have been declined or the wallet may reject this diagnostic. Nothing was broadcast.');}finally{probeBusy.current=false;setWorking(false);}} 
@@ -68,7 +68,7 @@ function Account({accountHost,networkName,networkId}){
   const invalidated=()=>{if(current()){setWalletStatus('Wallet changed or disconnected. Reconnect before continuing.');emit({state:'wallet-needed',authenticated:true,userId:user?.id});}};
   connectDeployer(selected,networkId,invalidated).then(connection=>{
    if(!current()||!connection.isValid()){connection.dispose();return;}
-   dispose=connection.dispose;setWalletStatus('');
+   dispose=connection.dispose;setWalletStatus('');setWalletError('');
    emit({state:'connected',authenticated:true,userId:user?.id,provider:connection.provider,address:selected.address,source:selected.walletClientType==='privy'?'embedded':'external'});
    if(launchChoice.current?.user===user?.id&&launchChoice.current?.key===selectedKey){launchChoice.current=null;window.dispatchEvent(new CustomEvent('dinn:launch-wallet-selected',{detail:{userId:user.id,address:selected.address,label:selected.walletClientType==='privy'?'Dinn wallet':selected.meta?.name||'External wallet'}}));}
   }).catch(()=>{if(current()){setWalletStatus('Reconnect your wallet and approve the network connection to continue.');emit({state:'wallet-needed',authenticated:true,userId:user?.id});}});
@@ -88,8 +88,8 @@ function Account({accountHost,networkName,networkId}){
  const picker=<div className="deployer-picker">
  {embedded&&<button id="use-dinn-wallet" className="primary" type="button" disabled={!walletsReady} onClick={()=>selectLaunchWallet(embedded)}>Dinn wallet <span>{short(embedded.address)}</span></button>}
  {wallets.filter(wallet=>wallet.walletClientType!=='privy').map(wallet=><button className="subtle" type="button" key={walletKey(wallet)} onClick={()=>selectLaunchWallet(wallet)}>{wallet.meta?.name||'External wallet'} <span>{short(wallet.address)}</span></button>)}
- <button id="connect-launch-wallet" className="subtle" type="button" onClick={()=>connectWallet({walletChainType:'ethereum-only',walletList:['detected_ethereum_wallets','metamask'],description:'Connect the wallet you want to use for your launch.'})}>Connect external wallet</button>
- {walletStatus&&<p role="status">{walletStatus} {selected&&<button className="subtle" type="button" onClick={()=>selectLaunchWallet(selected)}>Reconnect</button>}</p>}{error&&<p role="alert">{error}</p>}</div>;
+ <button id="connect-launch-wallet" className="subtle" type="button" onClick={()=>{setWalletError('');connectWallet({walletChainType:'ethereum-only',walletList:['detected_ethereum_wallets','metamask'],description:'Connect the wallet you want to use for your launch.'});}}>Connect external wallet</button>
+ {walletStatus&&<p role="status">{walletStatus} {selected&&<button className="subtle" type="button" onClick={()=>selectLaunchWallet(selected)}>Reconnect</button>}</p>}{walletError&&<p role="alert">{walletError}</p>}</div>;
  return <>{createPortal(menu,accountHost)}{deployerHost&&createPortal(picker,deployerHost)}</>;
 
 }
