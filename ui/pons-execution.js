@@ -1,3 +1,4 @@
+export {mountPonsClaims,requestPonsClaim} from './pons-claims.js';
 ﻿import {assertPrepared,same,hashValid} from '../src/pons-call.mjs';
 export async function requestPonsLaunch({prepared,configuration,provider,storage,key,isCurrent,withLock}){
  if(typeof withLock!=='function')throw Error('This browser cannot lock launch submissions.');

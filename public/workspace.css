@@ -59,3 +59,13 @@ select{font:inherit;border:1px solid #dce3dd;border-radius:8px;padding:12px;back
 #pons-review-dialog{overflow-y:auto;scrollbar-width:none}#pons-review-dialog::-webkit-scrollbar{display:none}
 
 .pons-connect{border-top:1px solid #dce3dd;margin-top:28px;padding-top:20px;max-width:620px}.pons-connect input{display:block;box-sizing:border-box;width:100%;padding:12px;margin:8px 0 12px}.pons-connect button{margin:6px 10px 6px 0}.pons-request{border:1px solid #dce3dd;border-radius:16px;padding:24px;max-width:600px;width:calc(100vw - 48px);max-height:85dvh;overflow:auto}.pons-request pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:45dvh;overflow:auto;font-size:12px;background:#f4f7f4;padding:16px}.pons-request::backdrop{background:#14251e66}
+
+#launch-conversation #pons-review-dialog{position:static;width:auto;max-width:none;max-height:none;overflow:visible;border:0;border-radius:0;padding:0;background:transparent;box-shadow:none}#launch-conversation #close-review{float:none}.review-facts{background:transparent;border:0;border-radius:0;padding:0;gap:8px 20px}.chat-operation{padding:18px 0;line-height:1.6}.chat-operation button{margin:8px 10px 8px 0}.chat-operation details{margin:12px 0;color:#617168;overflow-wrap:anywhere}.operation-success{color:#247a47;font-weight:600}.pad-grid{display:block}.pad-card,.integration-panel,.tracked-card,.review-card{border:0;border-radius:0;box-shadow:none;background:transparent;padding:20px 0;border-bottom:1px solid #e2e9e3}
+
+
+.token-report,.research-facts>div,.holder-stats,.pivot-message{border:0;border-radius:0;box-shadow:none;background:transparent}
+#assistant-view .token-report{padding:12px 0}.chat-operation[hidden]{display:none!important}
+#chat-thread .chat-operation{max-width:680px;width:calc(100% - 38px);margin:24px auto}
+#launch-summary h2{font-size:20px;letter-spacing:0}.review-profile summary{cursor:pointer}
+
+.pons-request{border:0;border-radius:0;padding:20px 0;background:transparent;box-shadow:none;width:auto;max-height:none;overflow:visible}.pons-request pre{background:transparent;padding:0}
