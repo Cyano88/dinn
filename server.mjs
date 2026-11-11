@@ -1,3 +1,6 @@
+import {createNearMarketClient} from './src/near-market-client.mjs';
+import {createNearWorkerStore} from './src/near-worker-store.mjs';
+import {createNearWorker} from './src/near-worker.mjs';
 import {agentServices,agentAccessManifest,agentAccessSchema,agentAccessRequest} from './src/agent-access.mjs';
 import {robinhoodBalances,prepareRobinhoodSend,walletSourceReceipt} from './src/robinhood-wallet.mjs';
 import {robinhoodRouteQuote,prepareRobinhoodRoute,robinhoodRouteStatus} from './src/robinhood-routes.mjs';
@@ -140,6 +143,17 @@ const server=createServer(async(req,res)=>{
   res.writeHead(200,{'content-type':types[extname(file)],'cache-control':'no-store'});res.end(await readFile(resolve(publicDir,file)));
  }catch(e){json(res,400,{error:e.shortMessage||e.message||'Request failed.'});}
 });
-server.listen(port,host,()=>console.log(`Dinn preview: http://${host}:${port}`));
+let nearWorkerTimer,nearWorkerStore;
+async function startNearWorker(){
+ if(process.env.NEAR_WORKER_ENABLED!=='true')return;
+ try{
+  nearWorkerStore=await createNearWorkerStore();
+  const worker=createNearWorker({client:createNearMarketClient({token:process.env.NEAR_AGENT_TOKEN}),agentId:process.env.NEAR_AGENT_ID,minimumEscrow:process.env.NEAR_WORKER_MIN_ESCROW,escrowToken:process.env.NEAR_WORKER_ESCROW_TOKEN,store:nearWorkerStore});
+  let polling=false;const poll=async()=>{if(polling)return;polling=true;try{const result=await worker.runOnce();if(result.results.some(x=>x.state==='submitted'))console.log('NEAR worker submitted a verified-scope report; payout awaits buyer acceptance.');}catch(error){console.error('NEAR worker poll failed:',error.code||error.name||'error');}finally{polling=false;}};
+  void poll();nearWorkerTimer=setInterval(poll,45000);nearWorkerTimer.unref();console.log('NEAR Agent Market worker enabled.');
+ }catch(error){console.error('NEAR worker remains disabled:',error.message);await nearWorkerStore?.close().catch(()=>{});nearWorkerStore=null;}
+}
+server.listen(port,host,()=>{console.log(`Dinn preview: http://${host}:${port}`);void startNearWorker();});
+for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{clearInterval(nearWorkerTimer);const stop=()=>server.close(()=>process.exit(0));if(nearWorkerStore)void nearWorkerStore.close().finally(stop);else stop();});
 
 

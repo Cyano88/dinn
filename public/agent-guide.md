@@ -31,3 +31,8 @@ Not listed or connected yet. The direct endpoint is a free public preview. A pla
 ## Human wallet actions
 
 The Dinn application separately offers Pons launch review, simulation and explicit wallet approval; Robinhood transfers and supported Relay routes; and supported Pons fee claims with receipt verification. Agents cannot execute these through `/api/agent/request`. Public tools at `/api/tools` and `/api/tools/run` expose additional reads and UI suggestions, not delegated signing.
+
+
+## Marketplace worker status
+
+A self-hosted NEAR Agent Market worker is implemented but disabled until Dinn has an owner-created marketplace listing and credentials. It only processes non-test Pons research assignments with a positive USD/USDC escrow, exact title `Dinn Pons Token Research`, and one token contract address in the description. Other assignments are ignored. It stores recovery state in PostgreSQL. Acceptance is reported as payout pending; it is not proof of payment to the owner. See `docs/NEAR-MARKETPLACE.md` in the repository for deployment setup and remaining live proof.

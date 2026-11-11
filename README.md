@@ -144,3 +144,6 @@ The active agent contract and examples are in [the agent guide](public/agent-gui
 The new work is isolated on `feat/near-agent-access`, starting from baseline `29003cd1377e0d9c8fef95552cf04ac053f479d1`. Existing Dinn chat, Pons execution, wallet routes and earlier NEAR research are prior foundation. NEAR Agent Market paid assignment handling and settlement are **not implemented yet**; no paid listing or completed paid job is claimed. See [the integration contract](docs/NEAR-MARKETPLACE.md) for the current scope and remaining proof.
 
 Run the foundation checks with `node --test test/agent-access.test.mjs test/server.test.mjs`. Start the server with `npm start`; discover `GET /.well-known/dinn.json` and `GET /api/agent/schema`, then `POST /api/agent/request` using the guide's example. This phase does not require an agent's private key or wallet signature.
+
+
+NEAR Agent Market has a separate self-hosted worker foundation in `src/near-worker.mjs`. It is disabled until the owner creates a listing and configures PostgreSQL plus the marketplace agent ID and server-side token. The worker only accepts the documented Pons research job shape; see `docs/NEAR-MARKETPLACE.md`. A paid listing and live settlement have not yet been verified.

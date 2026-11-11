@@ -10,21 +10,31 @@ Implemented: Pons token research, balances on Robinhood/Base/Arbitrum, Pons laun
 
 Legacy `src/agent-service.mjs` is retained for historical tests; it is not the active HTTP contract. Its Ascend services must not be advertised as current Dinn capabilities.
 
-The direct agent API is currently a free public preview. No marketplace listing, worker identity, price, escrow integration or paid settlement is implemented. Account input is a public query target, not authenticated wallet ownership. No personal drafts or signing permissions are exposed.
+The direct agent API is currently a free public preview. No marketplace listing, worker identity, price or real paid settlement is configured. Account input is a public query target, not authenticated wallet ownership. No personal drafts or signing permissions are exposed.
 
 ## First proposed paid deliverable
 
 A live report for one supported Pons v2 token on Robinhood Chain: launch phase, bonding progress when available, reference market metrics, and fees explicitly scoped to the requested wallet or labelled creator recipient. Include source address, chain block/time, machine-readable evidence and unavailable fields. Do not sell it as a contract audit, proof of liquidity/sellability, lifetime earnings report or executed transaction.
 
-## Required marketplace worker work
+## Worker foundation implemented
 
-1. Owner-controlled listing with an actual immutable handle, authenticated worker ID and server-side credential. Price and delivery promise need to be set before accepting work.
-2. Poll authenticated assignments or verify signed webhooks; re-fetch assignment state and payment hold before starting work. A webhook is not payment proof.
-3. Persist assignment ID, worker identity, input revision, result evidence, submission state and provider response in PostgreSQL. Coordinate retries so ambiguous delivery responses cannot produce duplicate submissions.
-4. Missing or unsupported requests require clarification/decline, not a fabricated report. Cancellation, refund and rework state must be reconciled before delivery.
-5. Bind the report to the exact paid scope and authenticated assignment. Marketplace payment does not grant authority over any token wallet.
-6. Exercise a genuine paid job and verified acceptance/settlement, plus cancellation, retry and recovery. Do not claim paid integration from fixtures.
-7. Only publish marketplace discovery/A2A links after the actual listing and worker function. Marketplace hosts the paid A2A endpoint; do not invent one under Dinn's own hostname.
+`src/near-market-client.mjs`, `src/near-worker-store.mjs`, and `src/near-worker.mjs` implement the self-hosted pull worker against the current marketplace OpenAPI contract. PostgreSQL stores assignment leases, exact prepared deliverables and an event trail. The poll interval is 45 seconds.
+
+The worker is disabled unless `NEAR_WORKER_ENABLED=true`, `DATABASE_URL`, `NEAR_AGENT_ID`, a server-side `NEAR_AGENT_TOKEN`, and owner-chosen `NEAR_WORKER_ESCROW_TOKEN` (`USD` or `USDC`) plus `NEAR_WORKER_MIN_ESCROW` are configured. Assignments below the configured minimum or in another currency are ignored. Never put the token in the browser or repository. No HTTP endpoint exposes it. There is no local marketplace credential or registered ID, so the worker is currently off.
+
+For safety, automatic delivery only recognizes a non-test, public, non-competition assignment with a positive USD/USDC escrow, title exactly `Dinn Pons Token Research`, no attachments and exactly one explicit token address in its description. It binds the worker ID, job ID and assignment ID, starts the assignment, waits briefly for the marketplace's award/funding race, refreshes the assignment, creates and persists the evidence report, then refreshes status again before submitting. It leaves other jobs and all rework untouched.
+
+A submit timeout is recoverable: the exact report is stored before submission; retrying identical Markdown is idempotent per the marketplace contract. Later polls reconcile submitted deliverable bytes against the saved report. `accepted` is recorded as `accepted-payout-pending`; the worker never claims that accepted means funds reached the owner's wallet. Cancellation and dispute resolution are recorded separately. The worker does not bid, message buyers, attach/download files, or handle competitions.
+
+This is an executable local foundation, not a listed or paid integration. Marketplace docs note an assignment may briefly appear before escrow funding completes; start is followed by a delay and state recheck, but the `aat_` token does not expose the owner's wallet or a separate escrow ledger proof. A real paid demonstration and confirmation of settlement to the owner remain required.
+
+## Remaining marketplace work
+
+1. The owner registers Dinn through the Agent Market, chooses the immutable handle, description, scope, price and delivery SLA, and stores the issued agent ID/token in Render secrets. The owner must choose the price; the code does not invent it. Set the same minimum amount/currency in the server secrets before enabling the worker.
+2. Publish the exact supported job title and tell buyers to include one Robinhood Pons token address in the description. Ensure the listing's offered price/currency satisfies the worker's USD/USDC escrow rule.
+3. Exercise an actual hire. Confirm the assignment is handled once, the report matches its stored evidence, and the marketplace records delivery.
+4. Confirm buyer acceptance and separately verify the owner's payout through the owner's marketplace account. Also observe cancellation, request-changes and an ambiguous submission response. Current worker intentionally does not auto-handle rework.
+5. Only then advertise the listing and paid workflow. Marketplace hosts its A2A endpoint; do not invent one under Dinn's hostname.
 
 ## Hackathon scope
 
