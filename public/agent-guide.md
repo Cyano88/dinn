@@ -1,21 +1,33 @@
-# Dinn agent access
+﻿# Dinn agent access
 
-Dinn is a multi-launchpad AI workspace. Pons on Robinhood Chain is the first integration in development. Ascend and Montra on Elysium are Coming soon.
+Discover `/.well-known/dinn.json` and `/api/agent/schema`. The old `/.well-known/launchflow.json` URL remains an alias. Send JSON to `POST /api/agent/request` with `{service,input,requestId?}`.
 
-POST /api/agent/request with JSON:
+## Current read-only services
 
-    {"service":"plan","input":{"message":"Help me write a token description"}}
+- `token.research`: `{address,account?}`. Supported Pons v2 token research on Robinhood Chain (4663): phase, bonding metrics, market references and fee balances. `account` is the fee-viewing query address, not an authenticated owner. When omitted, fees are queried for the current creator fee recipient and labelled accordingly.
+- `wallet.balances`: `{account,chainId}`. Chain 4663, Base 8453 or Arbitrum 42161. Unavailable data remains unavailable, never zero.
+- `launch.options`: `{account?}`. Current enabled Pons launch terms.
+- `swap.quote`: `{account,chainId,asset,outputAsset,amount}`. Same-network quotes. Base and Arbitrum allow only ETH, USDC and USDT on both sides; Robinhood routes depend on live liquidity.
+- `bridge.quote`: same fields; source chain 8453 or 42161, destination Robinhood Chain. No return bridge is offered by this service.
 
-    {"service":"pons.brief","input":{"launchpad":"pons","chainId":4663,"name":"Example","symbol":"EX","description":"A project idea"}}
+Amounts are decimal strings. Native ETH uses the zero address. Every address must be explicit; no agent receives a connected user's wallet implicitly. Unknown fields, signing keys and execution flags are rejected. Missing required inputs return `status: needs_input`. Errors are not completed deliverables.
 
-Brief validation does not publish metadata, save a server-side draft, simulate or deploy a token. The browser saves briefs locally per account. Explicit chat setup and edit commands save the browser brief; generated AI text does not. Read-only checks: POST /api/pons/readiness with {} or an account address, and POST /api/robinhood/balance with {"account":"0x..."}.
+Example:
 
-Agent endpoints never sign or broadcast. The browser supports Pons ETH and approved ERC-20 pair review, simulation, explicit wallet approval and receipt verification. POST /api/pons/review accepts a Pons launch configuration; /api/pons/simulate accepts {configuration,quote}; /api/pons/receipt accepts {configuration,quote,hash}. Optional opening purchases use the Pons launch-and-buy router. ERC-20 purchases require a separate exact-amount approval. Logo creation is a restricted pilot. Legacy launch, swap, funding, wallet and creator-fee endpoints return HTTP 410. Discover capabilities at /.well-known/launchflow.json and /api/status.
+```json
+{"service":"token.research","requestId":"research-001","input":{"address":"0x32d5ee0142db8769d954a7c2521e76ca3241fb32"}}
+```
 
-Product read tools: GET /api/tools discovers strict schemas and capability states. POST /api/tools/run accepts {name,args,walletAccount?}. Supported reads: wallet_balance, launch_options, inspect_token (TS/SC/owner/proxy/unknown lock evidence), transaction_status, product_capabilities. open_* tools return UI suggestions, not execution. All operate on Robinhood Chain only. Locks, burns, swaps, claims, transfers and bridges have no active tool adapter.
+A completed response includes `result`, `broadcast:false`, `charged:false` and `ownershipVerified:false`. Research also includes `deliverableMarkdown`. `evidence.content` is the exact JSON string covered by `evidence.sha256`; the hash detects content changes but is not a cryptographic attestation, authorization or proof of payment. A reused requestId is correlation only: reads run again and can produce newer results.
 
-DEX Screener: open_dex_profile opens local profile preparation; dex_service_status({address}) reads public profile orders and indexed metadata on Robinhood. Profile submission and payment occur at official external checkout. Public token-level orders do not identify the payer or prove fulfillment of a particular draft.
+These endpoints read public data. They do not access private drafts, create delegated spending authority, sign, send, claim fees or settle marketplace jobs. Quotes are not transactions. Fees ready to claim are distinct from fees awaiting distribution and lifetime earnings; the escrow balance may include multiple launches. Research is not a security audit or guaranteed sellability.
 
-First-release checkout handoff: only the token address is required. The official link prefills chainId=robinhood and tokenAddress; other profile notes are optional and copied manually. Dinn does not submit profiles or pay.
+Legacy `plan` and `pons.brief` responses remain available with their existing response shapes. Plan inference may require the deployment's configured inference access. All Ascend/Elysium execution routes remain retired.
 
-DEX profile drafting: open_dex_profile with a token address reads contract identity and available GeckoTerminal metadata, then uses inference to draft a description. Reported project claims require review; missing links stay blank. If inference fails, source-based text is returned. Only network and address are prefilled externally.
+## NEAR Agent Market
+
+Not listed or connected yet. The direct endpoint is a free public preview. A planned paid worker will bind an authenticated assignment to the requested deliverable, persist progress, verify current funding/cancellation state and submit only the completed agreed work. Marketplace payment never authorizes use of a buyer's token wallet. Do not invent an agent handle, price, listing, paid result or hosted A2A endpoint.
+
+## Human wallet actions
+
+The Dinn application separately offers Pons launch review, simulation and explicit wallet approval; Robinhood transfers and supported Relay routes; and supported Pons fee claims with receipt verification. Agents cannot execute these through `/api/agent/request`. Public tools at `/api/tools` and `/api/tools/run` expose additional reads and UI suggestions, not delegated signing.

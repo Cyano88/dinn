@@ -1,46 +1,35 @@
-﻿# NEAR marketplace integration contract
+﻿# Dinn / NEAR Agent Market integration
 
-Research verified 6 November 2026 against https://market.near.ai/llms.txt and the official buyer/worker guides saved in docs/sources/near-market-*.md. Documents are integration references, not permission to hire, post, message or spend.
+Verified 11 November 2026 against https://docs.market.near.ai/ and https://market.near.ai/llms.txt. These documents describe protocols; they do not authorize registering identities, posting, messaging, hiring or spending.
 
-## Product
+## Implemented foundation
 
-One service, two callers: humans in chat and agents in their terminal. Both call the same planner, validation and Ascend adapters. Marketplace payment buys a clearly scoped deliverable; it never grants Elysium wallet permissions.
+The current public agent contract is `src/agent-access.mjs`, served by `server.mjs`. Discovery is `/.well-known/dinn.json`, with the old launchflow URL retained as an alias. See `public/agent-guide.md` for exact service inputs and output semantics.
 
-## Implemented local surface
+Implemented: Pons token research, balances on Robinhood/Base/Arbitrum, Pons launch options, same-chain swap quotes and Base/Arbitrum-to-Robinhood bridge quotes. All are read-only. Missing inputs and provider failures cannot become completed research. Research returns Markdown plus exact JSON evidence and a SHA-256 content hash. This hash is not a signature or payment receipt.
 
-GET /.well-known/launchflow.json
-GET /agent-guide.md
-GET /llms.txt
-GET /api/agent/schema
-POST /api/agent/request
+Legacy `src/agent-service.mjs` is retained for historical tests; it is not the active HTTP contract. Its Ascend services must not be advertised as current Dinn capabilities.
 
-Services: plan, launch.review, launch.simulate. The last requires an Elysium RPC. Explicit missing-fields responses enable caller-managed conversation. No secret-key, trading or broadcasting request is accepted. 0G explanations remain untrusted explanatory text, not executable configuration.
+The direct agent API is currently a free public preview. No marketplace listing, worker identity, price, escrow integration or paid settlement is implemented. Account input is a public query target, not authenticated wallet ownership. No personal drafts or signing permissions are exposed.
 
-## Marketplace onboarding still required
+## First proposed paid deliverable
 
-1. Owner chooses final project identity and registers the worker in Agent Market. Capture the actual agent ID and immutable handle; keep the aat_ token server-side. No identity has been registered by this project.
-2. Specify the exact initial deliverable and price. Candidate: launch configuration preparation/review. Do not promise live execution, trading or locks while they are unavailable. Confirm 0G commercial traffic permissions.
-3. Implement authenticated assignment polling (30–60 seconds) or signed webhooks. Re-read the current API/OpenAPI schemas. Bind assignment IDs to the authenticated worker. Verify job state before doing billable work and before delivery. A hire.created webhook can arrive before its payment hold is established.
-4. Persist each assignment, input revision, processing state and submitted version. Recover interrupted jobs without duplicate delivery or blind retries. Cancel/refund events must stop work. Refuse unsupported jobs explicitly rather than submit a planning note as proof of execution.
-5. Use the existing agentRequest handler for the deliverable. An incomplete request needs a marketplace clarification message, not an invented wallet or a fabricated successful result.
-6. Submit using POST /v1/assignments/{id}/submit with deliverableMarkdown and files. For A2A-originated jobs the docs say submission auto-accepts and settles payment: the worker must meet the paid contract BEFORE submitting, and clarify without submitting when information is missing.
-7. Test a genuine paid hire, acceptance or settlement, cancellation/refund and rework. Publish discovery links only once the real listing and worker are functioning.
+A live report for one supported Pons v2 token on Robinhood Chain: launch phase, bonding progress when available, reference market metrics, and fees explicitly scoped to the requested wallet or labelled creator recipient. Include source address, chain block/time, machine-readable evidence and unavailable fields. Do not sell it as a contract audit, proof of liquidity/sellability, lifetime earnings report or executed transaction.
 
-## Two buyer paths
+## Required marketplace worker work
 
-MCP: https://market.near.ai/mcp, OAuth as the buying person. Discover runtime tools and quote the actual plan. A worker-bound aat_ token cannot hire. User authorizes the marketplace hire through its documented draft/approval flow.
+1. Owner-controlled listing with an actual immutable handle, authenticated worker ID and server-side credential. Price and delivery promise need to be set before accepting work.
+2. Poll authenticated assignments or verify signed webhooks; re-fetch assignment state and payment hold before starting work. A webhook is not payment proof.
+3. Persist assignment ID, worker identity, input revision, result evidence, submission state and provider response in PostgreSQL. Coordinate retries so ambiguous delivery responses cannot produce duplicate submissions.
+4. Missing or unsupported requests require clarification/decline, not a fabricated report. Cancellation, refund and rework state must be reconciled before delivery.
+5. Bind the report to the exact paid scope and authenticated assignment. Marketplace payment does not grant authority over any token wallet.
+6. Exercise a genuine paid job and verified acceptance/settlement, plus cancellation, retry and recovery. Do not claim paid integration from fixtures.
+7. Only publish marketplace discovery/A2A links after the actual listing and worker function. Marketplace hosts the paid A2A endpoint; do not invent one under Dinn's own hostname.
 
-A2A/x402: the marketplace hosts the registered agent's card and paid endpoint on its actual agent subdomain. The marketplace converts paid calls into worker assignments. Do not invent a Launchflow subdomain or impersonate a listed agent. The local API is separate and currently free.
+## Hackathon scope
 
-## Architecture
+Candidate primary track: Agent Economy. A working hire -> evidence report -> verified settlement workflow would make NEAR Agent Market materially responsible for agent-to-agent commerce. Generic HTTP access by itself does not demonstrate that integration.
 
-Human chat or terminal agent
-  -> Launchflow planner and validation
-  -> explicit configuration review
-  -> optional read-only Ascend simulation
-  -> future separately authorized wallet execution
-  -> verified receipt/deliverable
+Rules checked at https://nearhackathon.com/HACKATHON.md: existing products are allowed, but only the NEAR work in the development window is judged. Deadline 14 November 2026, 23:59 UTC. Disclose baseline and new work; public repository, reproducible instructions and a public demo post are required. No submission has been made by this work.
 
-NEAR marketplace hire -> authenticated worker adapter -> same Launchflow planner/validation -> marketplace deliverable.
-
-NEAR service fees and Elysium gas/dev-buy funds are independent. Neither 0G credit consumption nor marketplace payment proves a token was deployed.
+Baseline for this iteration: `29003cd1377e0d9c8fef95552cf04ac053f479d1`. New implementation is isolated on `feat/near-agent-access`. Earlier Dinn work and NEAR research documents must be disclosed as prior foundation; this baseline is not a claim about the original hackathon eligibility date.

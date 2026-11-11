@@ -1,11 +1,14 @@
-# Dinn
-Multi-launchpad AI workspace. Pons on Robinhood Chain is the first integration in development. Ascend and Montra on Elysium: Coming soon.
+﻿# Dinn
+
+AI token workspace, starting with Pons on Robinhood Chain. Public agent services offer live Pons token research, wallet balances, launch options and route quotes. No agent signing or broadcasting endpoint.
+
 - Agent guide: /agent-guide.md
-- Manifest: /.well-known/launchflow.json
-- Schema: /api/agent/schema
-- Status: /api/status
-Pons ETH and approved ERC-20 pair launches use explicit review, simulation and wallet approval. Trading, bridging and fee claims remain disabled.
+- Manifest: /.well-known/dinn.json
+- Service input schemas: /api/agent/schema
+- JSON requests: POST /api/agent/request
+- Product tools: /api/tools
+- Product status: /api/status
 
-DEX Screener profile preparation, external checkout handoff and public order/metadata checks are available. No automatic purchase or submission.
+The agent endpoint is a free public preview. NEAR Agent Market integration is not yet live. Wallet addresses are explicit query targets, not proof of ownership. Missing fields, unavailable data and provider failures remain explicit. Research responses include a dated evidence artifact; its content hash is not proof of payment or authorization.
 
-DEX profile drafting: open_dex_profile with a token address reads contract identity and available GeckoTerminal metadata, then uses inference to draft a description. Reported project claims require review; missing links stay blank. If inference fails, source-based text is returned. Only network and address are prefilled externally.
+The human app separately supports wallet-approved Pons launches, fee claims, Robinhood transfers, Base/Arbitrum funding into Robinhood and available same-chain swaps. Base/Arbitrum swaps are restricted to ETH, USDC and USDT. DEX Screener submission/payment use external checkout. Ascend and Montra on Elysium remain paused.

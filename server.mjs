@@ -1,3 +1,4 @@
+import {agentServices,agentAccessManifest,agentAccessSchema,agentAccessRequest} from './src/agent-access.mjs';
 import {robinhoodBalances,prepareRobinhoodSend,walletSourceReceipt} from './src/robinhood-wallet.mjs';
 import {robinhoodRouteQuote,prepareRobinhoodRoute,robinhoodRouteStatus} from './src/robinhood-routes.mjs';
 import {ponsTokenState,preparePonsClaim,ponsClaimReceipt} from './src/pons-token-state.mjs';
@@ -71,8 +72,8 @@ const server=createServer(async(req,res)=>{
   if(req.method==='GET' && path==='/api/tools')return json(res,200,{tools:productTools,capabilities:productCapabilities,chainId:4663,canSign:false});
   if(req.method==='GET' && path==='/api/auth/config')return json(res,200,authConfig);
   if(req.method==='GET' && path==='/api/status')return json(res,200,{...productStatus(),legalLinks,draftSyncEnabled:draftService.enabled(),aiConfigured:!!(process.env.OG_API_KEY&&process.env.OG_MODEL)});
-  if(req.method==='GET' && path==='/.well-known/launchflow.json')return json(res,200,{name:'Dinn',version:'2',services:['plan','pons.brief'],tools:'/api/tools',capabilities:productCapabilities,launchpads:productStatus().launchpads,broadcastEnabled:false});
-  if(req.method==='GET' && path==='/api/agent/schema')return json(res,200,{type:'object',required:['service','input'],properties:{service:{enum:['plan','pons.brief']},input:{type:'object'}},additionalProperties:false});
+  if(req.method==='GET' && ['/.well-known/launchflow.json','/.well-known/dinn.json'].includes(path))return json(res,200,{...agentAccessManifest(),tools:'/api/tools',capabilities:productCapabilities,launchpads:productStatus().launchpads});
+  if(req.method==='GET' && path==='/api/agent/schema')return json(res,200,agentAccessSchema());
   if(req.method==='GET' && /^\/media\/logos\/[0-9a-f-]+\.png$/.test(path)){try{const bytes=await logoService.publicImage(path.split('/').pop().replace('.png',''));if(!bytes)return json(res,404,{error:'Logo not found.'});res.writeHead(200,{'content-type':'image/png','cache-control':'public, max-age=31536000, immutable','content-length':bytes.length});return res.end(bytes);}catch{return json(res,503,{error:'Logo temporarily unavailable.'});}}
   if(req.method==='POST'){
    if(path.startsWith('/api/drafts/')){if(req.headers.origin&&!allowedOrigins.has(req.headers.origin))return json(res,403,{error:'Origin rejected.'});if(req.headers['content-type']?.split(';')[0]!=='application/json')return json(res,415,{error:'JSON required.'});try{const result=await draftService.handle(req,path,await body(req,350000));return json(res,result.status,result.body);}catch{return json(res,503,{error:'Account draft storage is unavailable. Your local draft is kept.'});}}
@@ -112,9 +113,10 @@ const server=createServer(async(req,res)=>{
     return;
    }
    if(path==='/api/agent/request'){
+    if(Object.hasOwn(agentServices,data.service)){walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);if(walletReadStarts.length>=40)return json(res,429,{error:'Agent reads are busy. Try again shortly.'});walletReadStarts.push(Date.now());try{return json(res,200,await agentAccessRequest(data));}catch(e){return json(res,400,{error:e.name==='Error'&&!/https?:|api.key|Bearer/i.test(e.message)?e.message:'Agent evidence could not be verified. No paid delivery or transaction occurred.'});}}
     if(data.service==='plan')return json(res,200,await buildPlan(data.input?.message));
     if(data.service==='pons.brief')return json(res,200,ponsBrief(data.input));
-    return json(res,410,{error:'This service is unavailable. Use plan or pons.brief.'});
+    return json(res,410,{error:'This service is unavailable. Discover supported services at /api/agent/schema.'});
    }
    if(path==='/api/plan'){
     return json(res,200,await buildPlan(data.message));

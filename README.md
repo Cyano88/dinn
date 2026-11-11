@@ -136,3 +136,11 @@ My launches keeps receipt observations in memory and resets them on reload. Pend
 
 ## Dependency remediation — latest status
 The vulnerable ws 8.x copies are patched through a scoped override. The refreshed audit has 28 affected packages (21 high, 7 moderate); remaining roots are decoder, UUID and Zod dependencies. Build metadata and a reproducible bundle-exposure report now distinguish installed dependencies from shipped code. All 40 tests and the browser auth-module import pass. See [dependency remediation](docs/DEPENDENCY-REMEDIATION.md). Live release remains blocked.
+
+## NEAR agent-access work (in progress)
+
+The active agent contract and examples are in [the agent guide](public/agent-guide.md). Read-only services cover live Pons token research, wallet balances, launch options and available route quotes. Research artifacts include a content hash, not a signature or payment receipt.
+
+The new work is isolated on `feat/near-agent-access`, starting from baseline `29003cd1377e0d9c8fef95552cf04ac053f479d1`. Existing Dinn chat, Pons execution, wallet routes and earlier NEAR research are prior foundation. NEAR Agent Market paid assignment handling and settlement are **not implemented yet**; no paid listing or completed paid job is claimed. See [the integration contract](docs/NEAR-MARKETPLACE.md) for the current scope and remaining proof.
+
+Run the foundation checks with `node --test test/agent-access.test.mjs test/server.test.mjs`. Start the server with `npm start`; discover `GET /.well-known/dinn.json` and `GET /api/agent/schema`, then `POST /api/agent/request` using the guide's example. This phase does not require an agent's private key or wallet signature.

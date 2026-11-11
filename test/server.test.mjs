@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -33,6 +33,9 @@ test('HTTP preview rejects mutation and preserves draft-only boundaries',async()
   assert.equal((await fetch(root+'/agent-guide.md')).status,200);
   assert.equal((await fetch(root+'/llms.txt')).status,200);
   assert.equal((await fetch(root+'/api/agent/schema')).status,200);
+  const agentManifest=await(await fetch(root+'/.well-known/dinn.json')).json();assert.ok(agentManifest.services.includes('token.research'));assert.equal(agentManifest.marketplace.status,'not-listed');
+  const missingResearch=await(await post('/api/agent/request',{service:'token.research',input:{},requestId:'http-check'})).json();assert.equal(missingResearch.status,'needs_input');assert.deepEqual(missingResearch.missingFields,['address']);assert.equal(missingResearch.requestId,'http-check');
+  assert.equal((await post('/api/agent/request',{service:'token.research',input:{address:'0x'+'1'.repeat(40),privateKey:'never-accepted'}})).status,400);
   for(const path of ['/api/launch/preflight','/api/ascend/fees/prepare','/api/market/prepare','/api/wallet/transfer/prepare','/api/funding/route','/api/swap/quote','/api/delivery/status'])assert.equal((await post(path,{})).status,410);
   assert.equal((await fetch(root+'/execution/entry.js')).status,410);
   assert.equal((await post('/api/agent/request',{service:'launch.review',input:{}})).status,410);
