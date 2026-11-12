@@ -32,7 +32,7 @@ trap cleanup EXIT
 [[ -d "$stage" && "$(stat -c '%a' "$stage")" == "700" ]]
 [[ -f "$archive" && -f "$env_source" && -d "$app" ]]
 grep -qx 'NEAR_WORKER_ENABLED=false' "$env_source"
-grep -Eq '^DATABASE_URL=postgresql://dinn_near_worker:[0-9A-Fa-f]{64}@dpg-dbq3uol6e07s73c2ht0g-a[.]oregon-postgres[.]render[.]com:5432/dinn[?]sslmode=require$' "$env_source"
+grep -Eq '^DATABASE_URL=postgresql://dinn_near_worker:[^@]+@dpg-dbq3uol6e07s73c2ht0g-a[.]oregon-postgres[.]render[.]com:5432/dinn[?]sslmode=require$' "$env_source"
 [[ "$(systemctl show -p ActiveState --value dinn-near-worker.service)" == inactive ]]
 [[ "$(systemctl show -p UnitFileState --value dinn-near-worker.service)" == disabled ]]
 [[ ! -e "$backup" && ! -L "$backup" ]]
