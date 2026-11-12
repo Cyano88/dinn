@@ -83,7 +83,7 @@ const server=createServer(async(req,res)=>{
      if(!nearMarketNotifierPromise){const {createNearMarketNotifier}=await import('./src/near-market-notify.mjs');nearMarketNotifierPromise=createNearMarketNotifier();}
      let notifier;try{notifier=await nearMarketNotifierPromise;}catch(error){nearMarketNotifierPromise=null;throw error;}
      await notifier.notify(event.event);
-    }catch{return json(res,503,{error:'Marketplace webhook could not be queued.'});}
+    }catch(error){console.error('NEAR marketplace webhook queue failed:',error.code||error.name||'error');return json(res,503,{error:'Marketplace webhook could not be queued.'});}
    }
    res.writeHead(204,{'cache-control':'no-store'});return res.end();
   }
