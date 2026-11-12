@@ -4,7 +4,7 @@ import {cleanDexProfile,dexCheckoutFor} from './dex-profile.js';
 export function savedChatResult(result){
  const actions=[];
  for(const action of Array.isArray(result?.actions)?result.actions:[]){
-  if(['new_setup','resume_setup','bridge','swap','send'].includes(action.id)){actions.push({id:action.id});continue;}
+  if(['new_setup','resume_setup'].includes(action.id)){actions.push({id:action.id});continue;}
   if(action.id==='claim'&&/^0x[0-9a-f]{40}$/i.test(action.address||'')){actions.push({id:'claim',address:action.address});continue;}
   if(action.id!=='dex')continue;
   try{dexCheckoutFor(action.address);}catch{continue;}

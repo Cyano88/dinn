@@ -9,7 +9,7 @@ export const productCapabilities={
  buy:{title:'Buy tokens',status:'coming-soon',description:'Pons trading adapter not connected. Old Elysium/Montra swaps are paused.'},
  sell:{title:'Sell tokens',status:'coming-soon',description:'Pons trading adapter not connected; sellability is not established by a contract read.'},
  claim:{title:'Check and claim Pons fees',status:'wallet-approval',description:'Supported Pons v2 escrow balance, separate pending distribution, claim review, wallet approval and payout receipt verification.'},
- transfer:{title:'Send tokens',status:'wallet-approval',description:'Send native ETH or ERC-20 holdings on Robinhood Chain with amount, recipient, gas and receipt verification.'},
+ transfer:{title:'Send tokens',status:'wallet-approval',description:'Send ETH or ERC-20 tokens on Robinhood Chain. Send ETH, USDC or USDT on Base and Arbitrum. Review the network, recipient, gas and receipt before and after wallet approval.'},
  fund:{title:'Bridge or fund',status:'wallet-approval',description:'Relay quotes from Base or Arbitrum ETH, USDC and USDT to Robinhood Chain. Source confirmation and destination delivery are separate.'},
  swap:{title:'Swap assets',status:'wallet-approval',description:'Relay routes on Robinhood Chain where liquidity exists; Base and Arbitrum swaps are limited to ETH, USDC and USDT. Explicit quote review and wallet approval; unsupported routes remain unavailable.'},
  dex:{title:'DEX Screener profile',status:'external-checkout',description:'Get a checkout link with Robinhood Chain and token address prefilled. Optional profile notes are copyable. Complete details and payment on DEX Screener; check public order status here.'}
@@ -30,7 +30,7 @@ export const productTools=[
  tool('open_launch_review','Offer a button to review the saved launch. Never signs or sends.'),
  tool('dex_service_status','Read public DEX Screener profile orders and published information for a Robinhood token. Does not prove this user paid.',{address},['address']),
  tool('open_dex_profile','Look up onchain token identity and reported project metadata, use AI to draft a description, and offer a populated review. Requires a token address. No submission or payment.',{address}),
- tool('open_wallet_action','Offer a chat review for a send, bridge or swap. This tool never submits transactions.',{kind:{type:'string',enum:['send','bridge','swap']}},['kind']),
+ tool('open_wallet_action','Conversationally collect the user-chosen network, recipient when sending, asset and amount, and receive asset when bridging or swapping. Ask for one missing detail at a time. Once all values are explicitly supplied by the user, prepare and return a plain-language review plus a wallet approval action. Never sign or submit.',{kind:{type:'string',enum:['send','bridge','swap']},network:{type:'string',enum:['4663','8453','42161']},recipient:address,asset:{type:'string',pattern:'^([Ee][Tt][Hh]|[Uu][Ss][Dd][Gg]|[Ww][Ee][Tt][Hh]|[Uu][Ss][Dd][Cc]|[Uu][Ss][Dd][Tt]|0x[0-9a-fA-F]{40})$'},amount:{type:'string',pattern:'^[0-9]+(\\.[0-9]+)?$'},outputAsset:{type:'string',pattern:'^([Ee][Tt][Hh]|[Uu][Ss][Dd][Gg]|[Ww][Ee][Tt][Hh]|[Uu][Ss][Dd][Cc]|[Uu][Ss][Dd][Tt]|0x[0-9a-fA-F]{40})$'}},['kind']),
  tool('wallet_portfolio','Read wallet assets and estimated values on Robinhood Chain, Base or Arbitrum.',{account:address,network:{type:'string',enum:['4663','8453','42161']}}),
  tool('open_wallet','Offer a button to the wallet view.'),
  tool('open_launchpads','Offer a button to the launchpad list.')
