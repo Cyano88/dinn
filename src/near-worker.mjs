@@ -2,14 +2,15 @@ import {createNearMarketClient,uuid} from './near-market-client.mjs';
 import {agentAccessRequest} from './agent-access.mjs';
 
 const TOKEN_RE=/0x[0-9a-fA-F]{40}/g;
+const INSPECTION_INTENT=/\b(?:inspect(?:ion)?|security check|safe to trade|sellability|honeypot|top holders?|holder concentration|holder behavior|wallet history|traded before|strong hands|other tokens they hold|source verification|contract controls?|proxy indicators|total supply|token supply|lp lock|liquidity lock)\b/i;
 
 function escrowUnits(value){if(typeof value!=='string'||!/^\d+(?:\.\d{1,12})?$/.test(value))return null;const [whole,fraction='']=value.split('.');return BigInt(whole)*10n**12n+BigInt((fraction+'0'.repeat(12)).slice(0,12));}
 function supportedResearchJobSurface(brief,job){
- if(!job||brief?.jobKind!==job.jobKind)return false;
+ if(!brief||!job||brief.jobKind!==job.jobKind||!Object.hasOwn(job,'origin'))return false;
  if(job.origin===null)return job.jobKind==='standard'&&job.isPrivate===false||job.jobKind==='instant'&&job.isPrivate===true;
  return job.origin==='a2a'&&job.jobKind==='instant'&&job.isPrivate===true;
 }
-function requestedTokenAddress(row,job){
+function requestedResearchInput(row,job){
  const brief=row?.job,sources=[brief?.description];
  if(job.origin==='a2a'&&row.latestMessage!=null){
   const message=row.latestMessage;
@@ -17,15 +18,28 @@ function requestedTokenAddress(row,job){
   sources.push(message.body);
  }
  const addresses=[...new Set(sources.flatMap(value=>typeof value==='string'?[...value.matchAll(TOKEN_RE)].map(match=>match[0].toLowerCase()):[]))];
- return addresses.length===1?addresses[0]:null;
+ if(addresses.length!==1)return null;
+ const text=sources.filter(value=>typeof value==='string').join('\n');
+ const serviceLines=[...text.matchAll(/^\s*service\s*:\s*([a-z][a-z0-9.]*)\s*$/gim)].map(match=>match[1].toLowerCase());
+ if(/^\s*service\s*:/im.test(text)&&!serviceLines.length)return null;
+ const services=[...new Set(serviceLines)];if(services.length>1||services.some(value=>!['token.research','token.inspect'].includes(value)))return null;
+ const service=services[0]||'token.research';
+ if(service==='token.research'&&INSPECTION_INTENT.test(text.replace(/^\s*(?:service|chain)\s*:[^\r\n]*$/gim,'')))return null;
+ if(service==='token.inspect'){
+  const chainLines=[...text.matchAll(/^\s*chain\s*:\s*(\d+)\s*$/gim)].map(match=>Number(match[1]));
+  if(/^\s*chain\s*:/im.test(text)&&!chainLines.length)return null;
+  if(new Set(chainLines).size!==1||chainLines[0]!==4663)return null;
+  return {service,address:addresses[0],chainId:4663};
+ }
+ return {service,address:addresses[0]};
 }
 export function eligibleNearResearchJob(row,fullJob,agentId,{minimumEscrow,escrowToken}={}){
  const a=row?.assignment,j=row?.job;
- if(!uuid(a?.assignmentId)||!uuid(a?.jobId)||!uuid(a?.workerAgentId)||a.jobId!==j?.jobId||a.workerAgentId!==agentId||a.status!=='in_progress'||a.deliverableUrl||a.submittedAt||!['standard','instant'].includes(j?.jobKind)||j.attachments?.length||fullJob?.isTestRun!==false||fullJob?.jobId!==a.jobId||fullJob?.status!=='in_progress'||fullJob.title!=='Dinn'||!supportedResearchJobSurface(j,fullJob))return null;
- if(j.title!=='Dinn'||typeof j.description!=='string'||j.description.length>4000)return null;
- const amount=escrowUnits(a.escrowAmount),minimum=escrowUnits(minimumEscrow),address=requestedTokenAddress(row,fullJob);
- if(!address||amount===null||minimum===null||minimum<=0n||amount<minimum||a.escrowToken!==escrowToken)return null;
- return {address};
+ if(!uuid(a?.assignmentId)||!uuid(a?.jobId)||!uuid(a?.workerAgentId)||a.jobId!==j?.jobId||a.workerAgentId!==agentId||a.status!=='in_progress'||a.deliverableUrl||a.submittedAt||!['standard','instant'].includes(j?.jobKind)||j.attachments?.length||fullJob?.isTestRun!==false||fullJob?.jobId!==a.jobId||fullJob?.status!=='in_progress'||typeof j.title!=='string'||j.title.length<1||j.title.length>120||fullJob.title!==j.title||!supportedResearchJobSurface(j,fullJob))return null;
+ if(typeof j.description!=='string'||j.description.length>4000)return null;
+ const amount=escrowUnits(a.escrowAmount),minimum=escrowUnits(minimumEscrow),input=requestedResearchInput(row,fullJob);
+ if(!input||amount===null||minimum===null||minimum<=0n||amount<minimum||a.escrowToken!==escrowToken)return null;
+ return input;
 }
 
 export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=process.env.NEAR_AGENT_ID,minimumEscrow=process.env.NEAR_WORKER_MIN_ESCROW,escrowToken=process.env.NEAR_WORKER_ESCROW_TOKEN,store,client,report=agentAccessRequest,now=()=>new Date(),wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
@@ -58,9 +72,10 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     full=await client.job(a.jobId);input=eligibleNearResearchJob(current,full,agentId,{minimumEscrow,escrowToken});
     if(!input){await store.save(lock,{...lock.data,phase:'stopped-before-research'});await event('stopped-before-research');return {assignmentId:a.assignmentId,state:'stopped-before-research'};}
     assertLease();
-    const made=await report({service:'token.research',requestId:'near-'+a.assignmentId,input});
+    const {service,...reportInput}=input;
+    const made=await report({service,requestId:'near-'+a.assignmentId,input:reportInput});
     if(made.status!=='completed'||typeof made.deliverableMarkdown!=='string'||!made.deliverableMarkdown.length||made.deliverableMarkdown.length>250000||!/^\w{64}$/.test(made.evidence?.sha256||''))throw Error('Research report was incomplete or too large.');
-    data={phase:'prepared',markdown:made.deliverableMarkdown,evidenceHash:made.evidence.sha256,tokenAddress:input.address,preparedAt:now().toISOString()};
+    data={phase:'prepared',markdown:made.deliverableMarkdown,evidenceHash:made.evidence.sha256,service,tokenAddress:input.address,preparedAt:now().toISOString()};
     await store.save(lock,data);await event('report-prepared');
    }
    // Re-check marketplace state immediately before the external delivery.

@@ -1,5 +1,6 @@
 import {attachVerifiedArtifact,controlResearch} from './token-controls.mjs';
 import {researchHolders} from './holder-research.mjs';
+import {researchHolderBehavior} from './holder-behavior.mjs';
 import {researchPonsToken,explorerSource} from './token-research.mjs';
 import {createPublicClient,http,parseAbi,formatUnits,isAddress,zeroAddress} from 'viem';
 const abi=parseAbi(['function name() view returns (string)','function symbol() view returns (string)','function decimals() view returns (uint8)','function totalSupply() view returns (uint256)','function owner() view returns (address)']);
@@ -57,7 +58,7 @@ export async function inspectToken(address,{rpc,chainId=99901,client:provided,fe
    const clone=code.match(/^0x363d3d373d3d3d363d73([0-9a-f]{40})5af43d82803e903d91602b57fd5bf3$/i);
    if(clone)report.implementationAddress='0x'+clone[1];
    const present=storage.map((r,i)=>r.ok&&typeof r.value==='string'&&/^0x[0-9a-f]{64}$/i.test(r.value)&&!/^0x0{64}$/i.test(r.value)?Object.keys(slots)[i]+': '+r.value:null).filter(Boolean);
-   report.checks.push(clone?{label:'Proxy indicators',status:'attention',detail:'Standard ERC-1167 minimal proxy forwards to '+report.implementationAddress+'. Implementation source and permissions are not verified by this check.',evidence:['eth_getCode: ERC-1167 runtime pattern']}:present.length?{label:'Proxy indicators',status:'attention',detail:'Nonzero EIP-1967 slot(s): '+present.join('; ')+'. Implementation permissions require separate review.',evidence:['eth_getStorageAt: EIP-1967 implementation and beacon slots']}:unknown('Proxy indicators',storage.every(r=>r.ok)?'No nonzero standard proxy slots were observed. Other proxy patterns and upgrade mechanisms have not been ruled out.':'Standard proxy-slot reads were incomplete.',['eth_getStorageAt: EIP-1967 implementation and beacon slots']));
+   report.checks.push(clone?{label:'Proxy indicators',status:'attention',detail:'Standard ERC-1167 minimal proxy forwards to '+report.implementationAddress+'. Implementation source and permissions are not verified by this check.',evidence:['eth_getCode: ERC-1167 runtime pattern']}:present.length?{label:'Proxy indicators',status:'attention',detail:'Nonzero EIP-1967 slot(s): '+present.join('; ')+'. Implementation permissions require separate review.',evidence:['eth_getStorageAt: EIP-1967 implementation and beacon slots']}:{label:'Proxy indicators',status:storage.every(r=>r.ok)?'observed':'unknown',detail:storage.every(r=>r.ok)?'No nonzero EIP-1967 proxy slots were observed. Other proxy patterns and upgrade mechanisms have not been ruled out.':'Standard proxy-slot reads were incomplete.',evidence:['eth_getStorageAt: EIP-1967 implementation and beacon slots']});
    const control=await controlResearch(explorer?.status==='verified'?explorer:source,{address,client,blockNumber,protocol:research?.protocol,proxyDetected:!!clone||present.length>0});report.checks.push(control);
    if(control.profile==='pons-v2-fixed-supply'){const owner=report.checks.find(c=>c.label==='Reported owner');owner.status='observed';owner.detail='This matched token implementation has no owner role. Its immutable deployer is attribution data, not a controller. Factory and curve governance are outside this finding.';owner.evidence=['Matched Pons token source and dependencies','deployer() at report block'];}
    delete source.functions;
@@ -66,7 +67,7 @@ export async function inspectToken(address,{rpc,chainId=99901,client:provided,fe
   if(!report.checks.some(c=>c.label==='LP lock'))report.checks.push(unknown('LP lock','Not verified. I need evidence identifying the pool and the contract or position holding its liquidity. A token address or launchpad label alone cannot prove a lock.'));
   if(!report.checks.some(c=>c.label==='Can I sell?'))report.checks.push(unknown('Can I sell?','Not tested. No buy/sell simulation or current liquidity check has been performed.'));
   if(!report.protocol)report.checks.push(unknown('Holder concentration','Holder balances and the deployer identity are not verified in this report.'));
-  if(chainId===4663&&report.rawSupply){report.holders=await researchHolders(address,{client,blockNumber,decimals:report.decimals,rawSupply:report.rawSupply,protocol:report.protocol,fetchImpl,signal});}
+  if(chainId===4663&&report.rawSupply){report.holders=await researchHolders(address,{client,blockNumber,decimals:report.decimals,rawSupply:report.rawSupply,protocol:report.protocol,fetchImpl,signal});report.holders.behavior=await researchHolderBehavior({tokenAddress:address,tokenDecimals:report.decimals,rows:report.holders.rows,blockNumber:blockNumber.toString(),checkedAt:report.checkedAt,fetchImpl,signal});}
   const recheck=await client.getBlock({blockNumber});if(recheck.hash!==block.hash)throw Error('REORG');
   return report;
  }catch(error){
@@ -85,6 +86,20 @@ export function inspectionSummary(report,message=''){
  else if(/verified|verification|\bsc\b/i.test(message))selected=find('Source verification');
  else if(/sell|safe|honeypot/i.test(message))selected=find('Can I sell?');
  else if(/owner/i.test(message))selected=find('Reported owner');
+ else if(/holder behavior|wallet history|traded before|strong hands/i.test(message)){
+  const behavior=report.holders?.behavior,summary=behavior?.summary;
+  const clean=value=>String(value??'unavailable').replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/\s+/g,' ').slice(0,180);
+  const holders=Array.isArray(report.holders?.rows)?report.holders.rows:[],sample=holders.filter(row=>!row.infrastructure&&!row.sink).slice(0,3),holdings=sample.map(row=>{
+   const otherTokens=Array.isArray(row.otherTokens)?row.otherTokens.slice(0,2):[],other=otherTokens.length?otherTokens.map(token=>`${clean(token.symbol||token.address)} ${clean(token.balance)}${token.estimatedUsd?` (est. $${clean(token.estimatedUsd)})`:''}`).join('; '):'no indexed priced-token balance returned';
+   return `- ${clean(row.address)} (${clean(row.kind)}): ${clean(row.balance)} ${clean(report.symbol||'tokens')}; ${clean(row.sharePercent)}% of reported supply. Other-token snapshot: ${other}.`;
+  });
+  const historyRows=Array.isArray(behavior?.rows)?behavior.rows:[],trades=historyRows.flatMap(row=>(Array.isArray(row.recentSwaps)?row.recentSwaps:[]).filter(trade=>trade.classification==='two-sided swap candidate').map(trade=>({row,trade}))).slice(0,3),activity=trades.map(({row,trade})=>{
+   const legs=[...(Array.isArray(trade.tokenFlows)?trade.tokenFlows.slice(0,4).map(flow=>`${flow.direction} ${flow.amount} ${flow.symbol||flow.tokenAddress}`):[]),...(Array.isArray(trade.nativeFlows)?trade.nativeFlows.slice(0,2).map(flow=>`${flow.direction} ${flow.amount} ${flow.symbol||'ETH'}`):[])].map(clean).join('; ');
+   return `- ${clean(row.address)}: ${clean(trade.targetTokenAction)}; ${clean(trade.timestamp)}; ${legs||'asset legs unavailable'}; ${clean(trade.transactionUrl)}.`;
+  });
+  const lines=[`Holder-flow triage: ${behavior?.status||'unavailable'}. ${clean(summary?.holderSignal||behavior?.reason||'No holder-history signal was returned.')}`,`Suggested next step: ${clean(summary?.nextStep||'manual_review')}. Target-token swap candidates: ${clean(summary?.targetTokenBuyCandidates??'unknown')} buy / ${clean(summary?.targetTokenSellCandidates??'unknown')} sell across ${clean(summary?.walletsAnalyzed??0)} sampled addresses.`,'Current indexed top-holder candidates (not a complete holder census):',...(holdings.length?holdings:['- No eligible holder snapshot was available.']),'Recent decoded swap candidates in the bounded sample:',...(activity.length?activity:['- None observed here; this does not prove inactivity.']),'An address is not a person. Holdings and swaps are partial evidence; they do not show profitability, conviction or community quality. This is research triage, not a buy recommendation.'];
+  return lines.join('\n')+'\n\n'+report.network+' (chain '+report.chainId+'), block '+report.blockNumber+'. Transaction history is bounded and can omit activity.';
+ }
  else if(/holder|dev|deployer/i.test(message))selected=find('Holder concentration');
  else if(/mint|blacklist|pause/i.test(message))selected=find('Control functions');
  const code=find('Contract code');

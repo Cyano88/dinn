@@ -1,6 +1,6 @@
 ﻿# Dinn / NEAR Agent Market integration
 
-Verified 11 November 2026 against https://docs.market.near.ai/ and https://market.near.ai/llms.txt. These documents describe protocols; they do not authorize registering identities, posting, messaging, hiring or spending.
+Verified 12 November 2026 against https://docs.market.near.ai/ and https://market.near.ai/llms.txt. Protocol documentation does not authorize account actions; the account owner explicitly authorized the listing and paid test described here.
 
 ## Implemented foundation
 
@@ -8,9 +8,11 @@ The current public agent contract is `src/agent-access.mjs`, served by `server.m
 
 Implemented: Pons token research, balances on Robinhood/Base/Arbitrum, Pons launch options, same-chain swap quotes and Base/Arbitrum-to-Robinhood bridge quotes. All are read-only. Missing inputs and provider failures cannot become completed research. Research returns Markdown plus exact JSON evidence and a SHA-256 content hash. This hash is not a signature or payment receipt.
 
+The paid marketplace worker accepts two deterministic report routes: default `token.research` for Pons phase, curve, reference market and scoped fees; and `token.inspect` for Robinhood Chain (4663) reported supply, source matching, proxy/control indicators, Pons launch checks, a limited indexed holder/current portfolio snapshot, and bounded recent swap-like history for eligible holders when available. Inspection requests must include the exact lines `Service: token.inspect` and `Chain: 4663`, plus one contract address. Ambiguous inspection requests and unsupported chains are ignored. Holder-flow triage only routes research toward simulation, review or abstention; it is not a buy recommendation. Inspection does not claim a complete holder census, complete trade history, profitability, community quality, liquidity proof, LP-lock proof, sellability, or a safe-to-trade verdict.
+
 Legacy `src/agent-service.mjs` is retained for historical tests; it is not the active HTTP contract. Its Ascend services must not be advertised as current Dinn capabilities.
 
-The direct agent API is currently a free public preview. No marketplace listing, worker identity, price or real paid settlement is configured. Account input is a public query target, not authenticated wallet ownership. No personal drafts or signing permissions are exposed.
+The direct agent API is a free public preview. The separate paid listing is live at [market.near.ai/a/dinn](https://market.near.ai/a/dinn), priced at $0.10 per hire. Account input is a public query target, not authenticated wallet ownership. No personal drafts or signing permissions are exposed.
 
 ## Local agent-client verification (11 November 2026)
 
@@ -24,46 +26,56 @@ The feature branch is deployed as a separate Render Free web service at https://
 
 A separate HTTP client fetched discovery and schema over public HTTPS and repeated all five requests above. Discovery, schema and service requests returned HTTP 200; each service response was `completed` and had a matching evidence SHA-256. All read-only responses kept `broadcast: false` and `charged: false`. The research response was for Kyron (KYRON) at block `111967699` and included a Markdown deliverable.
 
-This proves the public API path from a separate client, not integration with an independent agent runtime. The staging deployment is still on commit `46f22d90101e4bc1e7d1439c1f0636747fa03869`; it predates the local worker fix for private A2A instant hires. Agent Market still has no Dinn listing or paid assignment, and acceptance or owner payout has not been exercised.
+This proves the public API path from a separate client, not integration with an independent agent runtime. The staging deployment is still on commit `46f22d90101e4bc1e7d1439c1f0636747fa03869`; it predates the local worker fix for private A2A instant hires. The production Agent Market listing and paid worker are covered separately below.
 
-## First proposed paid deliverable
+## Paid deliverable scope
 
 A live report for one supported Pons v2 token on Robinhood Chain: launch phase, bonding progress when available, reference market metrics, and fees explicitly scoped to the requested wallet or labelled creator recipient. Include source address, chain block/time, machine-readable evidence and unavailable fields. Do not sell it as a contract audit, proof of liquidity/sellability, lifetime earnings report or executed transaction.
 
-## Worker foundation implemented
+## Worker implementation and operations
 
 `src/near-market-client.mjs`, `src/near-worker-store.mjs`, and `src/near-worker.mjs` implement the self-hosted worker against the current marketplace REST contract. PostgreSQL stores assignment leases, exact prepared deliverables and an event trail. It polls every 45 seconds for recovery.
 
 The current A2A per-call flow also requires a public HTTPS webhook. `POST /api/near-market/webhook` verifies the raw-body HMAC signature, timestamp and delivery id, then emits a PostgreSQL notification. The VPS worker listens for that notification and immediately re-reads the assignment through the authenticated REST API; it never trusts webhook text as instructions. Polling remains the recovery path if a webhook is missed or PostgreSQL notifications disconnect. The webhook secret belongs only on the Render app. The VPS has no inbound port and holds the `aat_` token.
 
-The worker is disabled unless `NEAR_WORKER_ENABLED=true`, `DATABASE_URL`, `NEAR_AGENT_ID`, a server-side `NEAR_AGENT_TOKEN`, and owner-chosen `NEAR_WORKER_ESCROW_TOKEN` (`USD` or `USDC`) plus `NEAR_WORKER_MIN_ESCROW` are configured. Assignments below the configured minimum or in another currency are ignored. Never put the token in the browser or repository. No HTTP endpoint exposes it. There is no local marketplace credential or registered ID, so the worker is currently off.
+At install time, the worker requires `NEAR_WORKER_ENABLED=true`, `DATABASE_URL`, `NEAR_AGENT_ID`, a server-side `NEAR_AGENT_TOKEN`, and owner-chosen `NEAR_WORKER_ESCROW_TOKEN` (`USD` or `USDC`) plus `NEAR_WORKER_MIN_ESCROW`. Assignments below the configured minimum or in another currency are ignored. Never put the token in the browser or repository. No HTTP endpoint exposes it. Current production status is recorded below; do not copy credentials or account identifiers into public documentation.
 
-For isolated VPS operation, scripts/near-worker.mjs starts the worker without Dinn's HTTP server. The separate service account, systemd unit, database migration, and least-privilege role setup are documented in [ops/near-worker/README.md](../ops/near-worker/README.md). The VPS deployment remains inactive until the registered agent credentials and Dinn database access are securely provisioned.
+For isolated VPS operation, scripts/near-worker.mjs starts the worker without Dinn's HTTP server. The separate service account, systemd unit, database migration, and least-privilege role setup are documented in [ops/near-worker/README.md](../ops/near-worker/README.md). The current deployment uses the dedicated Dinn worker service on the Pocket NFT Signer VPS and the Dinn PostgreSQL database hosted by Render.
 
-For safety, automatic delivery only recognizes a non-test research hire with title exactly `Dinn`, no attachments, one explicit token address, sufficient escrow in the configured currency, and a known marketplace origin: public `standard` jobs, private `instant` hires through the marketplace, or private `instant` A2A hires (`origin: a2a`). It rejects competitions, other private jobs and unknown origins. For A2A calls, it reads the address from the job brief and, when present, the untruncated buyer's direct message; ambiguous, attached or truncated briefs are rejected. It binds the worker ID, job ID and assignment ID, starts the assignment, waits briefly for the marketplace's award/funding race, refreshes the assignment, creates and persists the evidence report, then refreshes status again before submitting. It leaves rework untouched.
+For safety, automatic delivery only recognizes a non-test research hire with a matching bounded title, no attachments, one explicit token address, sufficient escrow in the configured currency, and a known marketplace origin: public `standard` jobs, private `instant` hires through the marketplace, or private `instant` A2A hires (`origin: a2a`). It rejects competitions, other private jobs and unknown origins. `token.research` is the default unless the request explicitly names another service; inspection intent without the `token.inspect` and chain lines is rejected. For A2A calls, it reads the address from the job brief and, when present, the untruncated buyer's direct message; ambiguous, attached or truncated briefs are rejected. It binds the worker ID, job ID and assignment ID, starts the assignment, waits briefly for the marketplace's award/funding race, refreshes the assignment, creates and persists the evidence report, then refreshes status again before submitting. It leaves rework untouched.
 
 A submit timeout is recoverable: the exact report is stored before submission; retrying identical Markdown is idempotent per the marketplace contract. Later polls reconcile submitted deliverable bytes against the saved report. `accepted` is recorded as `accepted-payout-pending`; the worker never claims that accepted means funds reached the owner's wallet. Cancellation and dispute resolution are recorded separately. The worker does not bid, message buyers, attach/download files, or handle competitions.
 
-This is an executable local foundation, not a listed or paid integration. The A2A compatibility path is locally covered by six focused worker tests, but has not yet been deployed or exercised against an actual A2A hire. Marketplace docs note an assignment may briefly appear before escrow funding completes; start is followed by a delay and state recheck, but the `aat_` token does not expose the owner's wallet or a separate escrow ledger proof. A real paid demonstration and confirmation of settlement to the owner remain required.
+The worker only handles non-test, funded research hires under the routes and bounds above. Marketplace docs note an assignment may briefly appear before escrow funding completes; start is followed by a delay and state recheck. The `aat_` token does not expose the owner's wallet or a separate escrow ledger proof. Acceptance and marketplace release are separate from withdrawing funds to an external wallet.
 
-## Proposed Agent Market listing copy
+## Live listing and paid verification (12 November 2026)
 
-**Name:** Dinn
+Dinn is publicly listed at [market.near.ai/a/dinn](https://market.near.ai/a/dinn) for $0.10 per hire, with a 10-minute stated SLA. The self-hosted worker is active on the VPS and reads assignment state from the Render PostgreSQL database. The Render webhook notifies the worker; polling remains the recovery path. Keep all credentials, private account identifiers and buyer-specific job references out of public docs.
 
-**Description:** Get a current, evidence-backed report for one Pons v2 token on Robinhood Chain. The report covers launch phase, bonding progress where available, reference market data and fee balances with their wallet scope clearly stated. It includes the checked chain block and source links. It is not a security audit or investment recommendation. For A2A calls, include exactly one Robinhood token contract address in the request text. For a standard marketplace job, use the title `Dinn` and include exactly one token contract address in the job description. No wallet connection or transaction is needed.
+A second account controlled by the same user hired Dinn for $0.10 USDC using the exact `token.inspect` format and a Robinhood Chain token address. The worker delivered the report in 11 seconds. The report included reported total supply, contract/source and control findings, Pons curve and fee context, indexed holder candidates and portfolio lookup gaps. Missing checks were marked unknown; the report did not certify safety or guarantee a sale. The buyer accepted it, and the marketplace recorded the job as completed with payment released. The seller dashboard then showed $0.19 lifetime earnings across two hires. Its USDC balance also includes other marketplace funds; no withdrawal to an external wallet was performed or verified.
 
-**Suggested handle:** `dinn-pons-token-research` (the public lookup currently returns not found; registration is the final availability check).
+This verifies the deployed paid listing → funded assignment → report delivery → buyer acceptance → marketplace payment release path. Since the buyer account is controlled by the same user, it does not establish independent customer demand or external-agent interoperability. A separately hosted autonomous agent and a wallet withdrawal remain unverified.
 
-The marketplace's current A2A setup requires a live `per_call` pricing plan marked as default before the agent can go live. The plan price is USD and callers pay 1:1 in USDC through x402; the published platform fee is currently 5% of completed jobs. At the proposed `$0.10` price, the current platform fee is `$0.005`, leaving `$0.095` before any other applicable payout effects. A2A private instant hires arrive with `origin: a2a`. The worker must be configured for USDC and a `$0.10` minimum escrow for this x402 route. The price is the user's latest input; handle, delivery SLA and listing refund policy still need owner decisions. See the [A2A/x402 flow](https://market.near.ai/skill/flows/a2a-x402.md) and [standardized job terms](https://market.near.ai/job-terms).
+## Reference consumer-agent demonstration
+
+`node scripts/dinn-trading-agent-demo.mjs <token-address>` is a deterministic downstream-agent example. It calls the free read-only agent endpoint, verifies the evidence SHA-256 and checked token/chain snapshot, then independently recomputes target-token buy and sell flow from row-level sampled transactions. Missing, duplicate or unresolved contract checks and incomplete holder histories cause review; adverse flow across at least two sampled holders causes abstention; positive flow across at least three distinct sampled holders only proceeds to simulation. It never submits a trade or connects a wallet. Point `DINN_AGENT_URL` at the local or hosted Dinn build that includes the holder-history extension. This is a reproducible client demonstration, not an independent user, agent, or customer.
+
+## Agent Market listing
+
+**Name:** Dinn Labs
+
+**Public listing:** [market.near.ai/a/dinn](https://market.near.ai/a/dinn), live at $0.10 per hire with a 10-minute stated SLA.
+
+**Description:** Get a current, evidence-backed report for one token on Robinhood Chain. Default research covers Pons v2 launch phase, bonding progress, reference market data and scoped fee balances. For deeper contract inspection, put `Service: token.inspect` and `Chain: 4663` on separate lines with one token address. Inspection can include reported total supply, runtime-matched source status, proxy and control indicators, Pons launch checks, a limited indexed top-holder snapshot with selected current other-token balances, and bounded recent swap-like activity for up to five eligible holders. The holder-flow triage can suggest continuing to simulation, pausing for review or manual review; it does not recommend a buy. Holder results can omit wallets, histories can omit trades, and portfolio values are estimates. This is not a security audit, complete holder census, profitability assessment, guaranteed sellability check or safe-to-trade verdict. No wallet connection or transaction is needed. Unsupported or ambiguous requests are declined before research.
+
+The worker accepts supported funded hires in USDC, including private instant A2A hires (`origin: a2a`). The marketplace controls its fee schedule and payout mechanics; check the live listing and payout pages before quoting net proceeds or withdrawal timing. See the [A2A/x402 flow](https://market.near.ai/skill/flows/a2a-x402.md) and [standardized job terms](https://market.near.ai/job-terms).
 
 ## Remaining marketplace work
 
-1. The account owner registers Dinn in the Agent Market web app with the chosen immutable handle, name `Dinn`, and Research category. Registration mints an `aat_` token shown once; store it directly in the VPS environment, never in the repository or chat.
-2. Create a live default `per_call` plan with the owner-approved USD price and SLA, then publish the listing. The marketplace hosts the A2A card and x402 endpoint; Dinn's direct JSON API is not that endpoint.
-3. Configure the worker with isolated PostgreSQL storage, agent ID, `aat_` token, the approved minimum escrow and `USDC` for x402. It remains off until all settings are present.
-4. Exercise an actual A2A hire. Confirm the private instant assignment is handled once, the report matches its stored evidence, and the marketplace records delivery.
-5. Confirm payment settlement separately from delivery in the owner's marketplace account. Also observe cancellation and an ambiguous submission response. The worker intentionally does not auto-handle request-changes rework.
-6. Only then advertise the listing and paid workflow.
+1. Test requests from a genuinely independent agent or buyer, keeping that separate from the completed self-controlled flow test.
+2. Exercise cancellation, request-changes/rework, and an ambiguous submission response. The worker intentionally does not auto-handle request-changes rework.
+3. Verify a withdrawal from the seller marketplace balance to an external wallet if that payout path is needed. The accepted job is recorded as payment released; no wallet withdrawal was tested.
+4. Continue monitoring the VPS worker and Render PostgreSQL/webhook path. Keep private credentials server-side and rotate any secret exposed outside the approved private configuration channel.
 
 ## Hackathon scope
 

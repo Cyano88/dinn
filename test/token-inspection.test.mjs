@@ -11,7 +11,8 @@ test('reads at one block, checks chain, matches source bytecode, and never assum
  assert.equal(r.blockNumber,'123');assert.equal(r.checks.find(c=>c.label==='Total supply (TS)').value,'1000000000');
  assert.equal(r.checks.find(c=>c.label==='Source verification').status,'verified');
  assert.equal(r.checks.find(c=>c.label==='Control functions').status,'attention');
- for(const label of ['LP lock','Can I sell?','Holder concentration','Proxy indicators'])assert.equal(r.checks.find(c=>c.label===label).status,'unknown');
+ for(const label of ['LP lock','Can I sell?','Holder concentration'])assert.equal(r.checks.find(c=>c.label===label).status,'unknown');
+ assert.equal(r.checks.find(c=>c.label==='Proxy indicators').status,'observed');assert.match(r.checks.find(c=>c.label==='Proxy indicators').detail,/Other proxy patterns/);
  for(const [method,args]of client.calls.filter(([m])=>m!=='block'))assert.equal(args.blockNumber,123n,method);
  assert.match(inspectionSummary(r,'is lp locked?'),/Not verified/);
 });
@@ -57,4 +58,10 @@ test('network requests and missing addresses cannot trigger arbitrary or wrong-n
  });
 
 test('minimal proxies are reported without assuming an empty EIP-1967 slot rules them out',async()=>{const client=fixture();client.getCode=async()=> '0x363d3d373d3d3d363d73'+address.slice(2)+'5af43d82803e903d91602b57fd5bf3';const r=await inspectToken(address,{chainId:99801,client,fetchImpl:async()=>new Response('',{status:404})});assert.equal(r.implementationAddress,address);assert.match(r.checks.find(c=>c.label==='Proxy indicators').detail,/ERC-1167/);assert.equal(r.checks.find(c=>c.label==='Source verification').status,'unknown');});
+test('holder behavior chat shows bounded current holdings and linked swap evidence without labelling people',()=>{
+ const wallet='0x'+'3'.repeat(40),transaction='https://robinhoodchain.blockscout.com/tx/'+'a'.repeat(64);
+ const report={network:'Robinhood Chain',chainId:4663,blockNumber:'123',checkedAt:'2026-11-12T12:00:00Z',symbol:'TOK',checks:[],holders:{rows:[{address:wallet,kind:'Address without deployed code',balance:'10',sharePercent:'1.25',otherTokens:[{address:'0x'+'4'.repeat(40),symbol:'ALT',balance:'2',estimatedUsd:'3'}]}],behavior:{status:'available',summary:{holderSignal:'mixed or low-coverage target-token activity',nextStep:'manual_review',targetTokenBuyCandidates:1,targetTokenSellCandidates:0,walletsAnalyzed:1},rows:[{address:wallet,status:'available',recentSwaps:[{classification:'two-sided swap candidate',targetTokenAction:'target-token buy candidate',timestamp:'2026-11-12T11:00:00Z',transactionUrl:transaction,tokenFlows:[{direction:'in',amount:'1',symbol:'TOK',tokenAddress:'0x'+'5'.repeat(40)}],nativeFlows:[{direction:'out',amount:'0.1',symbol:'ETH'}]}]}]}}};
+ const message=inspectionSummary(report,'show what holders hold or traded before');
+ assert.match(message,/ALT 2 \(est\. \$3\)/);assert.match(message,/target-token buy candidate/);assert.ok(message.includes(transaction));assert.match(message,/An address is not a person/);assert.match(message,/research triage, not a buy recommendation/);
+});
 test('Robinhood stale snapshots are rejected before token reads',async()=>{const client=fixture();client.getChainId=async()=>4663;client.getBlock=async()=>({number:123n,hash,timestamp:1n});await assert.rejects(inspectToken(address,{chainId:4663,client}),/stale/);assert.equal(client.calls.length,0);});

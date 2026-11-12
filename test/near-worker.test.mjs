@@ -8,13 +8,13 @@ const jobId='33333333-3333-4333-8333-333333333333';
 const tokenAddress='0x32d5ee0142db8769d954a7c2521e76ca3241fb32';
 const options={minimumEscrow:'1.00',escrowToken:'USDC'};
 
-function fixture({origin=null,isPrivate=false,jobKind='standard',description=`Research ${tokenAddress}`,latestMessage=null,...overrides}={}){
+function fixture({origin=null,isPrivate=false,jobKind='standard',title='Dinn',description=`Research ${tokenAddress}`,latestMessage=null,...overrides}={}){
  const row={
   assignment:{assignmentId,jobId,workerAgentId:agentId,status:'in_progress',deliverableUrl:null,submittedAt:null,escrowAmount:'1.000000000000',escrowToken:'USDC'},
-  job:{jobId,title:'Dinn',description,tags:[],jobKind,status:'in_progress',attachments:[]},
+  job:{jobId,title,description,tags:[],jobKind,status:'in_progress',attachments:[]},
   latestMessage
  };
- const fullJob={jobId,title:'Dinn',description,status:'in_progress',jobKind,isPrivate,isTestRun:false,origin};
+ const fullJob={jobId,title,description,status:'in_progress',jobKind,isPrivate,isTestRun:false,origin};
  for(const [key,value] of Object.entries(overrides)){
   if(key==='assignment')Object.assign(row.assignment,value);
   else if(key==='brief')Object.assign(row.job,value);
@@ -26,18 +26,33 @@ function fixture({origin=null,isPrivate=false,jobKind='standard',description=`Re
 
 test('accepts a supported public standard research job',()=>{
  const {row,fullJob}=fixture();
- assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{address:tokenAddress});
+ assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'token.research',address:tokenAddress});
 });
 
 test('accepts a private marketplace instant hire',()=>{
- const {row,fullJob}=fixture({jobKind:'instant',isPrivate:true});
- assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{address:tokenAddress});
+ const {row,fullJob}=fixture({jobKind:'instant',isPrivate:true,title:'Hire: Dinn Labs'});
+ assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'token.research',address:tokenAddress});
 });
 
 test('accepts a private A2A instant hire and reads its buyer brief',()=>{
  const message={senderSide:'buyer',origin:'direct',body:`Please research ${tokenAddress}`,truncated:false,attachments:[]};
  const {row,fullJob}=fixture({origin:'a2a',isPrivate:true,jobKind:'instant',description:'On-chain token report',latestMessage:message});
- assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{address:tokenAddress});
+ assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'token.research',address:tokenAddress});
+});
+
+test('routes explicit Robinhood token inspections to the inspection service',()=>{
+ const {row,fullJob}=fixture({description:`Service: token.inspect\nChain: 4663\nToken: ${tokenAddress}`});
+ assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'token.inspect',address:tokenAddress,chainId:4663});
+});
+
+test('rejects ambiguous inspection requests, unknown services, and unsupported inspection chains',()=>{
+ const requests=[
+  fixture({description:`Inspect holders and contract controls for ${tokenAddress}`}),
+  fixture({description:`Service: token.other\nChain: 4663\nToken: ${tokenAddress}`}),
+  fixture({description:`Service: token.inspect\nChain: 99901\nToken: ${tokenAddress}`}),
+  fixture({description:`Service: token.inspect\nToken: ${tokenAddress}`})
+ ];
+ for(const {row,fullJob} of requests)assert.equal(eligibleNearResearchJob(row,fullJob,agentId,options),null);
 });
 
 test('rejects unrelated private standard jobs and unknown job origins',()=>{

@@ -5,6 +5,7 @@ Discover `/.well-known/dinn.json` and `/api/agent/schema`. The old `/.well-known
 ## Current read-only services
 
 - `token.research`: `{address,account?}`. Supported Pons v2 token research on Robinhood Chain (4663): phase, bonding metrics, market references and fee balances. `account` is the fee-viewing query address, not an authenticated owner. When omitted, fees are queried for the current creator fee recipient and labelled accordingly.
+- `token.inspect`: `{address,chainId}`. Read-only Robinhood Chain (4663) inspection: reported supply, source matching, proxy and contract-control indicators, Pons launch checks, indexed top holders, current other-token balances, and bounded recent swap-like activity for eligible holders when available. Wallet history covers at most five externally owned addresses among the top 10 indexed candidates and the latest 30 days of bounded outgoing transactions. A swap candidate requires a successful decoded swap-like method and observed incoming and outgoing asset legs; legs may be ERC-20 transfers or native ETH transaction data. Undecoded calls and explorer limits can hide activity. This evidence does not establish profitability, conviction or community quality. Holder-flow triage can suggest continue-to-simulation, pause-for-review or manual review. It is not a buy recommendation, security audit or safe-to-trade verdict.
 - `wallet.balances`: `{account,chainId}`. Chain 4663, Base 8453 or Arbitrum 42161. Unavailable data remains unavailable, never zero.
 - `launch.options`: `{account?}`. Current enabled Pons launch terms.
 - `swap.quote`: `{account,chainId,asset,outputAsset,amount}`. Same-network quotes. Base and Arbitrum allow only ETH, USDC and USDT on both sides; Robinhood routes depend on live liquidity.
@@ -26,7 +27,7 @@ Legacy `plan` and `pons.brief` responses remain available with their existing re
 
 ## NEAR Agent Market
 
-Not listed or connected yet. The direct endpoint is a free public preview. A self-hosted paid worker is implemented but remains disabled until the account owner registers the agent and configures its server-side credentials. The marketplace hosts the A2A card and x402 endpoint; this direct JSON API is not that endpoint. Marketplace payment never authorizes use of a buyer's token wallet. Do not invent an agent handle, price, listing, paid result or hosted A2A endpoint.
+The direct endpoint is a free public preview. Dinn's separate paid listing is live at [market.near.ai/a/dinn](https://market.near.ai/a/dinn), and its self-hosted worker processes funded, supported research hires. The marketplace hosts the A2A card and x402 endpoint; this direct JSON API is not that endpoint. Marketplace payment never authorizes use of a buyer's token wallet.
 
 ## Human wallet actions
 
@@ -35,4 +36,4 @@ The Dinn application separately offers Pons launch review, simulation and explic
 
 ## Marketplace worker status
 
-A self-hosted NEAR Agent Market worker is implemented but disabled until Dinn has an owner-created marketplace listing and credentials. It only processes non-test Pons research hires with exact title `Dinn`, a single token address and sufficient escrow in the configured currency. Supported sources are public standard jobs, private instant marketplace hires and private instant A2A hires. Other private jobs, competitions and ambiguous or incomplete A2A briefs are ignored. It stores recovery state in PostgreSQL. Acceptance is reported as payout pending; it is not proof of payment to the owner. See `docs/NEAR-MARKETPLACE.md` in the repository for deployment setup and remaining live proof.
+A self-hosted NEAR Agent Market worker processes non-test, funded research hires from public standard jobs, private instant hires and private instant A2A hires. Include one token address. Pons market and fee research is the default. For broader inspection, include the exact lines `Service: token.inspect` and `Chain: 4663`; unsupported or ambiguous requests are ignored. Holder and portfolio data can be unavailable or partial. The report never claims a token is safe to trade. The worker stores recovery state in PostgreSQL. Acceptance records marketplace payment release; it does not establish a withdrawal to an external wallet. See `docs/NEAR-MARKETPLACE.md` for the accepted request format and operational limits.
