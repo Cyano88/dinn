@@ -194,7 +194,7 @@ function showAuthBootstrapRecovery(message='Sign-in could not finish loading. Re
  const host=$('embedded-auth'),note=document.createElement('p'),retry=document.createElement('button');note.className='auth-error';note.setAttribute('role','alert');note.textContent=message;retry.type='button';retry.className='social-login';retry.textContent='Retry sign-in';retry.onclick=()=>location.reload();host.replaceChildren(note,retry);
 }
 
-window.addEventListener('launchflow:auth',e=>{const d=e.detail;if(d.state==='loading'&&authBootstrapExpired)return;if(d.state!=='loading'){authBootstrapExpired=false;if(authBootstrapTimer){clearTimeout(authBootstrapTimer);authBootstrapTimer=null;}}const nextUser=d.authenticated?(d.userId||d.address):null;
+window.addEventListener('launchflow:auth',e=>{const d=e.detail;if(d.state==='loading'&&authBootstrapExpired)return;const nextUser=d.authenticated?(d.userId||d.address):null;
 // Wallet/provider refreshes are not account changes: preserve the current chat and stage.
 if(user&&((nextUser===user)||d.state==='loading'&&!nextUser)){
  if(d.state==='loading')return;
@@ -205,6 +205,7 @@ if(user&&((nextUser===user)||d.state==='loading'&&!nextUser)){
   $('wallet-address').textContent=account||'Choose your launch wallet.';$('wallet-balance').textContent=' - ETH';walletUI?.changed();return;
  }
 }
+if(d.state!=='loading'){authBootstrapExpired=false;if(authBootstrapTimer){clearTimeout(authBootstrapTimer);authBootstrapTimer=null;}}
 feeClaims?.reset();if(nextUser===user&&d.state==='connected'&&d.address===account&&d.provider===provider)return;showLaunchStage(null,false);if(!$('pons-review-dialog').hidden)showLaunchStage(null);epoch++;launchBusy=false;logoCreator.reset();controller?.abort();launchActivity.stop();selectedToken=null;confirmedLaunchWallet=null;account=d.address||null;provider=d.provider||null;invalidateLaunch();user=d.authenticated?(d.userId||account):null;const loading=d.state==='loading';$('session-loading').hidden=!loading;$('auth-gate').hidden=loading||!!user;$('workspace').hidden=loading||!user;$('workspace').inert=loading||!user;history=[];$('messages').replaceChildren();for(const id of ['feedback','brief-status','pons-status','wallet-status'])$(id).textContent='';$('wallet-address').textContent=account||'Your wallet is getting ready.';$('wallet-balance').textContent=' -  ETH';if(user){restore();restoreLaunch();restoreSettings();if(account){let prior;try{prior=JSON.parse(read('last-deployer'));}catch{}const recipient=$('launch-recipient');if(prior&&recipient.value.toLowerCase()===prior.toLowerCase()){recipient.value=account;saveSettings();}save('last-deployer',account);}renderTokenSummary();renderSetupChoices();restoreLaunchConversation();}else {brief={};awaiting=null;syncBrief();}if(!user)for(const f of ['name','symbol','description'])$('brief-'+f).value='';draftSync.start(user);walletUI?.changed();});
 
 ﻿let reviewed=null,prepared=null,launchBusy=false,launchRevision=0;
