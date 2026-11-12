@@ -2,7 +2,6 @@ import {createNearMarketClient,uuid} from './near-market-client.mjs';
 import {agentAccessRequest} from './agent-access.mjs';
 
 const TOKEN_RE=/0x[0-9a-fA-F]{40}/g;
-const INSPECTION_INTENT=/\b(?:inspect(?:ion)?|security check|safe to trade|sellability|honeypot|top holders?|holder concentration|holder behavior|wallet history|traded before|strong hands|other tokens they hold|source verification|contract controls?|proxy indicators|total supply|token supply|lp lock|liquidity lock)\b/i;
 
 function escrowUnits(value){if(typeof value!=='string'||!/^\d+(?:\.\d{1,12})?$/.test(value))return null;const [whole,fraction='']=value.split('.');return BigInt(whole)*10n**12n+BigInt((fraction+'0'.repeat(12)).slice(0,12));}
 function supportedResearchJobSurface(brief,job){
@@ -24,7 +23,6 @@ function requestedResearchInput(row,job){
  if(/^\s*service\s*:/im.test(text)&&!serviceLines.length)return null;
  const services=[...new Set(serviceLines)];if(services.length>1||services.some(value=>!['token.research','token.inspect'].includes(value)))return null;
  const service=services[0]||'token.research';
- if(service==='token.research'&&INSPECTION_INTENT.test(text.replace(/^\s*(?:service|chain)\s*:[^\r\n]*$/gim,'')))return null;
  if(service==='token.inspect'){
   const chainLines=[...text.matchAll(/^\s*chain\s*:\s*(\d+)\s*$/gim)].map(match=>Number(match[1]));
   if(/^\s*chain\s*:/im.test(text)&&!chainLines.length)return null;

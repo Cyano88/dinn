@@ -4,6 +4,7 @@
 !.env.example
 *.log
 .playwright-cli/
+.playwright/
 output/playwright/
 public/auth/
 public/execution/

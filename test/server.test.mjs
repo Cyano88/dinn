@@ -54,6 +54,6 @@ test('legacy testnet flags cannot change Pons network or unpause Elysium routes'
   assert.equal(status.broadcastEnabled,true);assert.equal(status.rpcConfigured,true);assert.equal(status.onboardingOnly,false);assert.equal(status.authChainId,4663);
   const auth=await(await fetch(root+'/api/auth/config')).json();
   assert.equal(auth.enabled,true);assert.equal(auth.chainId,4663);assert.equal(auth.testnet,false);
-  assert.ok(!JSON.stringify({status,auth}).includes('SECRET'));assert.equal((await fetch(root+'/api/launch/preflight',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,410);
+  assert.ok(!JSON.stringify({status,auth}).includes('SECRET'));assert.equal((await fetch(root+'/api/launch/preflight',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,410);assert.equal((await fetch(root+'/api/launch/preflight',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,410);
  }finally{child.kill();await once(child,'exit');}
 });

@@ -34,3 +34,5 @@ test('yes selects only the explicitly offered live supply, preserving other sett
  const noHistory=await manageLaunchDraft({operation:'inspect'},{...c,history:[]},d);assert.equal(noHistory.launchDraft.settings.configId,undefined);
  const removed=await manageLaunchDraft({operation:'inspect'},c,{...d,readiness:async()=>({configs:[],maxCreatorTaxBps:1000})});assert.equal(removed.launchDraft.settings.configId,undefined);
 });
+
+test('production tool dispatcher accepts structured draft updates',async()=>{const r=await executeProductTool('manage_launch_draft',update('name','Orbit'),{...base,message:'Orbit',ponsSetup:{active:true,field:'name'}},deps);assert.equal(r.launchDraft.brief.name,'Orbit');});

@@ -45,9 +45,14 @@ test('routes explicit Robinhood token inspections to the inspection service',()=
  assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'token.inspect',address:tokenAddress,chainId:4663});
 });
 
+test('holder, lock, activity and age questions need no service selectors',()=>{
+ const {row,fullJob}=fixture({description:`Show holder buys and sells, token age, and PinkLock vesting for ${tokenAddress}`});
+ assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'token.research',address:tokenAddress});
+});
+
 test('rejects ambiguous inspection requests, unknown services, and unsupported inspection chains',()=>{
  const requests=[
-  fixture({description:`Inspect holders and contract controls for ${tokenAddress}`}),
+  fixture({description:`Inspect holders and contract controls for ${tokenAddress} and 0x${'9'.repeat(40)}`}),
   fixture({description:`Service: token.other\nChain: 4663\nToken: ${tokenAddress}`}),
   fixture({description:`Service: token.inspect\nChain: 99901\nToken: ${tokenAddress}`}),
   fixture({description:`Service: token.inspect\nToken: ${tokenAddress}`})

@@ -6,7 +6,7 @@ if [[ "$#" -ne 0 || "$EUID" -ne 0 ]]; then
   exit 2
 fi
 
-readonly stage=/home/pocket/.dinn-near-stage
+readonly stage=/root/.dinn-near-stage
 readonly archive="$stage/dinn-near-worker.tar.gz"
 readonly env_source="$stage/worker.env"
 readonly sudoers=/etc/sudoers.d/99-dinn-worker-stage
@@ -29,8 +29,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-[[ -d "$stage" && "$(stat -c '%a' "$stage")" == "700" ]]
+[[ -d "$stage" && "$(stat -c '%a' "$stage")" == "700" && "$(stat -c '%u:%g' "$stage")" == "0:0" ]]
 [[ -f "$archive" && -f "$env_source" && -d "$app" ]]
+[[ "$(stat -c '%a:%u:%g' "$env_source")" == "600:0:0" ]]
 grep -qx 'NEAR_WORKER_ENABLED=false' "$env_source"
 grep -Eq '^DATABASE_URL=postgresql://dinn_near_worker:[^@]+@dpg-dbq3uol6e07s73c2ht0g-a[.]oregon-postgres[.]render[.]com:5432/dinn[?]sslmode=require$' "$env_source"
 [[ "$(systemctl show -p ActiveState --value dinn-near-worker.service)" == inactive ]]

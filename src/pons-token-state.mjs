@@ -16,7 +16,9 @@ export function curveMetrics({quoteReserve,tokenReserve,raised,threshold,supply,
 }
 export async function feeContext(input,o={}){
  if(!address(input?.address)||input.account!==undefined&&!address(input.account))throw Error('Provide a token address and a valid wallet address.');
- const c=getClient(o),b=await snapshot(c,o.now),blockNumber=b.number;
+ const c=getClient(o),head=await snapshot(c,o.now);let b=head;
+ if(o.blockNumber!==undefined){const requested=BigInt(o.blockNumber);if(requested>head.number)throw Error('Requested report block is newer than the chain head.');b=await c.getBlock({blockNumber:requested});if(!b?.hash||!b.timestamp||Math.abs((o.now||Date.now)()-Number(b.timestamp)*1000)>120000)throw Error('Requested research snapshot is stale. Check again.');}
+ const blockNumber=b.number;
  const read=(to,abi,functionName,args=[])=>c.readContract({address:to,abi,functionName,args,blockNumber});
  const code=await c.getCode({address:PONS_FACTORY,blockNumber});if(!code||keccak256(code)!==factoryCodeHash)throw Error('Pons deployment could not be verified.');
  const launch=await read(PONS_FACTORY,factoryAbi,'getLaunchedToken',[input.address]);

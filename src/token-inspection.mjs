@@ -2,6 +2,8 @@ import {attachVerifiedArtifact,controlResearch} from './token-controls.mjs';
 import {researchHolders} from './holder-research.mjs';
 import {researchHolderBehavior} from './holder-behavior.mjs';
 import {researchPonsToken,explorerSource} from './token-research.mjs';
+import {researchPonsHistory} from './pons-history.mjs';
+import {researchPinkLocks} from './pinklock-research.mjs';
 import {createPublicClient,http,parseAbi,formatUnits,isAddress,zeroAddress} from 'viem';
 const abi=parseAbi(['function name() view returns (string)','function symbol() view returns (string)','function decimals() view returns (uint8)','function totalSupply() view returns (uint256)','function owner() view returns (address)']);
 const slots={implementation:'0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc',beacon:'0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50'};
@@ -30,7 +32,7 @@ export async function inspectToken(address,{rpc,chainId=99901,client:provided,fe
   const block=await client.getBlock();if(!block.hash||block.number===null)throw Error('MISSING_BLOCK');
   if(chainId===4663&&(!block.timestamp||Math.abs(Date.now()-Number(block.timestamp)*1000)>120000))throw Error('STALE_BLOCK');
   const blockNumber=block.number;
-  const report={address:address.toLowerCase(),chainId,network:chainId===4663?'Robinhood Chain':chainId===99801?'Elysium testnet':'Elysium mainnet',blockNumber:blockNumber.toString(),blockHash:block.hash,checkedAt:new Date().toISOString(),checks:[]};
+  const report={address:address.toLowerCase(),chainId,network:chainId===4663?'Robinhood Chain':chainId===99801?'Elysium testnet':'Elysium mainnet',blockNumber:blockNumber.toString(),blockHash:block.hash,checkedAt:Number.isFinite(Number(block.timestamp))?new Date(Number(block.timestamp)*1000).toISOString():new Date().toISOString(),checks:[]};
   const code=await client.getCode({address,blockNumber});
   if(!code||code==='0x'){
    report.checks.push({label:'Contract code',status:'not-found',detail:'No contract was found on this network at the checked block. Is this token on another network?',evidence:['eth_getCode']});
@@ -67,7 +69,22 @@ export async function inspectToken(address,{rpc,chainId=99901,client:provided,fe
   if(!report.checks.some(c=>c.label==='LP lock'))report.checks.push(unknown('LP lock','Not verified. I need evidence identifying the pool and the contract or position holding its liquidity. A token address or launchpad label alone cannot prove a lock.'));
   if(!report.checks.some(c=>c.label==='Can I sell?'))report.checks.push(unknown('Can I sell?','Not tested. No buy/sell simulation or current liquidity check has been performed.'));
   if(!report.protocol)report.checks.push(unknown('Holder concentration','Holder balances and the deployer identity are not verified in this report.'));
-  if(chainId===4663&&report.rawSupply){report.holders=await researchHolders(address,{client,blockNumber,decimals:report.decimals,rawSupply:report.rawSupply,protocol:report.protocol,fetchImpl,signal});report.holders.behavior=await researchHolderBehavior({tokenAddress:address,tokenDecimals:report.decimals,rows:report.holders.rows,blockNumber:blockNumber.toString(),checkedAt:report.checkedAt,fetchImpl,signal});}
+  if(chainId===4663&&report.rawSupply){
+   const holdersWork=researchHolders(address,{client,blockNumber,decimals:report.decimals,rawSupply:report.rawSupply,protocol:report.protocol,fetchImpl,signal}).catch(()=>({status:'unavailable',rows:[],reason:'Holder index could not be checked at the report block.'}));
+   const [holders,pinkLock,history]=await Promise.all([
+    holdersWork,
+    researchPinkLocks({address,decimals:report.decimals,client,blockNumber,holders:holdersWork,fetchImpl,signal}).catch(()=>({status:'unavailable',records:[],reason:'PinkLock records could not be checked at the report block.'})),
+    (async()=>{
+     if(report.protocol?.name!=='Pons v2'||!report.protocol.curve||!report.protocol.pairToken)return null;
+     const pairDecimals=report.protocol.pairToken.toLowerCase()==='0x0000000000000000000000000000000000000000'?18:await client.readContract({address:report.protocol.pairToken,abi:parseAbi(['function decimals() view returns(uint8)']),functionName:'decimals',blockNumber}).catch(()=>null);
+     if(!Number.isInteger(Number(pairDecimals))||Number(pairDecimals)<0||Number(pairDecimals)>36)return {status:'unavailable',reason:'The Pons quote asset decimals could not be read at the report block.'};
+     return researchPonsHistory({address,curve:report.protocol.curve,phase:report.protocol.phase,tokenDecimals:report.decimals,pairDecimals:Number(pairDecimals),pairSymbol:report.protocol.pairSymbol,blockNumber,checkedAt:report.checkedAt,holders:holdersWork.then(value=>value.rows)});
+    })().catch(()=>({status:'unavailable',reason:'Pons event history could not be checked at the report block.'}))
+   ]);
+   report.holders=holders;
+   report.holders.behavior=await researchHolderBehavior({tokenAddress:address,tokenDecimals:report.decimals,rows:report.holders.rows,blockNumber:blockNumber.toString(),checkedAt:report.checkedAt,fetchImpl,signal}).catch(()=>({status:'unavailable',rows:[],reason:'Holder transaction history could not be checked.'}));
+   report.pinkLock=pinkLock;if(history)report.ponsHistory=history;
+  }
   const recheck=await client.getBlock({blockNumber});if(recheck.hash!==block.hash)throw Error('REORG');
   return report;
  }catch(error){

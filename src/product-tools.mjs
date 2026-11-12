@@ -1,4 +1,6 @@
-import {robinhoodBalances} from './robinhood-wallet.mjs';
+import {robinhoodBalances,prepareRobinhoodSend} from './robinhood-wallet.mjs';
+import {prepareRobinhoodRoute} from './robinhood-routes.mjs';
+import {assets,networks,address as walletAddress} from './robinhood-wallet-call.mjs';
 import {ponsTokenState,tokenStateMessage} from './pons-token-state.mjs';
 import {manageLaunchDraft,draftIntent} from './launch-draft.mjs';
 import {prepareDexProfile} from './dex-profile-preparation.mjs';
@@ -8,6 +10,27 @@ import {inspectCachedToken} from './inspection-cache.mjs';
 import {inspectionSummary} from './token-inspection.mjs';
 import {productCapabilities,productTools,actionTitles} from './tool-catalog.mjs';
 const addr=v=>typeof v==='string'&&/^0x[0-9a-f]{40}$/i.test(v)&&!/^0x0{40}$/i.test(v);
+async function walletActionReview(args,context){
+ const kind=args.kind,chainId=Number(args.network),history=context.history||[],lastAssistant=history.at(-1)?.content||'',pending=/^To (send|bridge|swap) this,(?!\s*review:)/i.exec(lastAssistant);let sourceMessages=[context.message||''];
+ if(pending&&pending[1].toLowerCase()===kind){let assistantIndex=history.length-1;while(assistantIndex>=0){const m=history[assistantIndex],sameFlow=m?.role==='assistant'&&new RegExp('^To '+kind+' this,(?!\\s*review:)','i').test(m.content);if(!sameFlow)break;assistantIndex-=2;}const firstFlowAssistant=assistantIndex+2,start=Math.max(0,firstFlowAssistant-1);sourceMessages=[...history.slice(start).filter(m=>m.role==='user').map(m=>m.content),context.message||''];}
+ const source=sourceMessages.join('\n');
+ const prefix=kind==='send'?'To send this, ':kind==='bridge'?'To bridge this, ':'To swap this, ',missing=question=>({message:prefix+question,actions:[]});
+ if(!addr(context.walletAccount))return missing('connect your wallet from the account menu first, then tell me to continue.');
+ const networkOptions=[[4663,/(?:robinhood(?:\s+chain)?|\bon\s+(?:chain\s+)?4663\b)/i],[8453,/(?:\bbase\b|\bon\s+(?:chain\s+)?8453\b)/i],[42161,/(?:arbitrum|\bon\s+(?:chain\s+)?42161\b)/i]],selectableNetworks=kind==='bridge'?networkOptions.filter(([id])=>[8453,42161].includes(id)):networkOptions,currentNetworkMentions=selectableNetworks.filter(([,pattern])=>pattern.test(context.message||'')).map(([id])=>id),mentionedNetworks=currentNetworkMentions.length?currentNetworkMentions:selectableNetworks.filter(([,pattern])=>pattern.test(source)).map(([id])=>id);
+ if(!args.network||!networks[chainId]||kind==='bridge'&&![8453,42161].includes(chainId)||mentionedNetworks.length!==1||mentionedNetworks[0]!==chainId)return missing(kind==='send'?'which network should I use: Robinhood Chain, Base, or Arbitrum?':kind==='bridge'?'which network should I bridge from: Base or Arbitrum?':'which network should I use: Robinhood Chain, Base, or Arbitrum?');
+ if(kind==='send'&&(!addr(args.recipient)||!source.toLowerCase().includes(args.recipient.toLowerCase())))return missing('what recipient address should receive the tokens?');
+ const amountSource=source.replace(/0x[0-9a-f]{40}/gi,' ').replace(/\b(?:on\s+|chain\s+(?:id\s+)?)(?:4663|8453|42161)\b/gi,' '),explicitAmounts=amountSource.match(/(?<![\d.])\d+(?:\.\d+)?(?![\d.])/g)||[];if(!args.amount||!explicitAmounts.includes(args.amount))return missing('what amount and asset should I use? For example, 0.1 ETH or 25 USDC.');
+ const sourceAddresses=[...new Set((source.match(/0x[0-9a-f]{40}/gi)||[]).map(a=>a.toLowerCase()))],assetIsAddress=walletAddress(args.asset),assetContext=assetIsAddress&&(sourceAddresses.length>1||/\b(?:token|contract|asset)\b/i.test(source))&&!(kind==='send'&&args.recipient?.toLowerCase()===args.asset.toLowerCase());
+ if(!args.asset||!(assetIsAddress?assetContext:new RegExp('\\b'+args.asset+'\\b','i').test(source)))return missing('which asset should I use? On Base and Arbitrum, choose ETH, USDC, or USDT. On Robinhood Chain, choose ETH, USDG, WETH, or provide the token contract address.');
+ if(kind!=='send'&&(!args.outputAsset||!context.message?.toLowerCase().includes(args.outputAsset.toLowerCase())&&!(walletAddress(args.outputAsset)&&new RegExp('\\b(?:to|receive|as|get)\\s+'+args.outputAsset.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i').test(source))))return missing(kind==='bridge'?'which asset should arrive on Robinhood Chain?':'which asset should I receive from the swap?');
+ const resolveAsset=value=>{if(walletAddress(value))return value;const found=assets[chainId].find(a=>a.symbol.toLowerCase()===value.toLowerCase());if(!found)throw Error(chainId===4663?'Use ETH, USDG, WETH, or provide the Robinhood token contract address.':'On Base and Arbitrum, use ETH, USDC, or USDT.');return found.address;};
+ const asset=resolveAsset(args.asset),input={account:context.walletAccount,chainId,asset,amount:args.amount};
+ if(kind==='send')input.recipient=args.recipient;
+ else input.outputAsset=resolveAsset(args.outputAsset);
+ const review=await (kind==='send'?prepareRobinhoodSend(input):prepareRobinhoodRoute({...input,kind}));
+ const summary=kind==='send'?`${prefix}review: send ${review.amount} ${review.asset.symbol} on ${networks[review.chainId].name} to ${review.recipient}. Estimated network fee: ${review.networkFee} ETH.`:kind==='bridge'?`${prefix}review: bridge ${review.amount} ${review.asset.symbol} from ${networks[review.chainId].name} to ${networks[review.destinationChainId].name} as ${review.outputAsset.symbol}. Expected: ${review.expectedAmount}; minimum: ${review.minimumAmount}. Estimated network fee: ${review.networkFee} ETH${review.fee?`; relay fee: ${review.fee} ${review.asset.symbol}`:''}.`:`${prefix}review: swap ${review.amount} ${review.asset.symbol} on ${networks[review.chainId].name} for ${review.outputAsset.symbol}. Expected: ${review.expectedAmount}; minimum: ${review.minimumAmount}. Estimated network fee: ${review.networkFee} ETH${review.fee?`; relay fee: ${review.fee} ${review.asset.symbol}`:''}.`;
+ return {message:summary+' No transaction has been sent.',data:{walletReview:review},actions:[{id:'wallet_approve',review}]};
+}
 export async function transactionStatus({hash},o={}){
  if(!/^0x[0-9a-f]{64}$/i.test(hash||''))throw Error('Provide a full transaction hash.');const c=getClient(o);await snapshot(c,o.now);let tx,receipt;
  try{[tx,receipt]=await Promise.all([c.getTransaction({hash}),c.getTransactionReceipt({hash})]);}catch(e){if(['TransactionNotFoundError','TransactionReceiptNotFoundError'].includes(e.name))return {chainId:4663,hash,state:'pending-or-not-found',note:'No mined receipt was found. Do not resubmit automatically.'};throw e;}
@@ -31,7 +54,7 @@ async function executeTool(name,args={},context={},dependencies={}){
  const canClaim=addr(context.walletAccount)&&BigInt(data.claimableWei)>0n;
  return {message:tokenStateMessage(data,args.focus|| (name==='review_pons_claim'?'fees':'market')),tokenState:data,tokenAddress:address,data,actions:canClaim&&name==='review_pons_claim'?[{id:'claim',address,title:'Review fee claim'}]:[]};
  }
- if(name==='open_wallet_action')return {message:'Review the '+args.kind+' details in chat, then approve in your wallet when ready.',actions:[{id:args.kind}]};
+ if(name==='open_wallet_action')return walletActionReview(args,context);
  if(name==='wallet_portfolio'){if(!addr(account))return {message:'Choose your wallet first.',actions:[{id:'wallet'}]};const data=await (dependencies.portfolio||robinhoodBalances)({account,chainId:Number(args.network||4663)});return {message:data.network+' balances:\n'+data.assets.map(a=>a.symbol+': '+(a.balance===null?'unavailable':a.balance)).join('\n')+'\nChecked at block '+data.blockNumber+'.'+(data.discovery==='unavailable'?' Token discovery was unavailable.':''),data,actions:[{id:'wallet'}]};}
  if(name==='wallet_balance'){if(!addr(account))return {message:'Open your connected wallet to check its ETH balance, or provide a wallet address.',actions:[{id:'wallet',title:actionTitles.wallet}]};const data=await (dependencies.balance||robinhoodBalance)({account});return {message:`${data.balance} ETH on Robinhood Chain for ${data.account}. Checked at block ${data.blockNumber}.`,data,actions:[{id:'wallet',title:actionTitles.wallet}]};}
  if(name==='launch_options'){const data=await (dependencies.readiness||ponsReadiness)(addr(account)?{account}:{});return {message:`Pons has ${data.configs.length} enabled launch configurations. Launch fee: ${data.launchFee} ETH, plus gas. Creator tax cap: ${Number(data.maxCreatorTaxBps)/100}%. ${data.accountCanLaunch===false?'This wallet cannot currently launch. ':''}Checked on Robinhood Chain at block ${data.blockNumber}.`,data,actions:[{id:'launch',title:actionTitles.launch}]};}
@@ -40,9 +63,11 @@ async function executeTool(name,args={},context={},dependencies={}){
 }
 function previousDexAddress(history=[]){for(let i=history.length-1;i>=0;i--){const m=history[i];if(m.role!=='user')continue;const found=m.content.match(/0x[0-9a-f]{40}(?![0-9a-f])/gi)||[];if(found.length){if(found.length!==1)return undefined;return /dex\s*screener|\bdex\b/i.test(m.content)||/^0x[0-9a-f]{40}$/i.test(m.content.trim())&&/DEX Screener/i.test(history[i-1]?.content||'')?found[0]:undefined;}}}
 export function directProductIntent(text,context={}){
+ const lastAssistant=[...(context.history||[])].reverse().find(m=>m.role==='assistant')?.content||'';
+ const pendingWallet=/^To (send|bridge|swap) this,(?!\s*review:)/i.exec(lastAssistant);if(pendingWallet){const pendingKind=pendingWallet[1].toLowerCase(),newKind=/\bbridge\b/i.test(text)?'bridge':/\bswap\b/i.test(text)?'swap':/\b(?:send|transfer)\b/i.test(text)?'send':null;if(/^(?:cancel|stop|never mind|nevermind|forget it)[.!]?$/i.test(text.trim()))return {message:'Okay, I stopped the wallet action. Nothing was sent.',actions:[]};if(/^(?:what|why|how|explain|can you explain)\b/i.test(text.trim()))return null;if(newKind&&newKind!==pendingKind)return {name:'open_wallet_action',args:{kind:newKind}};return {name:'open_wallet_action',args:{kind:pendingKind}};}
  if(/^(?:open )?wallet[.!]?$/i.test(text.trim()))return {name:'open_wallet',args:{}};
  if(/^(?:open )?(?:launch )?review[.!]?$/i.test(text.trim()))return {name:'open_launch_review',args:{}};
- if(/\b(?:bridge|swap|send (?:tokens|eth|usdc|usdt)|transfer (?:tokens|eth))\b/i.test(text)&&!/^(?:what|why|explain|how does)\b/i.test(text.trim()))return {name:'open_wallet_action',args:{kind:/bridge/i.test(text)?'bridge':/swap/i.test(text)?'swap':'send'}};
+ if((/\b(?:bridge|swap)\b/i.test(text)||/^(?:send|transfer)[.!]?$/i.test(text.trim())||/\b(?:send|transfer)\b.*\b(?:token|crypto|coin|eth|usdc|usdt|wallet|address|money|funds)\b/i.test(text))&&!/^(?:what|why|explain|how does|can you explain)\b/i.test(text.trim()))return {name:'open_wallet_action',args:{kind:/\bbridge\b/i.test(text)?'bridge':/\bswap\b/i.test(text)?'swap':'send'}};
  if(/\b(?:wallet assets|portfolio|all balances|balances on base|balances on arbitrum|balance on base|balance on arbitrum)\b/i.test(text))return {name:'wallet_portfolio',args:{network:/arbitrum/i.test(text)?'42161':/base/i.test(text)?'8453':'4663'}};
  if(draftIntent({...context,message:text}))return {name:'manage_launch_draft',args:{}};
  const t=text.trim(),addresses=t.match(/0x[0-9a-f]{40}(?![0-9a-f])/gi)||[],hash=t.match(/0x[0-9a-f]{64}(?![0-9a-f])/i)?.[0];

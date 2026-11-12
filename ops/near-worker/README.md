@@ -20,6 +20,7 @@ The worker needs outbound HTTPS to Agent Market and Robinhood Chain RPC, plus a 
 - Registered Dinn `NEAR_AGENT_ID` and private `NEAR_AGENT_TOKEN`.
 - A 32+ character `NEAR_MARKET_WEBHOOK_SECRET` configured only on the public Render app. Register the Render HTTPS URL `https://<dinn-render-host>/api/near-market/webhook` with Agent Market using account-owner access; the webhook secret is not the `aat_` worker token.
 - Owner-approved `NEAR_WORKER_ESCROW_TOKEN` (`USD` or `USDC`) and `NEAR_WORKER_MIN_ESCROW`.
+- A server-only Robinhood Blockscout API key in `BLOCKSCOUT_API_KEY` for indexed top-holder and selected portfolio reads. Without it, holder rows are reported unavailable rather than guessed. The worker uses the public Robinhood RPC by default; `ROBINHOOD_RPC_URL` can override it.
 - Confirmed memory, disk, egress and monitoring capacity on the VPS.
 
 ## Install

@@ -1,10 +1,26 @@
 # Dinn
 
-Conversational Pons token launches on Robinhood Chain (4663), with Privy sign-in, embedded or external browser wallets, optional opening purchases, USD reference estimates, and 0G token-logo previews. Production runs on Render with PostgreSQL for persistent images. Drafts and chat history sync to the signed-in account in PostgreSQL, with a local recovery cache. Wallet connection preferences and pending transactions stay local.
+Dinn is an AI workspace for Pons token operations and agent research. People use chat to prepare and review Robinhood Chain launches, wallet actions and fee claims. Trading agents can hire Dinn Labs on the NEAR AI Agent Market for a sourced, read-only token report.
 
-Run `npm ci`, `npm test`, then `npm start`. Configure `.env` from `.env.example`; never commit credentials. Build with `npm run build` before serving. See [deployer wallets](docs/DEPLOYER-WALLETS.md), [logo hosting](docs/LOGO-INTEGRATION.md), and [opening purchases](docs/OPENING-PURCHASE.md).
+The agent research service covers Pons launch age and phase, bonding-curve activity and fees, indexed holders and sampled wallet history, market references, contract controls, and supported PinkLock records. Every report is tied to a checked Robinhood Chain block. Missing or partial data stays visible. Dinn does not trade, sign, verify wallet ownership, or certify a token as safe.
 
-Current validation includes 263 unit tests and browser fixtures. A funded launch from the actual user wallet has not yet been completed. Legacy Elysium adapters below remain paused.
+Production uses Render and PostgreSQL. The separate NEAR Agent Market worker runs on the Dinn VPS and reads its recovery state through the Render PostgreSQL database. The public agent preview is `https://dinn-pasy.onrender.com`; the paid listing is [Dinn Labs on NEAR AI Agent Market](https://market.near.ai/a/dinn).
+
+## Run and verify
+
+Use Node 22 or later:
+
+```sh
+npm ci
+npm test
+npm start
+```
+
+Copy `.env.example` to `.env` and configure local credentials there. Never commit or paste credentials. `npm test` builds the browser bundles, checks JavaScript syntax, and runs the unit and HTTP-boundary suite. The current suite passes 341 tests.
+
+The live Grail check at `0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4` verified the report hash and returned its on-curve NVDA state, partial holder data, market references and sellability limits. The paid $0.10 hire was accepted and recorded as released, but both buyer and seller accounts belonged to the same owner. This confirms the paid delivery path, not independent customer demand. A funded launch from the user's wallet and a withdrawal to an external wallet have not been verified.
+
+See [the agent guide](public/agent-guide.md), [NEAR Agent Market integration](docs/NEAR-MARKETPLACE.md), and [the integration record](docs/PONS-INTEGRATION.md).
 
 ## Historical implementation notes
 
@@ -80,23 +96,23 @@ Approved builders may have a builder-fee cap set by Ascend. This project is not 
 
 ## Hackathon provenance
 
-New NEAR agent-access and Agent Market worker source was created during the hackathon window. Dinn, Pons, its wallet routes, and earlier NEAR research are pre-existing product foundation; judges should evaluate only the new NEAR work on `feat/near-agent-access`. No Hash PayLink or PolyDesk implementation was copied. Third-party dependency: viem (MIT). The Agent Market worker is implemented but has not been connected to a registered listing or verified through a paid job and owner payout. No application or public demo post has been sent. Re-read https://nearhackathon.com/HACKATHON.md before submission.
+New NEAR agent-access and Agent Market worker source was created during the hackathon window. Dinn, Pons, its wallet routes, and earlier NEAR research are pre-existing product foundation; judges should evaluate only the new NEAR work on `feat/near-agent-access`. No Hash PayLink or PolyDesk implementation was copied. Third-party dependency: viem (MIT). Dinn Labs is publicly listed on NEAR Agent Market. A paid `token.inspect` hire from a second account controlled by the owner returned a report in 11 seconds; the buyer accepted it and the marketplace recorded payment released. This verifies the controlled hire-to-release flow, not independent customer demand, a separately hosted autonomous agent, or withdrawal to an external wallet. No hackathon submission or public demo post has been sent. Re-read https://nearhackathon.com/HACKATHON.md before submission.
 
 ## Human and agent entry points
 
 The same planner, launch validator and simulation adapter serve both interfaces.
 
 - Humans: chat workspace at `/`, including **Copy agent instructions**.
-- Agents: `GET /.well-known/launchflow.json`, `/agent-guide.md`, `/llms.txt`, `/api/agent/schema`, and `POST /api/agent/request`.
+- Agents: `GET /.well-known/dinn.json` (legacy alias: `/.well-known/launchflow.json`), `/agent-guide.md`, `/llms.txt`, `/api/agent/schema`, and `POST /api/agent/request`.
 - CLI: `node cli.mjs discover`, `node cli.mjs plan "Prepare my launch"`, `node cli.mjs review --file examples/launch.partial.json`.
 - Agent responses have explicit `needs_input`, `draft`, `review_ready` or `simulated` states and a `next` instruction. No missing wallet, fee or takeover choice is inferred.
 - Request IDs are correlation labels, not idempotency keys. No retries are automatic.
 
-NEAR Agent Market is the proposed discovery/hiring/payment channel; Ascend/Elysium is the execution venue; 0G is inference. A direct bridge is not required to pay for the preparation service. Funding a customer's launch wallet is a separate feature.
+NEAR Agent Market is Dinn's discovery, hiring and payment channel; Ascend/Elysium is the execution venue; 0G is inference. The public Dinn Labs listing is $0.10 per hire. A direct bridge is not required to pay for the preparation service. Funding a customer's launch wallet is a separate feature.
 
-Marketplace MCP is at https://market.near.ai/mcp. Its A2A/x402 host is assigned to the actual registered listing; this project has no published handle, agent ID or price yet. The local JSON API is not an implementation of A2A or x402. Do not advertise a hire link before registration and an authenticated worker job lifecycle are tested.
+Marketplace MCP is at https://market.near.ai/mcp. The registered listing and its A2A/x402 hire flow are live; the local JSON API remains a separate free, read-only agent preview and is not itself an A2A or x402 implementation. See [the NEAR marketplace record](docs/NEAR-MARKETPLACE.md) for the paid-job evidence and remaining interoperability checks.
 
-Current verification: 15 tests pass, including CLI-to-HTTP discovery/review, human-agent parity, missing-field handling and rejection of private keys/payment claims/execution flags. No actual marketplace job, payment or message was sent.
+The recorded foundation suite passed 15 tests, including CLI-to-HTTP discovery/review, human-agent parity, missing-field handling and rejection of private keys/payment claims/execution flags. The separate paid marketplace verification and its limits are documented in [the NEAR marketplace record](docs/NEAR-MARKETPLACE.md).
 
 
 ## Wallet connection
@@ -141,9 +157,9 @@ The vulnerable ws 8.x copies are patched through a scoped override. The refreshe
 
 The active agent contract and examples are in [the agent guide](public/agent-guide.md). Read-only services cover live Pons token research, wallet balances, launch options and available route quotes. Research artifacts include a content hash, not a signature or payment receipt.
 
-The new work is isolated on `feat/near-agent-access`, starting from baseline `29003cd1377e0d9c8fef95552cf04ac053f479d1`. Existing Dinn chat, Pons execution, wallet routes and earlier NEAR research are prior foundation. The self-hosted Agent Market worker is implemented and remains disabled until an owner creates the listing, chooses the price and configures its credentials. There is no paid listing, completed paid job or verified owner payout yet. See [the integration contract](docs/NEAR-MARKETPLACE.md) for the supported assignment and remaining live proof.
+The new work is isolated on `feat/near-agent-access`, starting from baseline `29003cd1377e0d9c8fef95552cf04ac053f479d1`. Existing Dinn chat, Pons execution, wallet routes and earlier NEAR research are prior foundation. The self-hosted Agent Market worker is active on the dedicated VPS and uses Dinn's Render PostgreSQL database. Dinn Labs is listed at $0.10 per hire; one controlled paid `token.inspect` hire was delivered, accepted and recorded as paid by the marketplace. Independent-agent interoperability, cancellation/rework handling and external-wallet withdrawal remain unverified. See [the integration contract](docs/NEAR-MARKETPLACE.md) for the supported assignment and remaining work.
 
 Run the foundation checks with `node --test test/agent-access.test.mjs test/server.test.mjs`. Start the server with `npm start`; discover `GET /.well-known/dinn.json` and `GET /api/agent/schema`, then `POST /api/agent/request` using the guide's example. This phase does not require an agent's private key or wallet signature.
 
 
-The worker in `src/near-worker.mjs` stores assignment recovery state in PostgreSQL and only accepts the documented Pons research job shape. After owner registration, the next proof is a real hire, exact deliverable reconciliation, buyer acceptance, and a separate check that the owner received payout. Acceptance alone is not proof of payout.
+The worker in `src/near-worker.mjs` stores assignment recovery state in PostgreSQL and only accepts the documented Pons research job shape. The paid hire verified assignment handling, report delivery, buyer acceptance and marketplace payment release. Remaining proof is a genuinely independent agent or buyer, cancellation/rework and ambiguous-submission handling, and—if needed—a separate withdrawal to an external wallet. Marketplace acceptance alone does not prove an external-wallet withdrawal.
