@@ -17,7 +17,7 @@ export async function researchHolders(address,{client,blockNumber,decimals,rawSu
  const safe=async fn=>{try{return await fn();}catch{return null;}};
  const rows=await pool(candidates,async item=>{
   const [balance,eth,code]=await Promise.all([safe(()=>client.readContract({address,abi,functionName:'balanceOf',args:[item.address],blockNumber})),safe(()=>client.getBalance({address:item.address,blockNumber})),safe(()=>client.getCode({address:item.address,blockNumber}))]);
-  const infrastructure=same(item.address,protocol?.curve),sink=/^0x(?:0{40}|0{36}dead)$/i.test(item.address),codeUnavailable=typeof code!=='string',hasCode=!codeUnavailable&&code!==''&&code!=='0x';
+  const infrastructure=same(item.address,protocol?.curve),sink=/^0x(?:0{40}|0{36}dead)$/i.test(item.address),codeUnavailable=code===null||(code!==undefined&&typeof code!=='string'),hasCode=typeof code==='string'&&code!==''&&code!=='0x';
   const kind=infrastructure?'Pons bonding curve':same(item.address,protocol?.deployer)?'Factory-recorded deployer':sink?'Conventional sink address':codeUnavailable?'Address type unavailable':hasCode?'Contract':'Address without deployed code';
   const row={address:item.address,kind,walletType:codeUnavailable?'unknown':hasCode?'contract':'externally-owned',infrastructure,sink,balance:typeof balance==='bigint'?formatUnits(balance,decimals):null,sharePercent:typeof balance==='bigint'&&BigInt(rawSupply)>0n?formatUnits(balance*1000000n/BigInt(rawSupply),4):null,ethBalance:typeof eth==='bigint'?formatUnits(eth,18):null,otherTokens:[],portfolioStatus:infrastructure?'Not expanded for the protocol curve':sink?'Not expanded for a conventional sink address':'unavailable',balanceVerified:typeof balance==='bigint'};
   if(infrastructure||sink)return {row,raw:balance};
