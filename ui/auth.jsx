@@ -9,7 +9,7 @@ import {createPortal} from 'react-dom';
 import {PrivyProvider,usePrivy,useWallets,useCreateWallet,useSignTransaction,useConnectWallet,useLoginWithOAuth} from '@privy-io/react-auth';
 const oauthReturn=new URLSearchParams(window.location.search).has('privy_oauth_code');
 const emit=detail=>window.dispatchEvent(new CustomEvent('launchflow:auth',{detail}));
-function AuthRecovery(){return <><p className="auth-error" role="alert">Sign-in could not connect. Your saved drafts are still here.</p><button className="social-login" onClick={()=>window.location.reload()}>Retry sign-in</button></>;}
+function AuthRecovery({message='Sign-in could not connect. Your saved drafts are still here.'}){return <><p className="auth-error" role="alert">{message}</p><button className="social-login" onClick={()=>window.location.reload()}>Retry sign-in</button></>;}
 class Boundary extends Component{
  state={failed:false};
  static getDerivedStateFromError(){return {failed:true};}
@@ -25,11 +25,13 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
  const probeBusy=useRef(false),identityRef=useRef('');
  const diagnostic=networkId===99901&&['localhost','127.0.0.1'].includes(window.location.hostname)&&new URLSearchParams(window.location.search).get('wallet-check')==='1';
  const [error,setError]=useState(''),[working,setWorking]=useState(false),[copied,setCopied]=useState(false);
+ const [initTimedOut,setInitTimedOut]=useState(false);
  const [oauthPending,setOAuthPending]=useState(oauthReturn);
  const {initOAuth,loading:oauthLoading}=useLoginWithOAuth({onError:()=>{setOAuthPending(false);setError('Sign-in did not complete. Please try again.');}});
  useEffect(()=>{if(authenticated)setOAuthPending(false);},[authenticated]);
  useEffect(()=>{if(!oauthPending)return;const timer=setTimeout(()=>{setOAuthPending(false);setError('Sign-in is taking longer than expected. Please try again.');},30000);return()=>clearTimeout(timer);},[oauthPending]);
- const authPending=!ready||(!authenticated&&(oauthPending||oauthLoading));
+ useEffect(()=>{if(ready||privyError){setInitTimedOut(false);return;}const timer=setTimeout(()=>setInitTimedOut(true),15000);return()=>clearTimeout(timer);},[ready,privyError]);
+ const authPending=(!ready&&!initTimedOut)||(!authenticated&&(oauthPending||oauthLoading));
  const menuRef=useRef(null);
  useEffect(()=>{
   const close=e=>{const menu=menuRef.current;if(!menu?.open)return;if(e.type==='keydown'){if(e.key!=='Escape')return;menu.open=false;menu.querySelector('summary')?.focus();}else if(!menu.contains(e.target))menu.open=false;};
@@ -62,6 +64,7 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
   const version=++connectionVersion.current;
   const current=()=>!cancelled&&version===connectionVersion.current;
   if(privyError){emit({state:'error',authenticated:false});return;}
+  if(initTimedOut){emit({state:'error',authenticated:false});return;}
   if(authPending){emit({state:'loading',authenticated:false});return;}
   if(!authenticated){emit({state:'signed-out',authenticated:false});return;}
   if(!walletsReady){emit({state:'loading',authenticated:true,userId:user?.id});return;}
@@ -76,9 +79,10 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
    if(launchChoice.current?.user===user?.id&&launchChoice.current?.key===selectedKey){launchChoice.current=null;window.dispatchEvent(new CustomEvent('dinn:launch-wallet-selected',{detail:{userId:user.id,address:selected.address,label:selected.walletClientType==='privy'?'Dinn wallet':selected.meta?.name||'External wallet'}}));}
   }).catch(()=>{if(current()){setWalletStatus('Reconnect your wallet and approve the network connection to continue.');emit({state:'wallet-needed',authenticated:true,userId:user?.id});}});
   return()=>{cancelled=true;dispose?.();};
- },[ready,authPending,walletsReady,authenticated,selectedKey,user?.id,privyError,networkId,retry]);
+ },[ready,authPending,initTimedOut,walletsReady,authenticated,selectedKey,user?.id,privyError,networkId,retry]);
  async function run(fn){setError('');setWorking(true);try{await fn();}catch{setError('That action could not complete. Please try again.');}finally{setWorking(false);}}
  if(privyError)return <AuthRecovery/>;
+ if(initTimedOut)return <AuthRecovery message="Sign-in could not finish loading. Reload to try again."/>;
  if(authPending)return null;
  if(!authenticated)return <><div className="signin-actions"><button className="social-login" disabled={!ready||working||oauthLoading} onClick={()=>run(()=>initOAuth({provider:'twitter'}))}><img className="social-symbol" src="/brand/x.svg" alt="" width="20" height="20"/>Continue with X</button><button className="social-login" disabled={!ready||working||oauthLoading} onClick={()=>run(()=>initOAuth({provider:'google'}))}><img className="social-symbol" src="/brand/google.svg" alt="" width="20" height="20"/>Continue with Google</button></div>{!ready&&<p className="auth-status" role="status">Preparing sign-in…</p>}{error&&<p className="auth-error" role="alert">{error}</p>}</>;
  const label=user?.twitter?.username?'@'+user.twitter.username:user?.google?.name||user?.google?.email||'My account';
