@@ -34,7 +34,7 @@ let launchPair=null,setupActive=false,requestedSupply=null;
 
 let feeClaims=null,walletUI=null,walletNetworkBusy=false;
 async function openFeeClaim(address){if(!/^0x[0-9a-f]{40}$/i.test(address||''))return;view('assistant');if(!feeClaims){const {mountPonsClaims}=await import('/pons/entry.js');feeClaims=mountPonsClaims({host:$('chat-thread'),api,getAccount:()=>account,getProvider:()=>provider,getEpoch:()=>epoch});}await feeClaims.open(address);}
-let account=null,user=null,history=[],chatResults=[],controller=null,epoch=0,brief={},awaiting=null,provider=null,setupBusy=false,selectedToken=null;
+let account=null,user=null,history=[],chatResults=[],controller=null,epoch=0,brief={},awaiting=null,provider=null,setupBusy=false,selectedToken=null,authBootstrapTimer=null,authBootstrapExpired=false;
 
 for(const a of pairCandidates){const o=document.createElement('option');o.value=a.symbol;o.label=a.name+' - '+a.address;$('pair-candidates').append(o);}
 
@@ -186,7 +186,15 @@ $('refresh-balance').onclick=()=>check($('refresh-balance'),$('wallet-status'),'
 
 $('copy-address').onclick=async()=>{try{if(!account)throw Error('Open your wallet first.');await navigator.clipboard.writeText(account);$('wallet-status').textContent='Address copied.';}catch(err){$('wallet-status').textContent=err.message;}};
 
-window.addEventListener('launchflow:auth',e=>{const d=e.detail;const nextUser=d.authenticated?(d.userId||d.address):null;
+function showAuthBootstrapRecovery(message='Sign-in could not finish loading. Reload or try again.'){
+ authBootstrapExpired=true;if(authBootstrapTimer){clearTimeout(authBootstrapTimer);authBootstrapTimer=null;}
+ $('session-loading').hidden=true;
+ if(user){$('auth-gate').hidden=true;$('workspace').hidden=false;$('workspace').inert=false;$('wallet-status').textContent='Your wallet is taking longer than expected to start. Reload to retry.';return;}
+ $('auth-gate').hidden=false;$('workspace').hidden=true;$('workspace').inert=true;
+ const host=$('embedded-auth'),note=document.createElement('p'),retry=document.createElement('button');note.className='auth-error';note.setAttribute('role','alert');note.textContent=message;retry.type='button';retry.className='social-login';retry.textContent='Retry sign-in';retry.onclick=()=>location.reload();host.replaceChildren(note,retry);
+}
+
+window.addEventListener('launchflow:auth',e=>{const d=e.detail;if(d.state==='loading'&&authBootstrapExpired)return;if(d.state!=='loading'){authBootstrapExpired=false;if(authBootstrapTimer){clearTimeout(authBootstrapTimer);authBootstrapTimer=null;}}const nextUser=d.authenticated?(d.userId||d.address):null;
 // Wallet/provider refreshes are not account changes: preserve the current chat and stage.
 if(user&&((nextUser===user)||d.state==='loading'&&!nextUser)){
  if(d.state==='loading')return;
@@ -509,5 +517,6 @@ function renderToolResult(body,result){
 
 function renderToolDirectory(capabilities){const host=$('tool-directory');host.replaceChildren();for(const [id,c]of Object.entries(capabilities||{})){const card=document.createElement('article');card.className='pad-card';const h=document.createElement('h3');h.textContent=c.title;const status=document.createElement('span');status.className='badge';status.textContent=c.status;const p=document.createElement('p');p.textContent=c.description;card.append(status,h,p);if(['launch','inspect','balance','transaction','options','dex'].includes(id)){const b=document.createElement('button');b.className='subtle';b.textContent='Ask Dinn';b.onclick=()=>{view('assistant');const prompts={launch:'I want to launch',inspect:'check a token',balance:'check my balance',transaction:'How do I check a transaction?',dex:'Prepare DEX Screener profile',options:'show launch options'};submitChoice(prompts[id]);};card.append(b);}host.append(card);}}
 
-try{const [config,status]=await Promise.all([fetch('/api/auth/config').then(r=>r.json()),fetch('/api/status').then(r=>r.json())]);draftSync.configure(status.draftSyncEnabled);renderToolDirectory(status.capabilities);if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}const {mountRobinhoodWallet}=await import('/pons/entry.js');walletUI=mountRobinhoodWallet({api,getAccount:()=>account,getProvider:()=>provider,getEpoch:()=>epoch,openChat:()=>{view('assistant');showLaunchStage(null);},onSwitch:(value,restored)=>{walletNetworkBusy=value;if(!value&&restored)window.dispatchEvent(new CustomEvent('dinn:wallet-network-restored'));}});const {mountEmbeddedAuth}=await import('/auth/entry.js');mountEmbeddedAuth($('embedded-auth'),config,$('account-controls'));}catch{$('session-loading').hidden=true;$('auth-gate').hidden=false;$('embedded-auth').replaceChildren();const note=document.createElement('p');note.textContent='Sign-in could not connect. Your saved drafts are still here.';const retry=document.createElement('button');retry.className='social-login';retry.textContent='Retry sign-in';retry.onclick=()=>location.reload();$('embedded-auth').append(note,retry);}
+authBootstrapTimer=setTimeout(showAuthBootstrapRecovery,15000);
+try{const [config,status]=await Promise.all([fetch('/api/auth/config').then(r=>r.json()),fetch('/api/status').then(r=>r.json())]);draftSync.configure(status.draftSyncEnabled);renderToolDirectory(status.capabilities);if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}const {mountRobinhoodWallet}=await import('/pons/entry.js');walletUI=mountRobinhoodWallet({api,getAccount:()=>account,getProvider:()=>provider,getEpoch:()=>epoch,openChat:()=>{view('assistant');showLaunchStage(null);},onSwitch:(value,restored)=>{walletNetworkBusy=value;if(!value&&restored)window.dispatchEvent(new CustomEvent('dinn:wallet-network-restored'));}});const {mountEmbeddedAuth}=await import('/auth/entry.js');mountEmbeddedAuth($('embedded-auth'),config,$('account-controls'));}catch{showAuthBootstrapRecovery('Sign-in could not connect. Your saved drafts are still here.');}
 
