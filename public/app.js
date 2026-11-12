@@ -332,7 +332,8 @@ function setWorkspaceAccess(allowed,userId){
 }
 window.addEventListener('launchflow:auth',async event=>{
  const detail=event.detail||{};
- if(detail.state==='loading'&&!detail.authenticated){$('#session-loading').hidden=false;$('#auth-gate').hidden=true;$('#workspace').hidden=true;$('#workspace').inert=true;return;}
+ if(detail.state==='loading'&&!detail.authenticated){authState='loading';$('#session-loading').hidden=false;$('#auth-gate').hidden=true;$('#workspace').hidden=true;$('#workspace').inert=true;return;}
+ if(authInitTimer){clearTimeout(authInitTimer);authInitTimer=null;}
  if(detail.state==='loading'&&detail.authenticated&&detail.userId===currentUserId&&wallet.account)return;
  const preserveWallet=detail.state==='connected'&&detail.userId===currentUserId&&detail.address?.toLowerCase()===wallet.account?.toLowerCase();
  const epoch=++authEpoch;authState=detail.state;
@@ -345,18 +346,35 @@ window.addEventListener('launchflow:auth',async event=>{
   finally{if(epoch===authEpoch){walletConnecting=false;renderWallet();if(submission){trackSubmission(submission.pending());renderPending(submission.pending());}}}
  }else renderWallet();
 });
-let unmountAuth;
+let unmountAuth,authInitGeneration=0,authInitTimer=null;
 async function initEmbeddedAuth(){
+ const generation=++authInitGeneration;
+ if(authInitTimer)clearTimeout(authInitTimer);
  const host=$('#embedded-auth');
+ authState='loading';
+ authInitTimer=setTimeout(()=>{
+  if(generation!==authInitGeneration||authState!=='loading')return;
+  authInitGeneration++;authInitTimer=null;authState='error';
+  unmountAuth?.();unmountAuth=null;setWorkspaceAccess(false);
+  host.replaceChildren(node('p','auth-error','Sign-in could not finish loading. Reload or try again.'),button('Retry sign-in',initEmbeddedAuth));
+ },15000);
  try{
   const config=await api('/api/auth/config');
+  if(generation!==authInitGeneration)return;
   if(!config.enabled){
+   clearTimeout(authInitTimer);authInitTimer=null;
    authState='unavailable';setWorkspaceAccess(false);host.replaceChildren();const choices=node('div','signin-actions');
    for(const [provider,label]of [['x','Continue with X'],['google','Continue with Google']]){const b=button('',()=>{},'social-login');const icon=node('img','social-symbol');icon.src='/brand/'+provider+'.svg';icon.alt='';icon.width=20;icon.height=20;b.append(icon,document.createTextNode(label));b.disabled=true;b.title='Sign-in is not configured';choices.append(b);}
    host.append(choices);return;
   }
-  const {mountEmbeddedAuth}=await import('/auth/entry.js');unmountAuth?.();unmountAuth=mountEmbeddedAuth(host,config,$('#account-controls'));
- }catch{authState='error';setWorkspaceAccess(false);host.replaceChildren(node('p','auth-error','Sign-in could not load. Please try again.'),button('Retry sign-in',initEmbeddedAuth));}
+  const {mountEmbeddedAuth}=await import('/auth/entry.js');
+  if(generation!==authInitGeneration)return;
+  unmountAuth?.();unmountAuth=mountEmbeddedAuth(host,config,$('#account-controls'));
+ }catch{
+  if(generation!==authInitGeneration)return;
+  clearTimeout(authInitTimer);authInitTimer=null;authState='error';setWorkspaceAccess(false);
+  host.replaceChildren(node('p','auth-error','Sign-in could not load. Please try again.'),button('Retry sign-in',initEmbeddedAuth));
+ }
 }
 initEmbeddedAuth();
 
