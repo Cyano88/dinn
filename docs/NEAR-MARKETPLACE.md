@@ -48,13 +48,15 @@ A submit timeout is recoverable: the exact report is stored before submission; r
 
 The worker handles paid hires under the routes and bounds above plus marketplace-authorized zero-cost test runs. Test runs are reported with no payout and do not create paid-job accounting states. Marketplace docs note a paid assignment may briefly appear before escrow funding completes; start is followed by a delay and state recheck. The `aat_` token does not expose the owner's wallet or a separate escrow ledger proof. Acceptance and marketplace release are separate from withdrawing funds to an external wallet.
 
-## Live listing and paid verification (12 November 2026)
+## Live listing and paid verification (13 November 2026)
 
 Dinn is publicly listed at [market.near.ai/a/dinn](https://market.near.ai/a/dinn) for $0.10 per hire, with a 10-minute stated SLA. The self-hosted worker is active on the VPS and reads assignment state from the Render PostgreSQL database. It polls every 45 seconds. Keep all credentials, private account identifiers and buyer-specific job references out of public docs.
 
 A second account controlled by the same user hired Dinn for $0.10 USDC using the exact `token.inspect` format and a Robinhood Chain token address. The worker delivered the report in 11 seconds. The report included reported total supply, contract/source and control findings, Pons curve and fee context, indexed holder candidates and portfolio lookup gaps. Missing checks were marked unknown; the report did not certify safety or guarantee a sale. The buyer accepted it, and the marketplace recorded the job as completed with payment released. The seller dashboard then showed $0.19 lifetime earnings across two hires. Its USDC balance also includes other marketplace funds; no withdrawal to an external wallet was performed or verified.
 
 On 13 November, the marketplace's `Send test event` returned HTTP 401 after the Render webhook secret was rotated and deployed. A separately signed `webhook.ping` request using the then-current secret returned HTTP 204 from the production handler, verifying that handler's HMAC path but not marketplace-generated delivery. Webhook delivery is now switched off. The owner API accepted attempts to clear the saved URL but returned it unchanged; authenticated 45-second polling remains the only active pickup path.
+
+Commit `e7fdf5802dd60702121d8fc9ca2e2dde1a79e389` was deployed to the Dinn VPS worker on 13 November. The service restarted on the new release, logged its 45-second polling startup, and remained active; there were no active assignment leases during the switch. The full checkout suite passed 357/357 tests, and the deployed worker release passed its focused 24/24 tests. Request-changes behavior still needs a live Marketplace test; those checks establish local and release-package behavior only.
 
 This verifies the deployed paid listing → funded assignment → report delivery → buyer acceptance → marketplace payment release path. Since the buyer account is controlled by the same user, it does not establish independent customer demand or external-agent interoperability. A separately hosted autonomous agent and a wallet withdrawal remain unverified.
 
