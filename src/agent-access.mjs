@@ -28,6 +28,7 @@ function validate(request){
 }
 const safeText=v=>String(v).replace(/[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/[\\`*_{}\[\]<>#|]/g,'\\$&');
 const safeLine=(v,max=1400)=>safeText(v??'Unavailable').replace(/\s+/g,' ').slice(0,max);
+const eventWord=count=>Number(count)===1?'event':'events';
 function inspectionDeliverable(report,ponsState,ponsStateUnavailable=false){
  const lines=['# Dinn token research','Token: '+report.address,'Network: '+report.network+' (chain '+report.chainId+')','Checked block: '+report.blockNumber+' ('+report.blockHash+')','Checked at: '+report.checkedAt,'Token name: '+(report.tokenName?safeLine(report.tokenName,100):'Unavailable'),'Token symbol: '+(report.symbol?safeLine(report.symbol,40):'Unavailable')];
  if(report.ponsHistory){
@@ -37,7 +38,7 @@ function inspectionDeliverable(report,ponsState,ponsStateUnavailable=false){
   const curveCoverage=curve.status==='complete-to-checked-block'?'Complete from the verified launch through the checked block.':String(curve.status||'').startsWith('partial')?'Partial; the figures below are observed lower bounds.':safeLine(curve.status||history.status,120);
   lines.push('Curve history coverage: '+curveCoverage);
   if(history.launchTransactionHash&&/^0x[0-9a-f]{64}$/i.test(history.launchTransactionHash))lines.push('Verified Pons launch transaction: https://robinhoodchain.blockscout.com/tx/'+history.launchTransactionHash+'.');
-  if(history.holderEventSummary){const summary=history.holderEventSummary;lines.push('Current top-holder Pons event summary: '+safeLine(summary.addressesWithBuys,10)+' of '+safeLine(summary.indexedAddresses,10)+' indexed addresses had curve buys ('+safeLine(summary.buyEvents,10)+' events); '+safeLine(summary.addressesWithSells,10)+' had curve sells ('+safeLine(summary.sellEvents,10)+' events). '+safeLine(summary.scope,240));}
+  if(history.holderEventSummary){const summary=history.holderEventSummary;lines.push('Current top-holder Pons event summary: '+safeLine(summary.addressesWithBuys,10)+' of '+safeLine(summary.indexedAddresses,10)+' indexed addresses had curve buys ('+safeLine(summary.buyEvents,10)+' '+eventWord(summary.buyEvents)+'); '+safeLine(summary.addressesWithSells,10)+' had curve sells ('+safeLine(summary.sellEvents,10)+' '+eventWord(summary.sellEvents)+'). '+safeLine(summary.scope,240));}
   if(curve.totalVolume!==null&&curve.totalVolume!==undefined){
    lines.push('Pons curve trades: '+safeLine(curve.tradeCount,30)+' ('+safeLine(curve.buyCount,30)+' buys, '+safeLine(curve.sellCount,30)+' sells). Quote volume: '+safeLine(curve.totalVolume,80)+' '+safeLine(curve.pairSymbol,30)+' ('+safeLine(curve.buyVolume,80)+' in buys; '+safeLine(curve.sellVolume,80)+' in sells).','Curve fees recorded: '+safeLine(curve.baseAndSnipeFees,80)+' '+safeLine(curve.pairSymbol,30)+' base plus opening snipe fees, and '+safeLine(curve.creatorTax,80)+' creator tax; '+safeLine(curve.totalFees,80)+' total. These are event totals, not creator earnings or claimable fees.');
   }else if(curve.scannedVolume!==null&&curve.scannedVolume!==undefined){
