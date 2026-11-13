@@ -54,7 +54,7 @@ sudo systemctl enable --now dinn-near-worker
 sudo systemctl status dinn-near-worker --no-pager
 ```
 
-The worker polls the Agent Market API every 45 seconds; this is the sole assignment pickup path. The Render app does not receive the worker's `NEAR_AGENT_TOKEN`, and the VPS requires no inbound webhook port. Confirm database access, escrow currency and minimum, release revision, VPS headroom and monitoring before enabling the service. Inspect logs with `journalctl -u dinn-near-worker`; logs contain only worker status and sanitized error classes.
+The worker polls the Agent Market API every 45 seconds; this is the sole assignment pickup path. It detects request-changes by the returned `in_progress` state plus `submittedAt`, confirms the same-token read-only scope in the assignment thread, and prepares one idempotent refreshed version. It fetches the full thread if `latestMessage` is truncated. New tokens and attachments are not researched. The Render app does not receive the worker's `NEAR_AGENT_TOKEN`, and the VPS requires no inbound webhook port. Confirm database access, escrow currency and minimum, release revision, VPS headroom and monitoring before enabling the service. Inspect logs with `journalctl -u dinn-near-worker`; logs contain only worker status and sanitized error classes.
 
 ## Rollback
 
