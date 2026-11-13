@@ -1,25 +1,28 @@
 # Dinn Labs product film narration
 
-Trading agents need facts before they risk money.
+Trading agents can read charts. Before risking funds, they need to know how a token launched, who holds it, what those wallets traded, and whether claimed locks are real.
 
-Dinn is a research worker an AI can hire on the NEAR AI Agent Market. One sourced report covers how a token launched and trades, its fees, how much supply sits in top wallets, sampled wallet activity, and basic contract checks. The trading agent chooses whether to investigate, simulate, or stop. Dinn never trades.
+Dinn Labs turns one Pons token address into a sourced, block-stamped research report on Robinhood Chain.
 
-We tested Grail on Robinhood Chain. Dinn verified the report hash: one billion total supply, graduated from its launch curve to a Uniswap v4 ETH pool. The curve, where trading starts, has zero real ETH reserve against a 4.2 ETH graduation target.
+Live request: Grail, 58 days old, still on its NVDA curve. It has 1.88 NVDA against a 41.6 graduation target and 396.84 NVDA in curve volume across 1,064 trades.
 
-Ten indexed addresses account for 96.81 percent of supply; the partial list includes contracts and a sink. Dinn sampled five wallets; three histories were complete, and it found no Grail buys or sells. Holder evidence is insufficient.
+Ten indexed addresses account for 99.98 percent of reported supply, but coverage is partial. Three had Pons buys; one had sells. PinkLock reports 67.06 million GRAIL locked, zero withdrawable, unlocking December fifth. Market cap is unavailable.
 
-Price and market cap were unavailable. A pool does not prove a sell route; the quote request failed. Contract controls and LP lock are unknown; vesting was not reported. Dinn abstains. No wallet or trade.
+No Grail swaps appeared in three complete 30-day wallet histories. With partial evidence and no wallet-specific sell simulation, Dinn returns REVIEW, not a safety verdict. No wallet connected. No trade placed.
 
-On NEAR Agent Market, a controlled ten-cent test delivered in eleven seconds; the buyer accepted and payment released. One owner controlled both accounts, so this proves the paid path, not independent demand.
+A controlled ten-cent Agent Market hire was accepted after an eleven-second delivery. Both accounts were ours; this proves the workflow, not outside demand.
 
-Dinn chat uses 0G inference. Pons provides launch data on Robinhood Chain. Dinn. Evidence before execution.
+Dinn gives agents evidence before execution. Pons supplies launch data, NEAR Agent Market handles hiring and payment, and 0G powers conversational inference. The on-chain report is deterministic.
 
 ## Editorial accuracy
 
-- Keep the holder-index caveat, missing market values, failed quote request, unknown controls and LP lock, and unreported vesting legible on screen.
-- The Grail request is a real, read-only request. The reference client verifies the returned evidence hash and applies its own conservative rules. `ABSTAIN` is not a token safety verdict or a sellability guarantee.
-- No wallet connected and no trade was placed. The separate route quote failed at the provider boundary; this does not prove that Grail is untradeable.
-- Holder data covers at most ten indexed candidates, and wallet activity covers at most five sampled externally owned addresses over a bounded period. Absence of a detected buy or sell does not prove inactivity.
-- The 0G credit describes inference used in Dinn chat; it does not imply 0G generated the deterministic research report.
-- The controlled paid-path test used buyer and seller accounts under one owner. Do not present it as independent customer demand.
-- Pons and NEAR AI Agent Market are product context and distribution. Do not present them as formal sponsors or endorsements.
+- The live request was checked at Robinhood Chain block `112933500` for Grail / GRAIL at `0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4`.
+- The report SHA-256 was verified against the returned content, and the reference client checked the requested token, chain and block.
+- Curve history and fees end at the checked block and exclude later DEX activity. Event fees plus creator tax are not claimable creator earnings.
+- The ten-address index is partial and includes contracts or sink addresses. Three wallet histories are a bounded 30-day sample. No detected Grail swaps does not prove inactivity.
+- PinkLock record `1000858` reports `67,061,829.096493628409909994 GRAIL` locked, `0` currently withdrawable, with unlock at `2026-12-05 01:43 UTC`. This bounded search is not a complete lock census.
+- Market cap was unavailable; the reference FDV was `$3,558.17`. FDV is not circulating market capitalization.
+- `REVIEW` is a research outcome, not a buy recommendation or safety verdict. An open curve sell gate does not establish wallet-specific execution.
+- No wallet was connected and no trade was placed during the Grail request.
+- The separate `$0.10` hire used buyer and seller accounts under one owner. It demonstrates the paid workflow, not independent demand.
+- 0G inference is used in Dinn chat; it did not generate the deterministic chain report. Pons and NEAR Agent Market are product context, not sponsors or endorsements.
