@@ -11,7 +11,7 @@ let conversation=[],chatRequest=null,selectedToken=null,inspectionChainId=null;
 const conversationKey=()=>currentUserId?'dinn.conversation.v1:'+currentUserId:null;
 function saveConversation(){const key=conversationKey();if(!key)return;try{sessionStorage.setItem(key,JSON.stringify({messages:conversation,tokenAddress:selectedToken,inspectionChainId}));}catch{$('#feedback').textContent='Conversation memory is unavailable after refresh in this browser.';}}
 function cancelChat(){if(chatRequest){chatRequest.controller.abort();chatRequest.bubble.remove();chatRequest=null;$('#stop-response').hidden=true;$('#send').hidden=false;$('#messages').setAttribute('aria-busy','false');setBusy(false);}}
-let wallet={account:null,chainId:null},walletSession=null,walletConnecting=false,walletSource=null,authEpoch=0,authState='loading',signedIn=false,currentUserId=null;
+let wallet={account:null,chainId:null},walletSession=null,walletConnecting=false,walletSource=null,authEpoch=0,authState='loading',signedIn=false,currentUserId=null,authBootTimer=null,authBootTimedOut=false;
 let launches,portfolio;
 let profile=validateProfile();
 const profileKey=()=>currentUserId?'dinn.profile.v1:'+currentUserId:null;
@@ -330,9 +330,12 @@ function setWorkspaceAccess(allowed,userId){
  if(allowed&&!wasSignedIn)$('#view-name').focus({preventScroll:true});
  if(!allowed&&wasSignedIn)$('#signin-title').focus({preventScroll:true});
 }
+function clearAuthBootTimer(){if(authBootTimer)clearTimeout(authBootTimer);authBootTimer=null;authBootTimedOut=false;$('#auth-timeout-notice')?.remove();}
+function startAuthBootTimer(){clearTimeout(authBootTimer);authBootTimedOut=false;authBootTimer=setTimeout(()=>{authBootTimer=null;if(authState!=='loading'||signedIn)return;authBootTimedOut=true;authState='timeout';setWorkspaceAccess(false);const card=$('#auth-gate .signin-card');if(card&&!$('#auth-timeout-notice')){const note=node('div','auth-timeout-notice');note.id='auth-timeout-notice';note.append(node('p','auth-error','Sign-in is taking longer than expected. Reload to retry.'));note.append(button('Retry sign-in',()=>location.reload(),'social-login'));card.append(note);}},25000);}
 window.addEventListener('launchflow:auth',async event=>{
  const detail=event.detail||{};
- if(detail.state==='loading'&&!detail.authenticated){$('#session-loading').hidden=false;$('#auth-gate').hidden=true;$('#workspace').hidden=true;$('#workspace').inert=true;return;}
+ if(detail.state==='loading'&&!detail.authenticated){if(authBootTimedOut)return;$('#session-loading').hidden=false;$('#auth-gate').hidden=true;$('#workspace').hidden=true;$('#workspace').inert=true;return;}
+ if(detail.state!=='loading'||detail.authenticated)clearAuthBootTimer();
  if(detail.state==='loading'&&detail.authenticated&&detail.userId===currentUserId&&wallet.account)return;
  const preserveWallet=detail.state==='connected'&&detail.userId===currentUserId&&detail.address?.toLowerCase()===wallet.account?.toLowerCase();
  const epoch=++authEpoch;authState=detail.state;
@@ -347,16 +350,17 @@ window.addEventListener('launchflow:auth',async event=>{
 });
 let unmountAuth;
 async function initEmbeddedAuth(){
+ startAuthBootTimer();
  const host=$('#embedded-auth');
  try{
   const config=await api('/api/auth/config');
   if(!config.enabled){
-   authState='unavailable';setWorkspaceAccess(false);host.replaceChildren();const choices=node('div','signin-actions');
+   clearAuthBootTimer();authState='unavailable';setWorkspaceAccess(false);host.replaceChildren();const choices=node('div','signin-actions');
    for(const [provider,label]of [['x','Continue with X'],['google','Continue with Google']]){const b=button('',()=>{},'social-login');const icon=node('img','social-symbol');icon.src='/brand/'+provider+'.svg';icon.alt='';icon.width=20;icon.height=20;b.append(icon,document.createTextNode(label));b.disabled=true;b.title='Sign-in is not configured';choices.append(b);}
    host.append(choices);return;
   }
   const {mountEmbeddedAuth}=await import('/auth/entry.js');unmountAuth?.();unmountAuth=mountEmbeddedAuth(host,config,$('#account-controls'));
- }catch{authState='error';setWorkspaceAccess(false);host.replaceChildren(node('p','auth-error','Sign-in could not load. Please try again.'),button('Retry sign-in',initEmbeddedAuth));}
+ }catch{clearAuthBootTimer();authState='error';setWorkspaceAccess(false);host.replaceChildren(node('p','auth-error','Sign-in could not load. Please try again.'),button('Retry sign-in',initEmbeddedAuth));}
 }
 initEmbeddedAuth();
 
