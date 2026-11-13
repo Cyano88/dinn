@@ -67,7 +67,7 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
   if(initTimedOut){emit({state:'error',authenticated:false});return;}
   if(authPending){emit({state:'loading',authenticated:false});return;}
   if(!authenticated){emit({state:'signed-out',authenticated:false});return;}
-  if(!walletsReady){emit({state:'loading',authenticated:true,userId:user?.id});return;}
+  if(!walletsReady){setWalletStatus('Wallets are still loading. Dinn chat is ready; wallet actions will be available when they finish.');emit({state:'wallet-needed',authenticated:true,userId:user?.id});return;}
   if(!selected){setWalletStatus(preference?'Reconnect your selected wallet or choose Dinn wallet.':'Your Dinn wallet is getting ready.');emit({state:'wallet-needed',authenticated:true,userId:user?.id});return;}
   setWalletStatus('Connecting wallet...');
   emit({state:'wallet-changing',authenticated:true,userId:user?.id});
