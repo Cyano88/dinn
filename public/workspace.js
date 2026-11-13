@@ -189,7 +189,7 @@ $('copy-address').onclick=async()=>{try{if(!account)throw Error('Open your walle
 
 function clearAuthBootTimer(){if(authBootTimer)clearTimeout(authBootTimer);authBootTimer=null;authBootTimedOut=false;$('auth-timeout-notice')?.remove();}
 function startAuthBootTimer(){clearTimeout(authBootTimer);authBootTimedOut=false;authBootTimer=setTimeout(()=>{authBootTimer=null;if(authBootTimedOut)return;authBootTimedOut=true;$('session-loading').hidden=true;$('auth-gate').hidden=false;$('workspace').hidden=true;$('workspace').inert=true;const card=document.querySelector('.signin-card');if(card&&!$('auth-timeout-notice')){const note=document.createElement('div');note.id='auth-timeout-notice';const message=document.createElement('p');message.className='auth-error';message.textContent='Sign-in is taking longer than expected. Reload to retry.';const retry=document.createElement('button');retry.className='social-login';retry.type='button';retry.textContent='Retry sign-in';retry.onclick=()=>location.reload();note.append(message,retry);card.append(note);}},25000);}
-window.addEventListener('launchflow:auth',e=>{const d=e.detail;if(d.state==='loading'&&authBootTimedOut)return;if(d.state!=='loading')clearAuthBootTimer();const nextUser=d.authenticated?(d.userId||d.address):null;
+window.addEventListener('launchflow:auth',e=>{const d=e.detail;if(d.state==='loading'){if(authBootTimedOut)return;startAuthBootTimer();}else clearAuthBootTimer();const nextUser=d.authenticated?(d.userId||d.address):null;
 // Wallet/provider refreshes are not account changes: preserve the current chat and stage.
 if(user&&((nextUser===user)||d.state==='loading'&&!nextUser)){
  if(d.state==='loading')return;
