@@ -36,7 +36,7 @@ A live report for one supported Pons v2 token on Robinhood Chain: launch phase, 
 
 `src/near-market-client.mjs`, `src/near-worker-store.mjs`, and `src/near-worker.mjs` implement the self-hosted worker against the current marketplace REST contract. PostgreSQL stores assignment leases, exact prepared deliverables and an event trail. It polls every 45 seconds for recovery.
 
-The marketplace webhook is optional; documented polling alone supports the full hire lifecycle. When configured, `POST /api/near-market/webhook` verifies the raw-body HMAC signature, timestamp and delivery id, then emits a PostgreSQL notification. The VPS worker listens for that notification and immediately re-reads the assignment through the authenticated REST API; it never trusts webhook text as instructions. The worker polls every 45 seconds as a recovery path and continues to operate if notifications disconnect. The webhook secret belongs only on the Render app. The VPS has no inbound port and holds the `aat_` token.
+The worker polls the Agent Market API every 45 seconds and re-reads assignments through its authenticated REST API. This is the only pickup path. The marketplace webhook was removed: it only shortened pickup latency, was not required for the full hire lifecycle, and the marketplace-generated ping returned HTTP 401. A 45-second poll is within Dinn's 10-minute delivery window. The VPS has no inbound port and holds the `aat_` token.
 
 At install time, the worker requires `NEAR_WORKER_ENABLED=true`, `DATABASE_URL`, `NEAR_AGENT_ID`, a server-side `NEAR_AGENT_TOKEN`, and owner-chosen `NEAR_WORKER_ESCROW_TOKEN` (`USD` or `USDC`) plus `NEAR_WORKER_MIN_ESCROW`. Assignments below the configured minimum or in another currency are ignored. Never put the token in the browser or repository. No HTTP endpoint exposes it. Current production status is recorded below; do not copy credentials or account identifiers into public documentation.
 
@@ -50,11 +50,11 @@ The worker handles paid hires under the routes and bounds above plus marketplace
 
 ## Live listing and paid verification (12 November 2026)
 
-Dinn is publicly listed at [market.near.ai/a/dinn](https://market.near.ai/a/dinn) for $0.10 per hire, with a 10-minute stated SLA. The self-hosted worker is active on the VPS and reads assignment state from the Render PostgreSQL database. The Render webhook notifies the worker; polling remains the recovery path. Keep all credentials, private account identifiers and buyer-specific job references out of public docs.
+Dinn is publicly listed at [market.near.ai/a/dinn](https://market.near.ai/a/dinn) for $0.10 per hire, with a 10-minute stated SLA. The self-hosted worker is active on the VPS and reads assignment state from the Render PostgreSQL database. It polls every 45 seconds. Keep all credentials, private account identifiers and buyer-specific job references out of public docs.
 
 A second account controlled by the same user hired Dinn for $0.10 USDC using the exact `token.inspect` format and a Robinhood Chain token address. The worker delivered the report in 11 seconds. The report included reported total supply, contract/source and control findings, Pons curve and fee context, indexed holder candidates and portfolio lookup gaps. Missing checks were marked unknown; the report did not certify safety or guarantee a sale. The buyer accepted it, and the marketplace recorded the job as completed with payment released. The seller dashboard then showed $0.19 lifetime earnings across two hires. Its USDC balance also includes other marketplace funds; no withdrawal to an external wallet was performed or verified.
 
-On 13 November, the marketplace's `Send test event` returned HTTP 401 after the Render webhook secret was rotated and deployed. A separately signed `webhook.ping` request using the currently displayed secret returned HTTP 204 from the production handler. This verifies the handler's HMAC path, not the marketplace-generated signature. Keep verification strict; investigate the sender mismatch before claiming webhook delivery is live. Polling remains enabled every 45 seconds and is the documented production pickup path until then.
+On 13 November, the marketplace's `Send test event` returned HTTP 401 after the Render webhook secret was rotated and deployed. A separately signed `webhook.ping` request using the currently displayed secret returned HTTP 204 from the production handler, verifying the handler's HMAC path but not marketplace-generated delivery. The optional webhook was subsequently removed; authenticated 45-second polling remains the production pickup path.
 
 This verifies the deployed paid listing → funded assignment → report delivery → buyer acceptance → marketplace payment release path. Since the buyer account is controlled by the same user, it does not establish independent customer demand or external-agent interoperability. A separately hosted autonomous agent and a wallet withdrawal remain unverified.
 
@@ -77,7 +77,7 @@ The worker accepts supported funded hires in USDC, including private instant A2A
 1. Test requests from a genuinely independent agent or buyer, keeping that separate from the completed self-controlled flow test.
 2. Exercise cancellation, request-changes/rework, and an ambiguous submission response. The worker intentionally does not auto-handle request-changes rework.
 3. Verify a withdrawal from the seller marketplace balance to an external wallet if that payout path is needed. The accepted job is recorded as payment released; no wallet withdrawal was tested.
-4. Monitor the VPS worker and Render PostgreSQL polling path. Resolve the marketplace-generated webhook signature mismatch before relying on push delivery. Keep private credentials server-side and rotate any secret exposed outside the approved private configuration channel.
+4. Monitor the VPS worker and Render PostgreSQL polling path. Keep private credentials server-side and rotate any secret exposed outside the approved private configuration channel.
 
 ## Hackathon scope
 

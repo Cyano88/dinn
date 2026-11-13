@@ -11,20 +11,6 @@ export async function createNearWorkerStore({env=process.env,db,initialize=true}
   }
  }catch(error){if(owned)await db.end().catch(()=>{});throw error;}
  return {
-  async listen(onEvent){
-   if(typeof onEvent!=='function')throw Error('NEAR worker notification handler is required.');
-   const {Client}=await import('pg');
-   const listener=new Client({connectionString:env.DATABASE_URL,connectionTimeoutMillis:10000});
-   listener.on('error',error=>console.error('NEAR worker notification connection lost:',error.code||error.name||'error'));
-   await listener.connect();
-   await listener.query('LISTEN dinn_near_market');
-   listener.on('notification',message=>{
-    if(message.channel!=='dinn_near_market')return;
-    let value;try{value=JSON.parse(message.payload||'{}');}catch{return;}
-    if(typeof value.event==='string')try{onEvent(value.event);}catch{}
-   });
-   return async()=>{listener.removeAllListeners('notification');await listener.end();};
-  },
   async acquire(worker,id){const token=randomUUID();const r=await db.query(`INSERT INTO dinn_near_work(worker_id,assignment_id,lease_token,lease_until) VALUES($1,$2,$3,NOW()+INTERVAL '180 seconds') ON CONFLICT(worker_id,assignment_id) DO UPDATE SET lease_token=$3,lease_until=NOW()+INTERVAL '180 seconds' WHERE dinn_near_work.lease_until IS NULL OR dinn_near_work.lease_until<NOW() RETURNING data`,[worker,id,token]);return r.rows[0]?{worker,id,token,data:r.rows[0].data}:null;},
   async renew(lock){const r=await db.query(`UPDATE dinn_near_work SET lease_until=NOW()+INTERVAL '180 seconds' WHERE worker_id=$1 AND assignment_id=$2 AND lease_token=$3 AND lease_until>NOW() RETURNING assignment_id`,[lock.worker,lock.id,lock.token]);if(!r.rows.length)throw Error('Worker lease lost.');},
   async save(lock,data){const r=await db.query(`UPDATE dinn_near_work SET data=$4,updated_at=NOW() WHERE worker_id=$1 AND assignment_id=$2 AND lease_token=$3 AND lease_until>NOW() RETURNING data`,[lock.worker,lock.id,lock.token,JSON.stringify(data)]);if(!r.rows.length)throw Error('Worker lease lost.');lock.data=r.rows[0].data;return lock.data;},
