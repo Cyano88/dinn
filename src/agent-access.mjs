@@ -1,4 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
+import {formatUnits,parseUnits} from 'viem';
 import {ponsTokenState,tokenStateMessage} from './pons-token-state.mjs';
 import {ponsReadiness} from './pons.mjs';
 import {robinhoodBalances} from './robinhood-wallet.mjs';
@@ -29,6 +30,11 @@ function validate(request){
 const safeText=v=>String(v).replace(/[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/[\\`*_{}\[\]<>#|]/g,'\\$&');
 const safeLine=(v,max=1400)=>safeText(v??'Unavailable').replace(/\s+/g,' ').slice(0,max);
 const eventWord=count=>Number(count)===1?'event':'events';
+function supplyPercent(rawAmount,rawSupply){try{if(!/^\d{1,78}$/.test(String(rawAmount))||!/^\d{1,78}$/.test(String(rawSupply))||BigInt(rawSupply)<=0n)return null;const scaled=BigInt(rawAmount)*1000000n/BigInt(rawSupply);return `${scaled/10000n}.${String(scaled%10000n).padStart(4,'0')}`;}catch{return null;}}
+function tokenSupplyPercent(amount,decimals,rawSupply){try{if(!Number.isInteger(decimals)||decimals<0||decimals>36)return null;return supplyPercent(parseUnits(String(amount),decimals).toString(),rawSupply);}catch{return null;}}
+function decimalParts(value){if(typeof value!=='string'||value.length>120)return null;const match=/^(\d{1,80})(?:\.(\d{1,36}))?$/.exec(value);if(!match)return null;return {coefficient:BigInt(match[1]+(match[2]||'')),scale:(match[2]||'').length};}
+function usdProduct(amount,unitPrice,places=2){try{if(!Number.isInteger(places)||places<0||places>8)return null;const a=decimalParts(amount),p=decimalParts(unitPrice);if(!a||!p)return null;const scale=10n**BigInt(a.scale+p.scale),factor=10n**BigInt(places),rounded=(a.coefficient*p.coefficient*factor+scale/2n)/scale;return `${rounded/factor}.${String(rounded%factor).padStart(places,'0')}`;}catch{return null;}}
+function isoTimestamp(value){const ms=typeof value==='number'?value:Date.parse(String(value));return Number.isFinite(ms)?new Date(ms).toISOString():null;}
 function inspectionDeliverable(report,ponsState,ponsStateUnavailable=false){
  const lines=['# Dinn token research','Token: '+report.address,'Network: '+report.network+' (chain '+report.chainId+')','Checked block: '+report.blockNumber+' ('+report.blockHash+')','Checked at: '+report.checkedAt,'Token name: '+(report.tokenName?safeLine(report.tokenName,100):'Unavailable'),'Token symbol: '+(report.symbol?safeLine(report.symbol,40):'Unavailable')];
  if(report.ponsHistory){
@@ -38,14 +44,14 @@ function inspectionDeliverable(report,ponsState,ponsStateUnavailable=false){
   const curveCoverage=curve.status==='complete-to-checked-block'?'Complete from the verified launch through the checked block.':String(curve.status||'').startsWith('partial')?'Partial; the figures below are observed lower bounds.':safeLine(curve.status||history.status,120);
   lines.push('Curve history coverage: '+curveCoverage);
   if(history.launchTransactionHash&&/^0x[0-9a-f]{64}$/i.test(history.launchTransactionHash))lines.push('Verified Pons launch transaction: https://robinhoodchain.blockscout.com/tx/'+history.launchTransactionHash+'.');
-  if(history.holderEventSummary){const summary=history.holderEventSummary;lines.push('Current top-holder Pons event summary: '+safeLine(summary.addressesWithBuys,10)+' of '+safeLine(summary.indexedAddresses,10)+' indexed addresses had curve buys ('+safeLine(summary.buyEvents,10)+' '+eventWord(summary.buyEvents)+'); '+safeLine(summary.addressesWithSells,10)+' had curve sells ('+safeLine(summary.sellEvents,10)+' '+eventWord(summary.sellEvents)+'). '+safeLine(summary.scope,240));}
+  if(history.holderEventSummary){const summary=history.holderEventSummary;lines.push('Pons curve activity among current top-holder candidates (all-time from launch through this snapshot): '+safeLine(summary.addressesWithBuys,10)+' of '+safeLine(summary.indexedAddresses,10)+' indexed addresses had curve buys ('+safeLine(summary.buyEvents,10)+' '+eventWord(summary.buyEvents)+'); '+safeLine(summary.addressesWithSells,10)+' had curve sells ('+safeLine(summary.sellEvents,10)+' '+eventWord(summary.sellEvents)+'). '+safeLine(summary.scope,300));}
   if(curve.totalVolume!==null&&curve.totalVolume!==undefined){
    lines.push('Pons curve trades: '+safeLine(curve.tradeCount,30)+' ('+safeLine(curve.buyCount,30)+' buys, '+safeLine(curve.sellCount,30)+' sells). Quote volume: '+safeLine(curve.totalVolume,80)+' '+safeLine(curve.pairSymbol,30)+' ('+safeLine(curve.buyVolume,80)+' in buys; '+safeLine(curve.sellVolume,80)+' in sells).','Curve fees recorded: '+safeLine(curve.baseAndSnipeFees,80)+' '+safeLine(curve.pairSymbol,30)+' base plus opening snipe fees, and '+safeLine(curve.creatorTax,80)+' creator tax; '+safeLine(curve.totalFees,80)+' total. These are event totals, not creator earnings or claimable fees.');
   }else if(curve.scannedVolume!==null&&curve.scannedVolume!==undefined){
    lines.push('Observed Pons curve activity (partial lower bound): '+safeLine(curve.scannedTradeCount,30)+' scanned trades ('+safeLine(curve.scannedBuyCount,30)+' buys, '+safeLine(curve.scannedSellCount,30)+' sells); '+safeLine(curve.scannedBuyVolume,80)+' '+safeLine(curve.pairSymbol,30)+' buy volume and '+safeLine(curve.scannedSellVolume,80)+' '+safeLine(curve.pairSymbol,30)+' sell volume. Scanned fees: '+safeLine(curve.scannedFees,80)+' '+safeLine(curve.pairSymbol,30)+' (not all-time totals). '+safeLine(history.reason||'Some indexed event history was outside the bounded scan.',400));
   }else lines.push('Curve trade volume and generated fees: unavailable. '+safeLine(history.reason||'The full event history could not be checked.',400));
   if(Array.isArray(history.holderActivity)&&history.holderActivity.length){
-   lines.push('Top-holder Pons activity (from curve events; addresses are not identities):');
+   lines.push('Current top-holder Pons activity (cumulative from launch through the checked block; separate from the recent 30-day wallet-history sample; addresses are not identities):');
    for(const row of history.holderActivity.slice(0,10))lines.push('- '+safeLine(row.address,64)+': '+safeLine(row.buys,20)+' buys for '+safeLine(row.buyTokens,70)+' tokens ('+safeLine(row.buyQuote,70)+' '+safeLine(curve.pairSymbol,24)+'); '+safeLine(row.sells,20)+' sells of '+safeLine(row.sellTokens,70)+' tokens ('+safeLine(row.sellQuote,70)+' '+safeLine(curve.pairSymbol,24)+').'+(row.lastTradeHash?' Latest curve event: https://robinhoodchain.blockscout.com/tx/'+row.lastTradeHash+'.':''));
   }
   if(history.coverage)lines.push('Trade-history coverage: '+safeLine(history.coverage,500));
@@ -57,7 +63,8 @@ function inspectionDeliverable(report,ponsState,ponsStateUnavailable=false){
   if(locks.reason)lines.push(safeLine(locks.reason,500));
   for(const source of (Array.isArray(locks.sourceUrls)?locks.sourceUrls:[]))if(source&&typeof source.url==='string'&&/^https:\/\//i.test(source.url))lines.push('PinkLock source ('+safeLine(source.label,80)+'): '+source.url.slice(0,500));
   for(const lock of (Array.isArray(locks.records)?locks.records.slice(0,30):[])){
-   lines.push('- '+safeLine(lock.kind,40)+' lock '+safeLine(lock.id,30)+' via '+safeLine(lock.adapter,50)+': '+safeLine(lock.remaining,80)+' '+safeLine(report.symbol||'tokens')+' remains; '+safeLine(lock.unlocked,80)+' unlocked; '+safeLine(lock.currentlyWithdrawable,80)+' currently withdrawable. Owner: '+safeLine(lock.owner,64)+'.');
+   const lockShare=tokenSupplyPercent(lock.remaining,report.decimals,report.rawSupply);
+   lines.push('- '+safeLine(lock.kind,40)+' lock '+safeLine(lock.id,30)+' via '+safeLine(lock.adapter,50)+': '+safeLine(lock.remaining,80)+' '+safeLine(report.symbol||'tokens')+' remains'+(lockShare!==null?' ('+lockShare+'% of reported total supply)':'')+'; '+safeLine(lock.unlocked,80)+' unlocked; '+safeLine(lock.currentlyWithdrawable,80)+' currently withdrawable. Owner: '+safeLine(lock.owner,64)+'.');
    lines.push('  Schedule: created '+safeLine(lock.lockDate||'unknown',40)+'; TGE/unlock '+safeLine(lock.tgeOrUnlockDate||'unknown',40)+' ('+safeLine(lock.tgeReleasePercent??'unknown',20)+'%); cycle '+safeLine(lock.cycleDays??'unknown',24)+' days, '+safeLine(lock.cycleReleasePercent??'unknown',20)+'% per cycle. '+safeLine(lock.description,180));
    if(typeof lock.pinkSaleUrl==='string'&&/^https:\/\/www\.pinksale\.finance\/pinklock\/robinhood\/record\/\d+$/.test(lock.pinkSaleUrl))lines.push('  PinkSale lock record: '+lock.pinkSaleUrl);
    if(typeof lock.sourceUrl==='string'&&/^https:\/\/robinhoodchain\.blockscout\.com\/address\/0x[0-9a-f]{40}\?tab=read_contract$/i.test(lock.sourceUrl))lines.push('  Lock contract source: '+lock.sourceUrl);
@@ -68,7 +75,18 @@ function inspectionDeliverable(report,ponsState,ponsStateUnavailable=false){
  lines.push('','## Market and fee context');
  if(ponsState){
   lines.push('Pons snapshot: block '+safeLine(ponsState.blockNumber,40)+'; checked '+safeLine(ponsState.checkedAt,80)+'.','Fee query address: '+safeLine(ponsState.viewerAccount,64)+(same(ponsState.viewerAccount,ponsState.feeRecipient)?' (current creator fee recipient)':' (caller-specified public query address)')+'; this is not proof of ownership.',...tokenStateMessage(ponsState).split('\n\n').map(safeText));
-  if(ponsState.market?.source==='GeckoTerminal reported')lines.push('Market reference source: https://api.geckoterminal.com/api/v2/networks/robinhood/tokens/'+report.address);
+  if(ponsState.curve){
+   const curve=ponsState.curve,curveBalance=report.protocol?.knownBalances?.curve,curveShare=supplyPercent(curveBalance,report.rawSupply),decimals=report.decimals;
+   if(typeof curveBalance==='string'&&/^\d{1,78}$/.test(curveBalance)&&Number.isInteger(decimals)&&decimals>=0&&decimals<=36)lines.push('Curve contract inventory: '+formatUnits(BigInt(curveBalance),decimals)+' '+safeLine(report.symbol||'tokens',40)+(curveShare!==null?' ('+curveShare+'% of reported total supply)':'')+'. This is the curve contract balance, not graduation progress or a wallet-specific sell amount.');
+   if(curve.sellable!==undefined)lines.push('Pons sellableTokens() at this block: '+safeLine(curve.sellable,80)+' '+safeLine(report.symbol||'tokens',40)+'. This contract-reported amount is not a wallet-specific execution quote or guaranteed fill.');
+   if(curve.progressPercent!==undefined)lines.push('Graduation progress is quote-reserve progress (real quote reserve divided by the graduation target); it is not token-supply percentage or market cap.');
+   const pairSymbol=ponsState.pair?.symbol||report.protocol?.pairSymbol||'pair asset',pairUsd=ponsState.quoteUsd;
+   if(pairUsd?.available&&curve.priceQuote&&curve.fdvQuote){const spotUsd=usdProduct(curve.priceQuote,pairUsd.unitPriceUsd,8),fdvUsd=usdProduct(curve.fdvQuote,pairUsd.unitPriceUsd,2),asOf=isoTimestamp(pairUsd.asOf);if(spotUsd!==null||fdvUsd!==null)lines.push('Curve pricing estimate: '+safeLine(curve.priceQuote,60)+' '+safeLine(pairSymbol,30)+' per token'+(spotUsd!==null?' (about $'+spotUsd+' per token)':'')+'; curve-implied FDV '+safeLine(curve.fdvQuote,80)+' '+safeLine(pairSymbol,30)+(fdvUsd!==null?' (about $'+fdvUsd+')':'')+'. USD conversion uses Robinhood\'s '+safeLine(pairUsd.basis||'pair-asset reference',100)+(asOf?' as of '+asOf:'')+'. This is not circulating market cap or an executable trade quote.');}
+   if(pairUsd?.sourceUrl&&/^https:\/\//i.test(pairUsd.sourceUrl))lines.push('Pair-asset USD reference source: '+pairUsd.sourceUrl.slice(0,500));
+  }
+  const market=ponsState.market;
+  if(market?.source==='GeckoTerminal reported')lines.push('GeckoTerminal reference: price $'+safeLine(market.priceUsd,50)+'; circulating market cap '+(market.marketCapUsd?'$'+safeLine(market.marketCapUsd,50):'unavailable')+'; FDV '+(market.fdvUsd?'$'+safeLine(market.fdvUsd,50):'unavailable')+'; checked '+safeLine(market.checkedAt,80)+'. Provider-reported reference values, not executable quotes.','Market reference source: https://api.geckoterminal.com/api/v2/networks/robinhood/tokens/'+report.address);
+  else lines.push('GeckoTerminal market reference: unavailable; price, circulating market cap and FDV were not verified.');
  }else lines.push(ponsStateUnavailable?'The token matched Pons v2, but the market and fee snapshot could not be completed.':'This inspection did not establish a Pons v2 registration, so Pons market and fee data is unavailable. Reference token market data was not independently sourced by this inspection.');
  if(report.holders){
   const holders=report.holders;

@@ -15,6 +15,17 @@ function formatUnits(value,decimals){
  const scale=10n**BigInt(decimals),whole=value/scale,fraction=(value%scale).toString().padStart(decimals,'0').replace(/0+$/,'');
  return fraction?`${whole}.${fraction}`:String(whole);
 }
+function decimalProductUsd(amount,unitPrice,places=2){
+ const parse=value=>{const match=/^(\d{1,80})(?:\.(\d{1,36}))?$/.exec(String(value));return match?{coefficient:BigInt(match[1]+(match[2]||'')),scale:(match[2]||'').length}:null;};
+ const a=parse(amount),p=parse(unitPrice);if(!a||!p||!Number.isInteger(places)||places<0||places>8)return null;
+ const denominator=10n**BigInt(a.scale+p.scale),factor=10n**BigInt(places),rounded=(a.coefficient*p.coefficient*factor+denominator/2n)/denominator;
+ return `$${rounded/factor}.${String(rounded%factor).padStart(places,'0')}`;
+}
+function supplyPercent(rawAmount,rawSupply){
+ if(!/^\d{1,78}$/.test(String(rawAmount))||!/^\d{1,78}$/.test(String(rawSupply))||BigInt(rawSupply)<=0n)return null;
+ const scaled=BigInt(rawAmount)*1000000n/BigInt(rawSupply);return `${scaled/10000n}.${String(scaled%10000n).padStart(4,'0')}`;
+}
+function referenceTime(value){const ms=typeof value==='number'?value:Date.parse(String(value));return Number.isFinite(ms)?new Date(ms).toISOString():'unknown';}
 
 function assess(report){
  const checks=Array.isArray(report.checks)?report.checks:[];
@@ -83,6 +94,22 @@ try{
  console.log(`Token age: ${clean(history?.age||'unavailable')} / launched ${clean(history?.launchedAt||'unavailable')}`);
  console.log(`Reported total supply: ${abbreviated(check('Total supply (TS)')?.detail||'unavailable')}`);
  console.log(`Bonding curve: ${abbreviated(check('Curve reserves')?.detail||'curve metrics unavailable')}`);
+ if(pons?.curve){
+  const c=pons.curve,pair=pons.pair?.symbol||result.protocol?.pairSymbol||'pair asset';
+  console.log(`Curve snapshot: ${clean(c.progressPercent)}% of quote-reserve graduation target (${clean(c.raised)} / ${clean(c.threshold)} ${clean(pair)}); spot ${clean(c.priceQuote)} ${clean(pair)} / token; curve-implied FDV ${clean(c.fdvQuote)} ${clean(pair)}.`);
+  console.log(`Curve sell capacity: sellableTokens() reports ${clean(c.sellable)} ${clean(result.symbol||'tokens')} at the checked block; this is not a wallet-specific quote or guaranteed fill.`);
+  const rawCurve=result.protocol?.knownBalances?.curve,rawSupply=result.rawSupply,decimals=result.decimals;
+  if(typeof rawCurve==='string'&&/^\d+$/.test(rawCurve)&&typeof rawSupply==='string'&&/^\d+$/.test(rawSupply)&&BigInt(rawSupply)>0n&&Number.isInteger(decimals)&&decimals>=0&&decimals<=36){
+   const share=BigInt(rawCurve)*1000000n/BigInt(rawSupply),whole=share/10000n,fraction=String(share%10000n).padStart(4,'0');
+   console.log(`Curve contract inventory: ${formatUnits(BigInt(rawCurve),decimals)} ${clean(result.symbol||'tokens')} (${whole}.${fraction}% of reported total supply); this is distinct from graduation progress and sellableTokens().`);
+  }
+  const usd=pons.quoteUsd;
+  if(usd?.available&&c.fdvQuote){
+   const usdFdv=decimalProductUsd(c.fdvQuote,usd.unitPriceUsd,2);
+   console.log(`Pair-asset USD reference: ${clean(usd.symbol)} ≈ $${clean(usd.unitPriceUsd)} (${clean(usd.basis||'provider reference')}, as of ${clean(referenceTime(usd.asOf))}); curve-implied FDV ${usdFdv||'unavailable'}. This is not circulating market cap or an executable quote.`);
+  }
+ }
+ console.log(`Circulating market cap: ${market?.marketCapUsd?money(market.marketCapUsd):'unavailable'}${market?.source?` (${clean(market.source)})`:''}. FDV remains a separate metric.`);
  if(curveHistory?.totalVolume!==null&&curveHistory?.totalVolume!==undefined){
   console.log(`Curve history: ${clean(curveHistory.status)} / ${clean(curveHistory.tradeCount)} trades (${clean(curveHistory.buyCount)} buys, ${clean(curveHistory.sellCount)} sells)`);
   console.log(`Curve quote volume: ${clean(curveHistory.totalVolume)} ${clean(curveHistory.pairSymbol)} (through the checked block; excludes post-graduation pool trading)`);
@@ -93,15 +120,22 @@ try{
  console.log(`Market reference: ${marketRef}`);
  console.log(`Holders: ${holderRows.length} indexed candidates / ${concentration}${holderCaveat}`);
  const holderEvents=history?.holderEventSummary;
- if(holderEvents)console.log(`Pons trades by sampled top holders: ${clean(holderEvents.addressesWithBuys)} of ${clean(holderEvents.indexedAddresses)} had buys / ${clean(holderEvents.addressesWithSells)} had sells (${clean(holderEvents.buyEvents)} buy events / ${clean(holderEvents.sellEvents)} sell events)`);
+ if(holderEvents){
+  console.log(`Pons trades by sampled top holders: ${clean(holderEvents.addressesWithBuys)} of ${clean(holderEvents.indexedAddresses)} had buys / ${clean(holderEvents.addressesWithSells)} had sells (${clean(holderEvents.buyEvents)} buy ${Number(holderEvents.buyEvents)===1?'event':'events'} / ${clean(holderEvents.sellEvents)} sell ${Number(holderEvents.sellEvents)===1?'event':'events'}; cumulative since launch through checked block, not the 30-day sample).`);
+  for(const row of (Array.isArray(history?.holderActivity)?history.holderActivity.filter(x=>Number(x.buys)>0||Number(x.sells)>0).slice(0,5):[]))console.log(`  ${clean(row.address)}: ${clean(row.buys)} buys / ${clean(row.buyTokens)} ${clean(result.symbol||'tokens')} (${clean(row.buyQuote)} ${clean(curveHistory?.pairSymbol||'pair')}); ${clean(row.sells)} sells / ${clean(row.sellTokens)} ${clean(result.symbol||'tokens')} (${clean(row.sellQuote)} ${clean(curveHistory?.pairSymbol||'pair')})`);
+ }
  console.log(`Holder signal: ${clean(summary?.holderSignal||behavior?.reason||'insufficient evidence')}`);
- console.log(`Target-token swap candidates: ${clean(summary?.targetTokenBuyCandidates??'unknown')} buy / ${clean(summary?.targetTokenSellCandidates??'unknown')} sell`);
- console.log(`Sample: ${clean(summary?.walletsAnalyzed??0)} holder addresses / ${clean(summary?.completeWalletHistories??0)} complete 30-day histories`);
+ console.log(`Recent 30-day target-token swap candidates: ${clean(summary?.targetTokenBuyCandidates??'unknown')} buy / ${clean(summary?.targetTokenSellCandidates??'unknown')} sell`);
+ console.log(`Recent-history sample: ${clean(summary?.walletsAnalyzed??0)} holder addresses / ${clean(summary?.completeWalletHistories??0)} complete 30-day histories`);
  if(Array.isArray(lockReport?.records)&&lockReport.records.length){
-  for(const lock of lockReport.records.slice(0,3))console.log(`PinkLock: ${clean(lock.remaining)} ${clean(result.symbol||'tokens')} remains locked / ${clean(lock.currentlyWithdrawable??'unknown')} currently withdrawable / unlock ${clean(lock.tgeOrUnlockDate||'unknown')} / ${clean(lock.pinkSaleUrl||'PinkSale record unavailable')}`);
+  for(const lock of lockReport.records.slice(0,3)){
+   const share=supplyPercent(amountUnits(lock.remaining,result.decimals)?.toString()||'',result.rawSupply);
+   console.log(`PinkLock: ${clean(lock.remaining)} ${clean(result.symbol||'tokens')} remains locked${share?` (${share}% of reported total supply)`:''} / ${clean(lock.currentlyWithdrawable??'unknown')} currently withdrawable / unlock ${clean(lock.tgeOrUnlockDate||'unknown')} / ${clean(lock.pinkSaleUrl||'PinkSale record unavailable')}`);
+  }
  }else console.log(`PinkLock: ${clean(lockReport?.status||'unavailable')} / ${clean(lockReport?.reason||'No matching record was verified in the bounded lock checks; this does not prove supply is unlocked.')}`);
  console.log(`Tradeability: ${abbreviated(check('Can I sell?')?.detail||'not established')}`);
- console.log(`Contract controls: ${clean(check('Control functions')?.status||'not reported')} / LP lock: ${clean(check('LP lock')?.status||'not reported')}`);
+ console.log(`Contract controls: ${clean(check('Control functions')?.status||'not reported')}`);
+ const lpCheck=check('LP lock');if(lpCheck)console.log(`Pool/LP status: ${clean(lpCheck.status)} — ${clean(lpCheck.detail)}`);
  console.log(`Vesting: ${Array.isArray(lockReport?.records)&&lockReport.records.some(lock=>lock.cycleDays||lock.tgeReleasePercent!==undefined)?'schedule reported':'not reported in checked sources'}`);
  console.log(`Decision: ${decision.decision}`);
  for(const reason of decision.reasons)console.log(`Reason: ${clean(reason)}`);
