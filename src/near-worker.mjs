@@ -33,10 +33,13 @@ function requestedResearchInput(row,job){
 }
 export function eligibleNearResearchJob(row,fullJob,agentId,{minimumEscrow,escrowToken}={}){
  const a=row?.assignment,j=row?.job;
- if(!uuid(a?.assignmentId)||!uuid(a?.jobId)||!uuid(a?.workerAgentId)||a.jobId!==j?.jobId||a.workerAgentId!==agentId||a.status!=='in_progress'||a.deliverableUrl||a.submittedAt||!['standard','instant'].includes(j?.jobKind)||j.attachments?.length||fullJob?.isTestRun!==false||fullJob?.jobId!==a.jobId||fullJob?.status!=='in_progress'||typeof j.title!=='string'||j.title.length<1||j.title.length>120||fullJob.title!==j.title||!supportedResearchJobSurface(j,fullJob))return null;
+ if(!uuid(a?.assignmentId)||!uuid(a?.jobId)||!uuid(a?.workerAgentId)||a.jobId!==j?.jobId||a.workerAgentId!==agentId||a.status!=='in_progress'||a.deliverableUrl||a.submittedAt||!['standard','instant'].includes(j?.jobKind)||j.attachments?.length||typeof fullJob?.isTestRun!=='boolean'||fullJob?.jobId!==a.jobId||fullJob?.status!=='in_progress'||typeof j.title!=='string'||j.title.length<1||j.title.length>120||fullJob.title!==j.title||!supportedResearchJobSurface(j,fullJob))return null;
  if(typeof j.description!=='string'||j.description.length>4000)return null;
  const amount=escrowUnits(a.escrowAmount),minimum=escrowUnits(minimumEscrow),input=requestedResearchInput(row,fullJob);
- if(!input||amount===null||minimum===null||minimum<=0n||amount<minimum||a.escrowToken!==escrowToken)return null;
+ const testRun=fullJob.isTestRun===true;
+ if(!input||amount===null)return null;
+ if(testRun){if(amount!==0n||(a.escrowToken!=null&&!['USD','USDC'].includes(a.escrowToken)))return null;}
+ else if(minimum===null||minimum<=0n||amount<minimum||a.escrowToken!==escrowToken)return null;
  return input;
 }
 
@@ -59,7 +62,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
    await store.renew(lock);assertLease();
    let full=await client.job(a.jobId),input=eligibleNearResearchJob(row,full,agentId,{minimumEscrow,escrowToken});
    if(!input){if(data.phase!=='not-eligible'){await store.save(lock,{phase:'not-eligible'});await event('not-eligible');}return {assignmentId:a.assignmentId,state:'not-eligible'};}
-   if(['submitted','accepted-payout-pending'].includes(data.phase))return {assignmentId:a.assignmentId,state:data.phase};
+   if(['submitted','accepted-payout-pending','accepted-test-run'].includes(data.phase))return {assignmentId:a.assignmentId,state:data.phase,testRun:data.testRun===true,payout:data.testRun===true?'none':undefined};
    if(!data.markdown){
     assertLease();await client.start(a.assignmentId);await wait(3000);
     await store.save(lock,{...data,phase:'started',startedAt:now().toISOString()});await event('started');
@@ -73,7 +76,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     const {service,...reportInput}=input;
     const made=await report({service,requestId:'near-'+a.assignmentId,input:reportInput});
     if(made.status!=='completed'||typeof made.deliverableMarkdown!=='string'||!made.deliverableMarkdown.length||made.deliverableMarkdown.length>250000||!/^\w{64}$/.test(made.evidence?.sha256||''))throw Error('Research report was incomplete or too large.');
-    data={phase:'prepared',markdown:made.deliverableMarkdown,evidenceHash:made.evidence.sha256,service,tokenAddress:input.address,preparedAt:now().toISOString()};
+    data={phase:'prepared',markdown:made.deliverableMarkdown,evidenceHash:made.evidence.sha256,service,tokenAddress:input.address,testRun:full.isTestRun===true,preparedAt:now().toISOString()};
     await store.save(lock,data);await event('report-prepared');
    }
    // Re-check marketplace state immediately before the external delivery.
@@ -86,23 +89,24 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
    const submitted=await client.submit(a.assignmentId,data.markdown);
    if(submitted?.assignmentId!==a.assignmentId||submitted.status!=='submitted')throw Error('Marketplace did not confirm the expected submitted assignment.');
    await store.save(lock,{...data,phase:'submitted',submittedAt:now().toISOString(),marketplaceStatus:submitted.status});await event('submitted');
-   return {assignmentId:a.assignmentId,state:'submitted',payout:'pending-buyer-acceptance'};
+   return {assignmentId:a.assignmentId,state:'submitted',testRun:data.testRun===true,payout:data.testRun===true?'none':'pending-buyer-acceptance'};
   }catch(error){try{await store.event(lock,'error:'+String(error.code||error.message).slice(0,120));}catch{}throw error;}
   finally{clearInterval(heartbeat);await store.release(lock);}
  }
 
  async function reconcile(row){
   const a=row.assignment,saved=await store.get(agentId,a.assignmentId);
-  if(!saved||!['prepared','submitting','submitted','accepted-payout-pending'].includes(saved.phase))return null;
+  if(!saved||!['prepared','submitting','submitted','accepted-payout-pending','accepted-test-run'].includes(saved.phase))return null;
   if(a.status==='submitted'){
    if(['submitting','prepared'].includes(saved.phase)){
     const delivered=await client.delivered(a.assignmentId);
     if(delivered!==saved.markdown)throw Error('Submitted report differs from the saved report. Manual review required.');
    }
    if(saved.phase!=='submitted')await update(saved,a,'submitted','submission-reconciled');
-   return {assignmentId:a.assignmentId,state:'submitted'};
+   return {assignmentId:a.assignmentId,state:'submitted',testRun:saved.testRun===true,payout:saved.testRun===true?'none':'pending-buyer-acceptance'};
   }
   if(a.status==='accepted'){
+   if(saved.testRun===true){if(saved.phase!=='accepted-test-run')await update(saved,a,'accepted-test-run','test-run-accepted');return {assignmentId:a.assignmentId,state:'accepted-test-run',testRun:true,payout:'none'};}
    if(saved.phase!=='accepted-payout-pending')await update(saved,a,'accepted-payout-pending','accepted-payout-not-confirmed');
    return {assignmentId:a.assignmentId,state:'accepted-payout-pending'};
   }

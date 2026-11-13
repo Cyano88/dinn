@@ -76,9 +76,11 @@ test('rejects ambiguous or incomplete A2A buyer briefs',()=>{
  assert.equal(eligibleNearResearchJob(wrongSender.row,wrongSender.fullJob,agentId,options),null);
 });
 
-test('continues to reject test runs, competitions, attachments, and underfunded assignments',()=>{
+test('accepts zero-cost marketplace test runs while rejecting competitions, attachments, and underfunded assignments',()=>{
+ const testRun=fixture({fullJob:{isTestRun:true},assignment:{escrowAmount:'0',escrowToken:'USD'}});
+ assert.deepEqual(eligibleNearResearchJob(testRun.row,testRun.fullJob,agentId,options),{service:'token.research',address:tokenAddress});
  const cases=[
-  fixture({fullJob:{isTestRun:true}}),
+  fixture({fullJob:{isTestRun:true},assignment:{escrowAmount:'0.01'}}),
   fixture({jobKind:'competition'}),
   fixture({brief:{attachments:[{fileId:'file'}]}}),
   fixture({assignment:{escrowAmount:'0.99'}})
