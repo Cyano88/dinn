@@ -1,3 +1,4 @@
+import {hasLaunchProgress,launchReturnChoice} from './launch-resume.js';
 import {createDraftSync} from './draft-sync.js';
 import {usdTotal} from './purchase-usd.js';
 import {launchLinkSteps,parseLaunchLink} from './launch-link-chat.js';
@@ -71,7 +72,7 @@ const draftSync=createDraftSync({storage:localStorage,request:async(action,data,
  if(user!==id)throw Error('Account changed.');const {getAccessToken}=await import('/auth/entry.js');const token=await getAccessToken();if(user!==id)throw Error('Account changed.');if(!token)throw Error('Sign in again to sync your draft.');
  const response=await fetch('/api/drafts/'+action,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify(data),signal:AbortSignal.timeout(20000)});const result=await response.json();if(!response.ok){const error=Error(result.error||'Could not sync your draft.');error.status=response.status;throw error;}return result;
 },onStatus:({state,message})=>{syncHost.hidden=!['error','conflict'].includes(state);syncText.textContent=message;accountDraftButton.hidden=localDraftButton.hidden=state!=='conflict';syncRetry.hidden=state!=='error';},onApply:id=>{
- if(id!==user)return;epoch++;controller?.abort();launchBusy=false;setupBusy=false;logoCreator.reset();invalidateLaunch();showLaunchStage(null,false);restore();restoreSettings();renderTokenSummary();renderSetupChoices();restoreLaunchConversation();
+ if(id!==user)return;epoch++;controller?.abort();launchBusy=false;setupBusy=false;logoCreator.reset();invalidateLaunch();showLaunchStage(null,false);restore();restoreSettings();renderTokenSummary();renderSetupChoices();
 }});
 accountDraftButton.onclick=()=>void draftSync.useAccount();localDraftButton.onclick=()=>void draftSync.keepLocal();syncRetry.onclick=()=>void draftSync.refresh();
 window.addEventListener('focus',()=>void draftSync.refresh());
@@ -99,6 +100,7 @@ $('chat-review').onclick=()=>{$('review-launch').click();};
 
 $('prompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('chat').requestSubmit();}});
 
+let launchReturnPending=false;
 let launchConversationStep=null,launchLinkIndex=0,confirmedLaunchWallet=null,resetDraftPending=false;
 
 const conversationStages={profile:'launch-profile-dialog',links:'launch-links-step',wallet:'launch-wallet-step',purchase:'launch-purchase-dialog',preparing:'launch-preparing-dialog',review:'pons-review-dialog'};
@@ -122,9 +124,9 @@ function showLaunchStage(step,persist=true){
 
 }
 
-function pauseLaunchConversation(){showLaunchStage(null);logoCreator.reset();renderSetupChoices();}
+function pauseLaunchConversation(){showLaunchStage(null,false);logoCreator.reset();renderSetupChoices();}
 
-function restoreLaunchConversation(){let saved;try{saved=JSON.parse(read('launch-conversation'));}catch{}if(!saved||saved.name!==brief.name||saved.symbol!==brief.symbol)return;if(saved.step==='profile')void openLaunchProfile();else if(saved.step==='links')openLaunchLinks(Number.isInteger(saved.linkIndex)?saved.linkIndex:0);else if(saved.step==='wallet')openLaunchWallet();else if(saved.step==='purchase')openLaunchPurchase();else if(saved.step==='review')void openLaunchReview();}
+function restoreLaunchConversation(onResume=()=>{}){let saved;try{saved=JSON.parse(read('launch-conversation'));}catch{}if(!saved||saved.name!==brief.name||saved.symbol!==brief.symbol||!['profile','links','wallet','purchase','review'].includes(saved.step))return false;onResume();if(saved.step==='profile')void openLaunchProfile();else if(saved.step==='links')openLaunchLinks(Number.isInteger(saved.linkIndex)?saved.linkIndex:0);else if(saved.step==='wallet')openLaunchWallet();else if(saved.step==='purchase')openLaunchPurchase();else if(saved.step==='review')void openLaunchReview();return true;}
 
 function recordSetupReply(text,reply){const state=appendChatState(history,chatResults,text,reply,{});history=state.messages;chatResults=state.results;save('chat',state);message('user',text);return message('assistant',reply);}
 
@@ -187,7 +189,7 @@ function clearConversation(){
 
  try{save('chat',{messages:[]});}catch{ $('feedback').textContent='Browser storage is unavailable. Chat could not be cleared permanently.';return false;}
 
- showLaunchStage(null);logoCreator.reset();walletUI?.reset();resetDraftPending=false;chatPendingApproval=null;epoch++;launchBusy=false;controller?.abort();controller=null;setupBusy=false;setupActive=false;history=[];chatResults=[];awaiting=null;launchStep=null;selectedToken=null;launchPair=null;
+ showLaunchStage(null,false);logoCreator.reset();walletUI?.reset();resetDraftPending=false;launchReturnPending=false;chatPendingApproval=null;epoch++;launchBusy=false;controller?.abort();controller=null;setupBusy=false;setupActive=false;history=[];chatResults=[];awaiting=null;launchStep=null;selectedToken=null;launchPair=null;
 
  try{save('setup',{awaiting:null,requestedSupply});saveSettings();}catch{}
 
@@ -212,9 +214,19 @@ function handlePendingChatApproval(text){
  const pending=chatPendingApproval;chatPendingApproval=null;if(pending.action)forgetWalletApproval(pending.action);const body=recordSetupReply(text,walletSource==='embedded'?'Dinn is submitting the reviewed '+pending.label+' from your Dinn wallet now.':'Your external wallet will open for your confirmation of the reviewed '+pending.label+'.');chatApprovalBusy=true;void Promise.resolve(pending.run(body)).catch(error=>appendChatActionNote(body,'Could not continue the wallet action: '+error.message)).finally(()=>{chatApprovalBusy=false;});return true;
 }
 
+function startFreshTokenSetup(){
+ epoch++;controller?.abort();controller=null;showLaunchStage(null,false);logoCreator.reset();invalidateLaunch();requestedSupply=null;brief={};awaiting=null;launchStep=null;setupActive=false;confirmedLaunchWallet=null;selectedToken=null;
+ for(const id of [...economicFields.map(value=>value[0]),'launch-logo',...metadataIds])$(id).value='';
+ for(const kind of ['opening-purchase','logo-local-choice','logo-original','launch-conversation'])save(kind,null);
+ saveSettings();keepBrief();renderTokenSummary();
+}
+function savedSetupWasLaunched(){try{const record=JSON.parse(localStorage.getItem(launchKey())||'null');return record?.phase==='verified'&&record.result?.state==='verified'&&record.configuration?.name===brief.name&&record.configuration?.symbol===brief.symbol;}catch{return false;}}
 $('chat').onsubmit=async e=>{
  e.preventDefault();if(!user)return;const text=$('prompt').value.trim();if(!text)return;if(chatApprovalBusy||claimBusy){say('Dinn is still checking or processing the current wallet action. Please wait before starting another one.');$('prompt').value='';return;}
- const command=workspaceCommand(text);
+ let requestText=text;const command=workspaceCommand(text);
+ const launchEntry=command==='start-launch'||/^(?:resume(?: setup| launch)?|continue (?:my |the |saved )?(?:token launch|launch|setup))[.!]?$/i.test(text);
+ if(launchReturnPending){const choice=launchReturnChoice(text);launchReturnPending=false;if(choice==='cancel'){recordSetupReply(text,'Your launch progress is saved. Come back whenever you are ready.');$('prompt').value='';return;}if(choice==='continue'){if(restoreLaunchConversation(()=>recordSetupReply(text,'Continuing your saved launch setup.'))){$('prompt').value='';return;}requestText='resume setup';}else if(choice==='new'){startFreshTokenSetup();requestText='create a token';}}
+ else if(launchEntry&&hasLaunchProgress(brief,currentSettings())){if(controller||setupBusy||launchBusy){$('feedback').textContent='Please wait for the current action to finish.';return;}if(savedSetupWasLaunched()){startFreshTokenSetup();requestText='create a token';}else{launchReturnPending=true;showLaunchStage(null,false);const label=brief.name?(brief.name+(brief.symbol?' ('+brief.symbol+')':'')):'your saved token';recordSetupReply(text,'You have a launch in progress for '+label+'. Would you like to continue with it or start a new token? Starting a new token replaces this unfinished setup.');$('prompt').value='';return;}}
  if(command==='clear-chat'){clearConversation();return;}
  if(command==='reset-draft'){
   resetDraftPending=true;recordSetupReply(text,'This clears the token setup and conversation but keeps saved transaction records. Reply “confirm reset” to continue, or “keep setup” to cancel.');$('prompt').value='';return;
@@ -225,14 +237,14 @@ $('chat').onsubmit=async e=>{
   say('Reply “confirm reset” to clear setup, or “keep setup” to cancel.');$('prompt').value='';return;
  }
  if(conversationalLaunchStatus(text)){$('prompt').value='';return;}
- if(handleLaunchReply(text)){$('prompt').value='';return;}
+ if(requestText===text&&handleLaunchReply(text)){$('prompt').value='';return;}
  if(handlePendingChatApproval(text)){$('prompt').value='';return;}
  if(chatPendingApproval&&!/^(?:what|why|how|explain|can you explain)\b/i.test(text)){const pending=chatPendingApproval;chatPendingApproval=null;if(pending.action)forgetWalletApproval(pending.action);say('I cleared the earlier approval review before handling this request. Ask me to check the current terms again before proceeding.');}
  if(controller||setupBusy)return;
  const generation=epoch,draftRevision=launchRevision;controller=new AbortController();const request=controller;$('prompt').value='';$('send').disabled=true;$('stop-response').hidden=false;$('feedback').textContent='';message('user',text);const reply=message('assistant','');reply.textContent='Thinking';reply.classList.add('thinking');reply.setAttribute('aria-label','Dinn is thinking');for(let i=0;i<3;i++){const dot=document.createElement('span');dot.className='thinking-dot';dot.textContent='.';dot.setAttribute('aria-hidden','true');reply.append(dot);}let received=false;
  try{
   const {getAccessToken}=await import('/auth/entry.js');const accessToken=await getAccessToken();
-  const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json',...(accessToken?{authorization:'Bearer '+accessToken}:{})},body:JSON.stringify({message:text,history,ponsBrief:brief,ponsSettings:currentSettings(),ponsSetup:{requestedSupply,active:setupActive||!!awaiting||!!launchStep,field:awaiting||({'launch-pair':'pairToken','launch-config':'configId','launch-tax':'creatorTaxBps','launch-buyback':'buybackEnabled','launch-recipient':'creatorFeeRecipient'})[launchStep]||null,logo:$('launch-logo').value},...(account?{walletAccount:account}:{}),...(selectedToken?{tokenAddress:selectedToken}:{})}),signal:request.signal});
+  const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json',...(accessToken?{authorization:'Bearer '+accessToken}:{})},body:JSON.stringify({message:requestText,history,ponsBrief:brief,ponsSettings:currentSettings(),ponsSetup:{requestedSupply,active:setupActive||!!awaiting||!!launchStep,field:awaiting||({'launch-pair':'pairToken','launch-config':'configId','launch-tax':'creatorTaxBps','launch-buyback':'buybackEnabled','launch-recipient':'creatorFeeRecipient'})[launchStep]||null,logo:$('launch-logo').value},...(account?{walletAccount:account}:{}),...(selectedToken?{tokenAddress:selectedToken}:{})}),signal:request.signal});
   const result=await receiveChat(r,delta=>{if(epoch===generation){if(!received){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');received=true;}reply.append(document.createTextNode(delta));scrollChat();}});
   if(epoch!==generation)return;
   if(result.launchDraft){try{if(launchRevision!==draftRevision)throw Error('Your token details changed while Dinn was responding. Retry against the current details.');applyLaunchDraft(result.launchDraft);}catch(error){received=false;reply.replaceChildren();throw error;}}
@@ -264,7 +276,7 @@ if(user&&((nextUser===user)||d.state==='loading'&&!nextUser)){
   $('wallet-address').textContent=account||'';$('wallet-balance').textContent=' - ETH';$('wallet-status').textContent=d.walletStatus||'';$('wallet-use-dinn').hidden=!d.canUseEmbedded;walletUI?.changed();if(d.state==='connected'&&!$('wallet-view').hidden)void walletUI?.refresh();return;
  }
 }
-if(nextUser===user&&d.state==='connected'&&d.address===account&&d.provider===provider)return;showLaunchStage(null,false);if(!$('pons-review-dialog').hidden)showLaunchStage(null);epoch++;launchBusy=false;logoCreator.reset();controller?.abort();launchActivity.stop();selectedToken=null;confirmedLaunchWallet=null;account=d.address||null;provider=d.provider||null;walletSource=d.source||null;walletSendTransaction=d.sendTransaction||null;invalidateLaunch();user=d.authenticated?(d.userId||account):null;const loading=d.state==='loading';$('session-loading').hidden=!loading;$('auth-gate').hidden=loading||!!user;$('workspace').hidden=loading||!user;$('workspace').inert=loading||!user;history=[];$('messages').replaceChildren();for(const id of ['feedback','brief-status','wallet-status'])$(id).textContent='';$('wallet-address').textContent=account||'';$('wallet-balance').textContent=' -  ETH';$('wallet-status').textContent=d.walletStatus||'';$('wallet-use-dinn').hidden=!d.canUseEmbedded;if(user){restore();restoreLaunch();restoreSettings();if(account){let prior;try{prior=JSON.parse(read('last-deployer'));}catch{}const recipient=$('launch-recipient');if(prior&&recipient.value.toLowerCase()===prior.toLowerCase()){recipient.value=account;saveSettings();}save('last-deployer',account);}renderTokenSummary();renderSetupChoices();restoreLaunchConversation();}else {brief={};awaiting=null;syncBrief();}if(!user)for(const f of ['name','symbol','description'])$('brief-'+f).value='';draftSync.start(user);walletUI?.changed();});
+if(nextUser===user&&d.state==='connected'&&d.address===account&&d.provider===provider)return;showLaunchStage(null,false);if(!$('pons-review-dialog').hidden)showLaunchStage(null);epoch++;launchBusy=false;logoCreator.reset();controller?.abort();launchActivity.stop();selectedToken=null;confirmedLaunchWallet=null;account=d.address||null;provider=d.provider||null;walletSource=d.source||null;walletSendTransaction=d.sendTransaction||null;invalidateLaunch();launchReturnPending=false;user=d.authenticated?(d.userId||account):null;const loading=d.state==='loading';$('session-loading').hidden=!loading;$('auth-gate').hidden=loading||!!user;$('workspace').hidden=loading||!user;$('workspace').inert=loading||!user;history=[];$('messages').replaceChildren();for(const id of ['feedback','brief-status','wallet-status'])$(id).textContent='';$('wallet-address').textContent=account||'';$('wallet-balance').textContent=' -  ETH';$('wallet-status').textContent=d.walletStatus||'';$('wallet-use-dinn').hidden=!d.canUseEmbedded;if(user){restore();restoreLaunch();restoreSettings();if(account){let prior;try{prior=JSON.parse(read('last-deployer'));}catch{}const recipient=$('launch-recipient');if(prior&&recipient.value.toLowerCase()===prior.toLowerCase()){recipient.value=account;saveSettings();}save('last-deployer',account);}renderTokenSummary();renderSetupChoices();}else {brief={};awaiting=null;syncBrief();}if(!user)for(const f of ['name','symbol','description'])$('brief-'+f).value='';draftSync.start(user);walletUI?.changed();});
 
 ﻿let reviewed=null,prepared=null,launchBusy=false,launchRevision=0;
 
