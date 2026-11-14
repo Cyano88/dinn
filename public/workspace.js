@@ -253,6 +253,7 @@ $('chat').onsubmit=async e=>{
   const result=await receiveChat(r,delta=>{if(epoch===generation){if(!received){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');received=true;}reply.append(document.createTextNode(delta));scrollChat();}});
   if(epoch!==generation)return;
   if(result.launchDraft){try{if(launchRevision!==draftRevision)throw Error('Your token details changed while Dinn was responding. Retry against the current details.');applyLaunchDraft(result.launchDraft);}catch(error){received=false;reply.replaceChildren();throw error;}}
+  if(result.inspection)result.message=researchSummary(result.inspection);
   const walletAction=result.actions?.find(action=>action.id==='wallet_approve');if(walletAction)result.message+='\n\nWould you like me to continue with these exact terms? Reply “yes” or “approve” to send, or “cancel” to stop. Nothing has been sent yet.';
   const state=appendChatState(history,chatResults,text,result.message,result);history=state.messages;chatResults=state.results;save('chat',state);renderToolResult(reply,result);advanceLaunchProfile=!launchConversationStep&&($('chat-review').disabled===false&&(result.actions||[]).some(action=>action.id==='review')||!!(result.launchDraft?.active&&result.launchDraft.nextField===null));
  }catch(err){if(epoch===generation){const failure=err.name==='AbortError'?'Response stopped. Your message is ready to retry.':err.message;reply.classList.remove('thinking');reply.removeAttribute('aria-label');reply.textContent=(received&&reply.textContent.trim()?reply.textContent+'\n\n':'')+'Could not finish: '+failure;reply.setAttribute('role','status');$('prompt').value=text;$('feedback').textContent='Your message is ready to retry.';}}
@@ -548,9 +549,21 @@ async function approveWalletFromChat(action,body){
   }catch(error){if(epoch===actionEpoch&&account===actionAccount){clearPending();appendChatActionNote(body,'Could not verify the transaction status yet. No additional transaction was sent. '+error.message);}}};setTimeout(check,2500);
  }catch(error){pendingNote?.classList.remove('chat-action-pending');appendChatActionNote(body,error.message||'Wallet approval could not be completed.');}
 }
+function researchSummary(report){
+ const name=[report.tokenName,report.symbol&&'('+report.symbol+')'].filter(Boolean).join(' ')||'Token';
+ const lines=[name+' · Robinhood Chain · checked at block '+report.blockNumber+'.'];
+ const history=report.ponsHistory,curve=report.ponsState?.curve;
+ if(history?.launchedAt)lines.push('Launched '+new Date(history.launchedAt).toLocaleDateString()+(history.age?' · '+history.age+' old':'')+'.');
+ if(curve?.progressPercent!=null)lines.push('Bonding curve: '+curve.progressPercent+'% of the '+curve.threshold+' '+(history?.curve?.pairSymbol||report.ponsState?.pair?.symbol||'pair asset')+' reserve target.');
+ if(history?.curve?.status==='complete-to-checked-block')lines.push('Since launch: '+history.curve.tradeCount+' curve trades · '+Number(history.curve.totalVolume).toLocaleString('en',{maximumFractionDigits:4})+' '+history.curve.pairSymbol+' volume · '+Number(history.curve.totalFees).toLocaleString('en',{maximumFractionDigits:4})+' '+history.curve.pairSymbol+' fees.');
+ const events=history?.holderEventSummary;if(events)lines.push('Cumulative curve activity among '+events.indexedAddresses+' indexed top-holder addresses: '+events.addressesWithBuys+' addresses bought; '+events.addressesWithSells+' sold. This is not a recent wallet-history count.');
+ const behavior=report.holders?.behavior;if(behavior?.summary)lines.push('Recent '+behavior.windowDays+'-day wallet sample: '+behavior.summary.targetTokenBuyCandidates+' candidate buys and '+behavior.summary.targetTokenSellCandidates+' candidate sells across '+behavior.summary.walletsAnalyzed+' sampled addresses. This sample can miss trades.');
+ const locks=report.pinkLock?.records;if(Array.isArray(locks)&&locks.length){const first=locks[0];lines.push('PinkLock: '+locks.length+' matching record'+(locks.length===1?'':'s')+'; '+Number(first.remaining).toLocaleString('en',{maximumFractionDigits:2})+' tokens remain locked'+(first.tgeOrUnlockDate?', first unlock or release '+new Date(first.tgeOrUnlockDate).toLocaleDateString():'')+'.');}else if(report.pinkLock)lines.push('No supported PinkLock record was confirmed. This does not prove supply is unlocked.');
+ lines.push('View research details for sources, contract checks and coverage limits.');return lines.join('\n');
+}
 function renderToolResult(body,result){
 
- renderAssistantText(body,result.message);
+ renderAssistantText(body,result.inspection?researchSummary(result.inspection):result.message);
 
  if(result.tokenState){const extra=document.createElement('p');extra.className='research-transcript';extra.textContent=['Token: '+result.tokenState.address,'Fee recipient: '+result.tokenState.feeRecipient,'Fees shown for: '+result.tokenState.viewerAccount,'Checked at block '+result.tokenState.blockNumber+' · '+result.tokenState.checkedAt,result.tokenState.claimScope].filter(Boolean).join('\n');body.append(extra);}
  if(result.tokenAddress&&/^0x[0-9a-f]{40}$/i.test(result.tokenAddress))selectedToken=result.tokenAddress;
@@ -561,7 +574,7 @@ function renderToolResult(body,result){
  if((result.actions||[]).some(a=>a.id==='launch')){view('assistant');queueMicrotask(()=>submitChoice('resume setup'));}
  if((result.actions||[]).some(a=>a.id==='launchpads'))view('launches');
 
- if(result.inspection){const transcript=document.createElement('div');renderInspection(transcript,result.inspection,{restored:!!result.restored});transcript.querySelectorAll('button,.inspection-controls').forEach(b=>b.remove());const evidence=document.createElement('p');evidence.className='research-transcript';evidence.textContent=[...transcript.children].map(el=>el.innerText||el.textContent).filter(Boolean).join('\n\n').trim();body.append(evidence);for(const source of result.inspection.sources||[]){try{const link=document.createElement('a');link.href=source.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=source.label;body.append(document.createTextNode(' '),link);}catch{}}body.scrollIntoView({block:'start',behavior:'instant'});}else scrollChat();
+ if(result.inspection){const transcript=document.createElement('div');renderInspection(transcript,result.inspection,{restored:!!result.restored});transcript.querySelectorAll('button,.inspection-controls').forEach(b=>b.remove());const details=document.createElement('details');details.className='research-evidence';const summary=document.createElement('summary');summary.textContent='View research details';details.append(summary);const evidence=document.createElement('p');evidence.className='research-transcript';evidence.textContent=[...transcript.children].map(el=>el.innerText||el.textContent).filter(Boolean).join('\n\n').trim();details.append(evidence);for(const source of result.inspection.sources||[]){try{const link=document.createElement('a');link.href=source.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=source.label;details.append(document.createTextNode(' '),link);}catch{}}body.append(details);body.scrollIntoView({block:'start',behavior:'instant'});}else scrollChat();
 
 }
 
