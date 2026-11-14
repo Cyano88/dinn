@@ -5,7 +5,7 @@ import {promisify} from 'node:util';
 import {once} from 'node:events';
 const port=14317;
 test('HTTP preview rejects mutation and preserves draft-only boundaries',async()=>{
- const child=spawn(process.execPath,['server.mjs'],{env:{...process.env,PORT:String(port),OG_API_KEY:'',OG_MODEL:'',ELYSIUM_RPC_URL:'',ELYSIUM_AUTH_CHAIN_ID:'99901',ENABLE_WALLET_TRANSFERS:'false',PRIVY_APP_ID:'',ELYSIUM_PUBLIC_RPC_URL:'',ENABLE_LIVE_LAUNCH:''},stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,['server.mjs'],{env:{...process.env,PORT:String(port),OG_API_KEY:'',OG_MODEL:'',ELYSIUM_RPC_URL:'',ELYSIUM_AUTH_CHAIN_ID:'99901',ENABLE_WALLET_TRANSFERS:'false',PRIVY_APP_ID:'',ELYSIUM_PUBLIC_RPC_URL:'',DINN_DRAFT_SYNC_URL:'',ENABLE_LIVE_LAUNCH:''},stdio:['ignore','pipe','pipe']});
  try{
   await Promise.race([once(child.stdout,'data'),once(child,'exit').then(()=>{throw new Error('Server exited before startup');}),new Promise((_,reject)=>{const t=setTimeout(()=>reject(new Error('Startup timeout')),15000);t.unref();})]);
   const root=`http://127.0.0.1:${port}`;
@@ -13,12 +13,13 @@ test('HTTP preview rejects mutation and preserves draft-only boundaries',async()
   const auth=await(await fetch(root+'/api/auth/config')).json();assert.equal(auth.enabled,false);assert.equal(auth.appId,null);assert.equal(auth.rpcUrl,'https://rpc.mainnet.chain.robinhood.com/');assert.deepEqual(auth.loginMethods,['twitter','google']);
   assert.equal((await fetch(root+'/ui/auth.jsx')).status,404);
   const head=await fetch(root,{method:'HEAD'});assert.equal(head.status,200);assert.equal(await head.text(),'');
-  const page=await fetch(root);assert.equal(page.status,200);const html=await page.text();assert.match(html,/id="workspace" hidden inert/);assert.match(html,/Continue with Google/);assert.match(html,/Coming soon/i);
+  const page=await fetch(root);assert.equal(page.status,200);const html=await page.text();assert.match(html,/id="workspace" hidden inert/);assert.match(html,/Continue with Google/);assert.match(html,/id="launches-view"/);assert.match(html,/Tokens launched through Dinn/);
   const post=(path,data,headers={})=>fetch(root+path,{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(data)});
+  const launchList=await post('/api/dinn/launches/list',{});assert.ok([401,503].includes(launchList.status),`${launchList.status}: ${await launchList.text()}`);
   const plan=await(await post('/api/plan',{message:'launch token and burn supply'})).json();assert.equal(plan.actions.length,0);assert.equal(plan.mode,'tool');
   assert.equal((await post('/api/plan',{message:'launch'},{origin:'https://evil.example'})).status,403);
   assert.equal((await post('/api/launch/receipt',{hash:'bad',configuration:{}})).status,410);
-  assert.equal((await fetch(root+'/launches.js')).status,200);
+  assert.equal((await fetch(root+'/launches.js')).status,200);assert.equal((await fetch(root+'/dinn-launches.js')).status,200);
   assert.equal((await fetch(root+'/draft-sync.js')).status,200);assert.equal((await fetch(root+'/draft-data.js')).status,200);assert.equal((await fetch(root+'/chat.js')).status,200);assert.equal((await fetch(root+'/market-execution.js')).status,200);
   for(const icon of ['arbitrum','base','eth','robinhood','token','usdc','usdg','usdt','weth']){const response=await fetch(`${root}/brand/wallet/${icon}.svg`);assert.equal(response.status,200,icon);assert.match(response.headers.get('content-type'),/image\/svg\+xml/);assert.match(await response.text(),/<svg/);}
   const chat=await post('/api/chat',{message:'hello',history:[],draft:{name:'Orbit',cto:false}});

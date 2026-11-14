@@ -48,7 +48,7 @@ export async function ponsReceipt(input,o={}){
  const [tokenCode,curveCode,head]=await Promise.all([client.getCode({address:e.token,blockNumber:b.number}),client.getCode({address:e.curve,blockNumber:b.number}),client.getBlockNumber()]);
  if(!tokenCode||tokenCode==='0x'||!curveCode||curveCode==='0x')throw Error('Launched contracts could not be verified.');
  if(!same((await client.getBlock({blockNumber:b.number})).hash,b.hash))throw Error('Receipt changed. Check again.');
- return {...base,state:head-b.number>=1n?'verified':'confirming',token:e.token,curve:e.curve,blockNumber:String(b.number)};
+ return {...base,state:head-b.number>=1n?'verified':'confirming',token:e.token,curve:e.curve,blockNumber:String(b.number),blockTimestamp:Number(b.timestamp)};
 }
 
 export async function ponsPurchaseApproval(input,o={}){
