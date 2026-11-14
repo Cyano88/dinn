@@ -24,10 +24,12 @@ export async function ponsSimulate(input,o={}){
  if(!same(q.expectedEconomics,fresh.expectedEconomics)||q.launchFeeWei!==fresh.launchFeeWei)throw Error('Launch economics changed. Review the new terms before continuing.');
  const blockNumber=BigInt(fresh.blockNumber),originalBlock=await client.getBlock({blockNumber}),transaction=launchTransaction(c,fresh);
  if(fresh.purchase&&!fresh.pairAsset.native){if(BigInt(fresh.purchase.balanceWei)<BigInt(fresh.purchase.amountWei))throw Error('Insufficient pairing asset for the opening purchase.');if(fresh.purchase.approvalRequired)throw Error('Approve the pairing asset before checking this launch.');}
+ const balance=await client.getBalance({address:c.account,blockNumber});
+ if(balance<BigInt(transaction.value))throw Error('Insufficient ETH for the launch fee and any ETH purchase. Add ETH to the launch wallet, then check again.');
  const call=launchCall(c,fresh);const {result}=await client.simulateContract({...call,abi:launchAbi,account:c.account,blockNumber});
  if(result.length!==(c.purchase?3:2)||result.slice(0,2).some(v=>!/^0x[0-9a-f]{40}$/i.test(v)||same(v,zeroAddress)))throw Error('Simulation returned invalid launch addresses.');
  if(fresh.purchase&&result[2]<BigInt(fresh.purchase.minTokensOutWei))throw Error('Purchase simulation returned too few tokens.');
- const [gas,gasPrice,balance]=await Promise.all([client.estimateGas({account:c.account,to:PONS_FACTORY,data:transaction.data,value:BigInt(transaction.value),blockNumber}),client.getGasPrice(),client.getBalance({address:c.account,blockNumber})]);
+ const [gas,gasPrice]=await Promise.all([client.estimateGas({account:c.account,to:PONS_FACTORY,data:transaction.data,value:BigInt(transaction.value),blockNumber}),client.getGasPrice()]);
  const gasLimit=gas*120n/100n,estimatedGasWei=gasLimit*gasPrice;
  if(balance<BigInt(transaction.value)+estimatedGasWei)throw Error('Insufficient ETH for the launch, any ETH purchase, and estimated gas.');
  const b=await snapshot(client,now);if((await client.getBlock({blockNumber})).hash!==originalBlock.hash||b.number<blockNumber)throw Error('Network changed. Simulate again.');
