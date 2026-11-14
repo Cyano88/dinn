@@ -1,5 +1,5 @@
-export {getAccessToken} from '@privy-io/react-auth';
 import PonsConnect from './pons-connect.jsx';
+export {getAccessToken} from '@privy-io/react-auth';
 import {base,arbitrum,optimism} from 'viem/chains';
 import {walletKey,selectDeployer,connectDeployer} from '../src/deployer-wallet.mjs';
 import {checkWalletSigning} from '../src/signing-probe.mjs';
@@ -57,7 +57,14 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
  }
  function selectLaunchWallet(wallet){launchChoice.current={user:user?.id,key:walletKey(wallet)};chooseWallet(wallet);}
  useEffect(()=>{const useDinn=()=>{if(embedded)chooseWallet(embedded);};window.addEventListener('dinn:use-dinn-wallet',useDinn);return()=>window.removeEventListener('dinn:use-dinn-wallet',useDinn);},[embedded?.address,user?.id]);
- const {connectWallet}=useConnectWallet({onSuccess:({wallet})=>{if(wallet.type==='ethereum')selectLaunchWallet(wallet);},onError:()=>setWalletError('External wallet connection did not complete. Your selected launch wallet has not changed.')});
+ const walletPurpose=useRef('launch');
+ const {connectWallet}=useConnectWallet({onSuccess:({wallet})=>{const purpose=walletPurpose.current;walletPurpose.current='launch';if(wallet.type==='ethereum'){if(purpose==='wallet')chooseWallet(wallet);else selectLaunchWallet(wallet);}},onError:()=>{walletPurpose.current='launch';setWalletError('External wallet connection did not complete. Your selected wallet has not changed.');}});
+ function connectExternal(purpose='launch') { walletPurpose.current=purpose;setWalletError('');connectWallet({walletChainType:'ethereum-only',walletList:['detected_ethereum_wallets','metamask'],description:purpose==='wallet'?'Connect an external wallet for the Wallet page.':'Connect the wallet you want to use for your launch.'}); }
+ const walletUiRef=useRef(null);
+ walletUiRef.current={select:detail=>{if(detail?.type==='create')void run(()=>createWallet());else if(detail?.type==='embedded'&&embedded)chooseWallet(embedded);else if(detail?.type==='external'){const wallet=wallets.find(item=>item.walletClientType!=='privy'&&item.address?.toLowerCase()===detail.address?.toLowerCase());if(wallet)chooseWallet(wallet);}},connect:()=>connectExternal('wallet')};
+ useEffect(()=>{const select=e=>walletUiRef.current?.select(e.detail),connect=()=>walletUiRef.current?.connect();window.addEventListener('dinn:select-wallet',select);window.addEventListener('dinn:connect-external-wallet',connect);return()=>{window.removeEventListener('dinn:select-wallet',select);window.removeEventListener('dinn:connect-external-wallet',connect);};},[]);
+ const walletOptionsKey=wallets.map(walletKey).join('|');
+ useEffect(()=>{window.dispatchEvent(new CustomEvent('launchflow:wallet-options',{detail:{selectedAddress:selected?.address||null,options:[...(embedded?[{type:'embedded',label:'Dinn wallet',address:embedded.address}]:[{type:'create',label:'Create Dinn wallet',address:null}]),...wallets.filter(wallet=>wallet.walletClientType!=='privy').map(wallet=>({type:'external',label:wallet.meta?.name||'External wallet',address:wallet.address}))],canConnectExternal:!!authenticated&&walletsReady}}));},[authenticated,walletsReady,user?.id,selectedKey,walletOptionsKey,embedded?.address]);
  const identity=authenticated?user?.id+':'+embedded?.address:'';identityRef.current=identity;
  useEffect(()=>{identityRef.current=identity;setProbeStatus('');return()=>{identityRef.current='';};},[identity]);
  async function probe(){if(probeBusy.current)return;probeBusy.current=true;setWorking(true);setProbeStatus('Review the sign-only check in your wallet.');const started=identityRef.current;try{const result=await checkWalletSigning({address:embedded?.address,signTransaction,isCurrent:()=>identityRef.current===started});if(identityRef.current===started)setProbeStatus(result.message);}catch{if(identityRef.current===started)setProbeStatus('Signing was not verified. The request may have been declined or the wallet may reject this diagnostic. Nothing was broadcast.');}finally{probeBusy.current=false;setWorking(false);}} 
@@ -97,7 +104,7 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
  const picker=<div className="deployer-picker">
  {embedded&&<button id="use-dinn-wallet" className="primary" type="button" disabled={!walletsReady} onClick={()=>selectLaunchWallet(embedded)}>Dinn wallet <span>{short(embedded.address)}</span></button>}
  {wallets.filter(wallet=>wallet.walletClientType!=='privy').map(wallet=><button className="subtle" type="button" key={walletKey(wallet)} onClick={()=>selectLaunchWallet(wallet)}>{wallet.meta?.name||'External wallet'} <span>{short(wallet.address)}</span></button>)}
- <button id="connect-launch-wallet" className="subtle" type="button" onClick={()=>{setWalletError('');connectWallet({walletChainType:'ethereum-only',walletList:['detected_ethereum_wallets','metamask'],description:'Connect the wallet you want to use for your launch.'});}}>Connect external wallet</button>
+ <button id="connect-launch-wallet" className="subtle" type="button" onClick={()=>connectExternal('launch')}>Connect external wallet</button>
  {walletStatus&&<p role="status">{walletStatus} {selected&&<button className="subtle" type="button" onClick={()=>selectLaunchWallet(selected)}>Reconnect</button>}</p>}{walletError&&<p role="alert">{walletError}</p>}</div>;
  return <><PonsConnect projectId={walletConnectProjectId} userId={user?.id} wallet={embedded} launchWallet={selected}/>{createPortal(menu,accountHost)}{deployerHost&&createPortal(picker,deployerHost)}</>;
 
