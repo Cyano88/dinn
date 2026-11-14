@@ -20,6 +20,7 @@ test('HTTP preview rejects mutation and preserves draft-only boundaries',async()
   assert.equal((await post('/api/launch/receipt',{hash:'bad',configuration:{}})).status,410);
   assert.equal((await fetch(root+'/launches.js')).status,200);
   assert.equal((await fetch(root+'/draft-sync.js')).status,200);assert.equal((await fetch(root+'/draft-data.js')).status,200);assert.equal((await fetch(root+'/chat.js')).status,200);assert.equal((await fetch(root+'/market-execution.js')).status,200);
+  for(const icon of ['arbitrum','base','eth','robinhood','token','usdc','usdg','usdt','weth']){const response=await fetch(`${root}/brand/wallet/${icon}.svg`);assert.equal(response.status,200,icon);assert.match(response.headers.get('content-type'),/image\/svg\+xml/);assert.match(await response.text(),/<svg/);}
   const chat=await post('/api/chat',{message:'hello',history:[],draft:{name:'Orbit',cto:false}});
   assert.match(chat.headers.get('content-type'),/application\/x-ndjson/);
   const events=(await chat.text()).trim().split('\n').map(s=>JSON.parse(s));
