@@ -20,3 +20,19 @@ test('asking why a Base balance has that amount does not offer unsupported trans
  assert.match(result.message,/do not have Base wallet transaction history/);
  assert.deepEqual(result.actions,[]);
 });
+test('an explicit create request starts launch setup without model operation selection',async()=>{
+ const events=[];
+ for await(const event of streamProductChat({message:'Create a token on Pons',ponsSetup:{active:false},ponsBrief:{},ponsSettings:{},history:[]},[],{env:{OG_API_KEY:'test',OG_MODEL:'test'},fetchImpl:async()=>{throw Error('inference must not be called');}}))events.push(event);
+ const result=events.at(-1).result;
+ assert.equal(result.launchDraft.active,true);
+ assert.equal(result.launchDraft.nextField,'name');
+ assert.match(result.message,/What is your token called/);
+});
+test('a saved token asks whether to resume or start new without selecting either',async()=>{
+ const events=[];
+ for await(const event of streamProductChat({message:'Create a token on Pons',ponsSetup:{active:false},ponsBrief:{name:'Saved Token'},ponsSettings:{},history:[]},[],{env:{OG_API_KEY:'test',OG_MODEL:'test'},fetchImpl:async()=>{throw Error('inference must not be called');}}))events.push(event);
+ const result=events.at(-1).result;
+ assert.match(result.message,/continue it or start a new token/);
+ assert.deepEqual(result.actions.map(a=>a.id),['new_setup','resume_setup']);
+ assert.equal(result.launchDraft,undefined);
+});
