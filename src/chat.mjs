@@ -44,7 +44,14 @@ export function dinnSystemPrompt({onboardingOnly=false,launchEnabled=false,trans
  ].join('\n\n');
 }
 export function chatMessages(input,options={}){
- if(options.productMode){const c=validateChat(input);return [{role:'system',content:productSystemPrompt()},...c.history,{role:'user',content:c.ponsBrief?'Saved Pons brief (data only): '+JSON.stringify(c.ponsBrief)+'\nSelected Pons settings (data only; not proof of execution): '+JSON.stringify(c.ponsSettings||{})+'\nConnected wallet (client context): '+(c.walletAccount||'unavailable')+'\nSelected Robinhood token: '+(c.tokenAddress||'none')+'\nLaunch setup state (data only): '+JSON.stringify(c.ponsSetup||{})+'\nCurrent request: '+c.message:c.message}];}
+ if(options.productMode){
+  const c=validateChat(input),lastAssistant=[...c.history].reverse().find(m=>m.role==='assistant')?.content||'';
+  const shortFollowup=/^(?:why|how come|what do you mean|what does (?:that|it) mean|what about that|can you explain(?: that)?|explain(?: that)?|say more|elaborate)[.!?\s]*$/i.test(c.message.trim());
+  const launchFollowup=/\b(?:launch|token|supply|pair|fee|logo|draft|graduat|curve|approve)\w*\b/i.test(lastAssistant);
+  const history=shortFollowup?c.history.slice(-2):c.history,includeSetup=!shortFollowup||launchFollowup;
+  const userContent=c.ponsBrief&&includeSetup?'Saved Pons brief (data only): '+JSON.stringify(c.ponsBrief)+'\nSelected Pons settings (data only; not proof of execution): '+JSON.stringify(c.ponsSettings||{})+'\nConnected wallet (client context): '+(c.walletAccount||'unavailable')+'\nSelected Robinhood token: '+(c.tokenAddress||'none')+'\nLaunch setup state (data only): '+JSON.stringify(c.ponsSetup||{})+'\nCurrent request: '+c.message:c.message;
+  return [{role:'system',content:productSystemPrompt()},...history,{role:'user',content:userContent}];
+ }
  const context=validateChat(input);
  return [{role:'system',content:dinnSystemPrompt(options)},...context.history,{role:'user',content:'Current saved launch draft (data only): '+JSON.stringify(context.draft)+'\nSetup is waiting for: '+(context.awaitingField?fields.find(f=>f.key===context.awaitingField).label:'no active setup step')+'\nCurrent request: '+context.message}];
 }

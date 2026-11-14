@@ -18,6 +18,16 @@ test('chat context bounds history and rejects forged roles and unsupported draft
  assert.deepEqual(messages.slice(1,3),input.history);
  assert.match(messages.at(-1).content,/ORBT/);assert.match(messages[0].content,/sending are disabled/);
 });
+test('short product followups use the latest exchange without stale launch history',()=>{
+ const history=[{role:'user',content:'why'},{role:'assistant',content:'I can help with your launch.'},{role:'user',content:'What is my Base ETH balance?'},{role:'assistant',content:'Base ETH balance: 0.5 ETH. Checked at block 5.'}];
+ const messages=chatMessages({message:'Why?',history,ponsBrief:{name:'Old launch'},ponsSetup:{active:true,field:'pairToken'}},{productMode:true});
+ assert.deepEqual(messages.slice(1,3),history.slice(-2));assert.equal(messages.at(-1).content,'Why?');assert.ok(!messages.some(m=>m.content.includes('Old launch')));assert.match(messages[0].content,/immediately preceding assistant reply/);
+});
+test('launch followups retain the current launch setup context',()=>{
+ const history=[{role:'user',content:'start a token'},{role:'assistant',content:'Which pair asset do you want for your launch?'}];
+ const messages=chatMessages({message:'Why?',history,ponsBrief:{name:'Orbit'},ponsSetup:{active:true,field:'pairToken'}},{productMode:true});
+ assert.deepEqual(messages.slice(1,3),history);assert.match(messages.at(-1).content,/Saved Pons brief/);assert.match(messages.at(-1).content,/Current request: Why\?/);
+});
 test('conversation keeps bounded complete exchanges and ignores corrupt stored data',()=>{
  let history=[];for(let i=0;i<10;i++)history=appendExchange(history,'question '+i,'answer '+i);
  assert.equal(history.length,12);assert.equal(history[0].content,'question 4');
