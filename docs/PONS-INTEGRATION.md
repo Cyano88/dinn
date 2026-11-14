@@ -1,4 +1,6 @@
-# Current: original chat UI with Pons launch flow
+# Pons integration history
+
+This document records older implementation milestones and is not a current capability list. For the live product, start with the [README](../README.md), [agent guide](../public/agent-guide.md), and the Dinn interface. A funded bridge and Pons launch were verified on 14 November 2026; the older "no real transaction" statements below refer to earlier milestones.
 
 Updated 2026-11-10 following user correction: preserve the original Ascend conversational workspace and adapt its launchpad data. The simple replacement Pons shell is archived, not the intended product UI.
 
