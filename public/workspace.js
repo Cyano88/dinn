@@ -128,6 +128,8 @@ function restoreLaunchConversation(){let saved;try{saved=JSON.parse(read('launch
 function recordSetupReply(text,reply){const state=appendChatState(history,chatResults,text,reply,{});history=state.messages;chatResults=state.results;save('chat',state);message('user',text);return message('assistant',reply);}
 
 function handleLaunchReply(text){
+ const trimmed=text.trim(),explicitLaunchReply=/^(?:set|change|update|add|use|skip|continue|next|resume|pause|cancel)\b/i.test(trimmed),question=/^(?:what|why|how|explain|suggest|recommend|should|is|are|does|do)\b/i.test(trimmed)||/\?$/.test(trimmed)&&!explicitLaunchReply;
+ if(question||/\b(?:balance|balances|portfolio|wallet assets|bridge|swap|send tokens|send|transfer)\b/i.test(trimmed))return false;
 
  if(claimRecoveryKey){if(/^(?:cancel|stop|never mind|nevermind)$/i.test(text)){claimRecoveryKey=null;recordSetupReply(text,'Okay. The saved claim stays unresolved, and no new transaction will be sent.');return true;}const hash=text.trim();if(!/^0x[0-9a-f]{64}$/i.test(hash)){say('Paste the full 0x transaction hash to check the saved fee claim, or say “cancel”.');return true;}try{const record=JSON.parse(localStorage.getItem(claimRecoveryKey)||'null');if(!record?.claim)throw Error('Saved claim review is unavailable.');record.hash=hash;record.phase='submitted';localStorage.setItem(claimRecoveryKey,JSON.stringify(record));claimRecoveryKey=null;recordSetupReply(text,'Thanks. Dinn is checking that fee claim receipt; it will not submit another transaction.');void openFeeClaim(record.claim.address);}catch(error){claimRecoveryKey=null;say('Could not recover the saved fee claim: '+error.message);}return true;}
 
