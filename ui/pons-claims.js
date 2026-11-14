@@ -1,6 +1,7 @@
 import {claimTransaction} from '../src/pons-claim-call.mjs';
+import {sendReviewedTransaction} from '../src/send-reviewed-transaction.mjs';
 const same=(a,b)=>typeof a==='string'&&typeof b==='string'&&a.toLowerCase()===b.toLowerCase();
-export async function requestPonsClaim({prepared,provider,storage,key,isCurrent,withLock}){
+export async function requestPonsClaim({prepared,provider,sendTransaction,address,source='external',storage,key,isCurrent,withLock}){
  if(!withLock)throw Error('This browser cannot safely coordinate claims.');
  return withLock(async()=>{
  const walletAction=JSON.parse(storage.getItem('dinn.robinhood.wallet.v1:'+prepared.claim.account.toLowerCase())||'null');if(walletAction&&!['verified','refunded','reverted','rejected'].includes(walletAction.state))throw Error('Resolve your saved wallet transfer, bridge or swap first.');
@@ -10,7 +11,7 @@ export async function requestPonsClaim({prepared,provider,storage,key,isCurrent,
  const [accounts,chain]=await Promise.all([provider.request({method:'eth_accounts'}),provider.request({method:'eth_chainId'})]);
  if(!same(accounts?.[0],tx.from)||Number(chain)!==4663||!isCurrent()||prepared.expiresAt<Date.now())throw Error('The wallet or network changed. Review again.');
  const record={phase:'awaiting-wallet',claim:prepared.claim,hash:null};storage.setItem(key,JSON.stringify(record));
- try{const hash=await provider.request({method:'eth_sendTransaction',params:[tx]});record.hash=/^0x[0-9a-f]{64}$/i.test(hash||'')?hash:null;record.phase=record.hash?'submitted':'unknown';}catch(e){record.phase=Number(e.code)===4001?'rejected':'unknown';}
+ try{const hash=await sendReviewedTransaction({transaction:tx,provider,sendTransaction,address,chainId:4663,source});record.hash=/^0x[0-9a-f]{64}$/i.test(hash||'')?hash:null;record.phase=record.hash?'submitted':'unknown';}catch(e){record.error=e.message;record.phase=Number(e.code)===4001||e.code==='ACTION_REJECTED'?'rejected':'unknown';}
  try{storage.setItem(key,JSON.stringify(record));}catch{record.storageWarning=true;}return record;
  });
 }

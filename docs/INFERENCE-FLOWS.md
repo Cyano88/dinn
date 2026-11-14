@@ -4,7 +4,7 @@ Active workspace chat goes through `/api/chat`. Launch answers and edits use inf
 
 The backend requires literal evidence from the current message for edits. Questions cannot alter settings. Pair approval, enabled configurations and creator-tax caps are checked against Pons. An inference failure, rejected update, cancelled request or changed draft revision must not apply a stale draft. Tool markup is rejected before display.
 
-Token research, top holders, DEX preparation/order status, balances and transaction checks retain their evidence-backed tools. Missing-information and unavailable-feature responses use the guidance tool and inference. Ascend and Montra remain coming soon; unavailable trading, transfer, burn, lock, bridge and claims adapters are not enabled by conversational routing.
+Token research, top holders, DEX preparation/order status, balances and transaction checks retain their evidence-backed tools. Dinn also prepares explicit Pons v2 self-burn reviews; a wallet signature and verified burn receipt are required before reporting completion. Missing-information and unavailable-feature responses use the guidance tool and inference. Ascend and Montra remain coming soon; unsupported-token burns, trading, locks, bridge and other unavailable adapters are not enabled by conversational routing.
 
 Explicit controls remain deterministic: clear/reset, form edits, review, simulation, wallet approval and canonical receipt verification. Chat tools never sign or broadcast. DEX checkout remains external; only chain and contract address are carried in its checkout link.
 

@@ -30,7 +30,7 @@ export async function feeContext(input,o={}){
  if(!same(identity[0],PONS_FACTORY)||!same(identity[1],input.address)||!same(identity[2],launch.pairToken)||!same(escrow,escrowAddress)||decimals>36||pairDecimals>36)throw Error('Token, curve or escrow binding did not match.');
  if(keccak256(await c.getCode({address:escrow,blockNumber}))!==escrowCodeHash)throw Error('Pons fee escrow runtime changed.');
  if(![0,1,2,3].includes(Number(launch.phase))||Number(policy.protocolFeeShareBps)>10000||Number(policy.buybackBurnBps)>10000)throw Error('Unsupported Pons fee state.');
- return {c,b,read,launch,escrow,hook,policy,name:clean(name),symbol:clean(symbol),decimals,supply,pairSymbol:clean(pairSymbol),pairDecimals,account:input.account||launch.creatorFeeRecipient};
+ return {c,b,read,launch,escrow,hook,policy,name:clean(name),symbol:clean(symbol),decimals,supply,pairSymbol:clean(pairSymbol),pairDecimals,account:input.account||launch.creatorFeeRecipient,accountSource:input.account?'queried wallet':'creator fee recipient'};
 }
 async function marketReference(address,fetcher=fetch){try{const r=await fetcher('https://api.geckoterminal.com/api/v2/networks/robinhood/tokens/'+address,{signal:AbortSignal.timeout(8000),redirect:'error'});if(!r.ok)throw Error();const raw=await r.text();if(raw.length>150000)throw Error();const a=JSON.parse(raw)?.data?.attributes;if(!same(a?.address,address))throw Error();const amount=v=>typeof v==='string'&&/^\d+(\.\d+)?$/.test(v)&&Number.isFinite(Number(v))?v:null;return {marketCapUsd:amount(a.market_cap_usd),priceUsd:amount(a.price_usd),fdvUsd:amount(a.fdv_usd),source:'GeckoTerminal reported',checkedAt:new Date().toISOString()};}catch{return {marketCapUsd:null,priceUsd:null,fdvUsd:null,source:'Unavailable'};}}
 export async function ponsTokenState(input,o={}){
@@ -44,7 +44,7 @@ export async function ponsTokenState(input,o={}){
  }catch{feeReadError=true;}
  const [market,usd]=await Promise.all([(o.market||marketReference)(input.address,o.fetcher),(o.usd||purchaseUsdReference)({pairToken:launch.pairToken})]);
  if((await c.getBlock({blockNumber:b.number})).hash!==b.hash)throw Error('The chain snapshot changed. Check again.');
- return {address:input.address,name:x.name,symbol:x.symbol,chainId:4663,phase:Number(launch.phase),status:['On bonding curve','Curve complete; pool pending','Graduated; Uniswap v4 pool','Recovery path'][Number(launch.phase)],curve,market,quoteUsd:usd,feeRecipient:launch.creatorFeeRecipient,viewerAccount:account,pair:{address:launch.pairToken,symbol:x.pairSymbol,decimals:x.pairDecimals},escrow,claimable:formatUnits(claimable,x.pairDecimals),claimableWei:String(claimable),claimScope:'Entire wallet balance for this asset in this Pons escrow; may include several launches.',unswept,feeReadError,unsweptRecipient:launch.creatorFeeRecipient,blockNumber:String(b.number),checkedAt:new Date(Number(b.timestamp)*1000).toISOString(),lifetimeEarnings:null};
+ return {address:input.address,name:x.name,symbol:x.symbol,chainId:4663,phase:Number(launch.phase),status:['On bonding curve','Curve complete; pool pending','Graduated; Uniswap v4 pool','Recovery path'][Number(launch.phase)],curve,market,quoteUsd:usd,feeRecipient:launch.creatorFeeRecipient,viewerAccount:account,accountSource:x.accountSource,pair:{address:launch.pairToken,symbol:x.pairSymbol,decimals:x.pairDecimals},escrow,claimable:formatUnits(claimable,x.pairDecimals),claimableWei:String(claimable),claimScope:'Entire wallet balance for this asset in this Pons escrow; may include several launches.',unswept,feeReadError,unsweptRecipient:launch.creatorFeeRecipient,blockNumber:String(b.number),checkedAt:new Date(Number(b.timestamp)*1000).toISOString(),lifetimeEarnings:null};
 }
 export function tokenStateMessage(s,focus='overview'){
  const lines=[`${s.name} (${s.symbol}) - ${s.status}`];
@@ -54,7 +54,7 @@ export function tokenStateMessage(s,focus='overview'){
   lines.push(s.market.marketCapUsd?`Reported circulating market cap: $${s.market.marketCapUsd} (${s.market.source}).`:'Circulating market cap is unavailable.');
  }
  if(focus!=='market'){
-  lines.push(`Ready to claim: ${s.claimable} ${s.pair.symbol}. This is the wallet's total for this asset across this Pons escrow.`);
+  lines.push(`Ready to claim: ${s.claimable} ${s.pair.symbol} for the ${s.accountSource||'queried wallet'} (${s.viewerAccount}). This is that address's total for this asset in the Pons escrow and may include fees from multiple launches.`);
   if(s.unswept)lines.push(`Awaiting distribution: approximately ${s.unswept.quote} ${s.pair.symbol}${s.unswept.launchTokens!=='0'?' plus '+s.unswept.launchTokens+' '+s.symbol+' awaiting conversion':''}. These fees are not claimable yet.${!same(s.viewerAccount,s.unsweptRecipient)?' They belong to the current creator fee recipient, a different wallet.':''}`);
   else lines.push('Fees awaiting distribution could not be determined.');
   lines.push('Lifetime earnings are not available.');

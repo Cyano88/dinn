@@ -1,4 +1,4 @@
-export function mountLogoCreator({host,getContext,onAccept,onDiscard}){
+export function mountLogoCreator({host,getContext,onAccept,onDiscard,onPreview=()=>{},onStatus=()=>{}}){
 
  const el=(tag,text,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;};
 
@@ -33,36 +33,37 @@ export function mountLogoCreator({host,getContext,onAccept,onDiscard}){
  async function api(path,data={}){const {getAccessToken}=await import('/auth/entry.js');if(!getAccessToken)throw Error('Sign in again to create a logo.');const token=await getAccessToken();if(!token)throw Error('Sign in again to create a logo.');const r=await fetch('/api/logos/'+path,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify(data),signal:AbortSignal.timeout(15000)});const result=await r.json();if(!r.ok)throw Error(result.error||'Logo request failed.');return result;}
 
  const current=(run,c)=>run===epoch&&identity(getContext())===identity(c);
+ const setStatus=text=>{status.textContent=text;onStatus(text);};
 
  function buttons(){label.hidden=style.hidden=!!candidate?.preview;generate.textContent=candidate?.preview?'Try another':'Create preview';accept.textContent=candidate?.accepted?'Logo selected':'Use this logo';recover.hidden=!pending&&candidate?.state!=='uncertain';recover.disabled=busy;generate.disabled=busy||!!pending;refine.hidden=!candidate?.preview||!config?.supportsReference;refine.disabled=busy;accept.hidden=!candidate?.preview;accept.disabled=busy||!!candidate?.accepted;discard.hidden=!candidate&&!pending;discard.disabled=busy||!!pending;}
 
- function show(result){candidate=result;image.hidden=!result.preview;if(result.preview){image.src=result.preview;download.href=result.preview;download.hidden=false;}else{image.removeAttribute('src');download.hidden=true;}buttons();}
+ function show(result){candidate=result;image.hidden=!result.preview;if(result.preview){image.src=result.preview;download.href=result.preview;download.hidden=false;onPreview(result);}else{image.removeAttribute('src');download.hidden=true;}buttons();}
 
  async function poll(id,run,c){
 
   try{const result=await api('get',{id});if(!current(run,c))return;
 
-   if(result.state==='generating'){status.textContent='Creating your preview. You can close this step and return later.';timer=setTimeout(()=>poll(id,run,c),2500);return;}
+   if(result.state==='generating'){setStatus('Creating your preview.');timer=setTimeout(()=>poll(id,run,c),2500);return;}
 
-   busy=false;pending=null;if(result.accepted&&result.url)await onAccept(result);if(!current(run,c))return;show(result);status.textContent=result.accepted&&result.url?'Logo selected. It will be included when you review your launch.':result.state==='ready'?'Select this logo or try another.':result.error||'The result is uncertain. Check before trying again.';
+   busy=false;pending=null;if(result.accepted&&result.url)await onAccept(result);if(!current(run,c))return;show(result);setStatus(result.accepted&&result.url?'Logo selected. It will be included when you review your launch.':result.state==='ready'?'Select this logo or try another.':result.error||'The result is uncertain. Check before trying again.');
 
-  }catch(error){if(current(run,c)){busy=false;if(error.message==='Logo not found.'){pending=null;candidate=null;localStorage.removeItem(key(c));buttons();status.textContent='No saved generation was found for this account. You can create a new preview.';}else{buttons();status.textContent=error.message+' Your request is saved; reopen this step to check it before retrying.';}}}
+  }catch(error){if(current(run,c)){busy=false;if(error.message==='Logo not found.'){pending=null;candidate=null;localStorage.removeItem(key(c));buttons();setStatus('No saved generation was found for this account. You can create a new preview.');}else{buttons();setStatus(error.message+' Your request is saved; ask me to check it before retrying.');}}}
 
  }
 
  async function start(useReference){
 
-  const c=getContext(),run=epoch;if(busy)return;if(!c.name||!c.symbol){status.textContent='Add your token name and ticker first.';return;}
+  const c=getContext(),run=epoch;if(busy)return;if(!c.name||!c.symbol){setStatus('Add your token name and ticker first.');return;}
 
   const data={requestId:crypto.randomUUID(),name:c.name,symbol:c.symbol,description:c.description||'',style:style.value.trim(),...(useReference&&candidate?.id?{referenceId:candidate.id}:{})};
 
-  busy=true;pending=data.requestId;buttons();status.textContent='Creating your preview…';
+  busy=true;pending=data.requestId;buttons();setStatus('Creating your preview…');
 
   // Save before sending so a lost connection can recover the same charged request.
 
   try{localStorage.setItem(key(c),JSON.stringify({id:data.requestId,data}));const result=await api('generate',data);if(!current(run,c))return;await poll(result.id,run,c);}
 
-  catch(error){if(current(run,c)){busy=false;buttons();status.textContent=error.message+' No logo has been replaced.';}}
+  catch(error){if(current(run,c)){busy=false;buttons();setStatus(error.message+' No logo has been replaced.');}}
 
  }
 
@@ -70,9 +71,9 @@ export function mountLogoCreator({host,getContext,onAccept,onDiscard}){
 
  generate.onclick=()=>start(false);refine.onclick=()=>start(true);
 
- accept.onclick=async()=>{const c=getContext(),run=epoch,id=candidate?.id;if(!id||busy)return;busy=true;buttons();try{const result=await api('accept',{id});if(!current(run,c))return;await onAccept(result);show(result);status.textContent=result.url?'Logo selected. It will be included when you review your launch.':'Saved for this local test. To launch with it, download the PNG under More options and provide a public image URL.';}catch(error){if(current(run,c))status.textContent=error.message;}finally{if(current(run,c)){busy=false;buttons();}}};
+ accept.onclick=async()=>{const c=getContext(),run=epoch,id=candidate?.id;if(!id||busy)return;busy=true;buttons();try{const result=await api('accept',{id});if(!current(run,c))return;await onAccept(result);show(result);setStatus(result.url?'Logo selected. It will be included when you review your launch.':'Saved for this local test. It needs a public image URL before launch.');}catch(error){if(current(run,c))setStatus(error.message);}finally{if(current(run,c)){busy=false;buttons();}}};
 
- discard.onclick=()=>{clearTimeout(timer);epoch++;busy=false;candidate=null;pending=null;image.hidden=true;download.hidden=true;localStorage.removeItem(key(getContext()));onDiscard();status.textContent='Your existing logo is unchanged.';buttons();};
+ discard.onclick=()=>{clearTimeout(timer);epoch++;busy=false;candidate=null;pending=null;image.hidden=true;download.hidden=true;localStorage.removeItem(key(getContext()));onDiscard();setStatus('Your existing logo is unchanged.');buttons();};
 
  async function open(){
 
@@ -82,17 +83,17 @@ export function mountLogoCreator({host,getContext,onAccept,onDiscard}){
 
    let saved;try{saved=JSON.parse(localStorage.getItem(key(c)));}catch{}
 
-   status.textContent=config.publicHosting?'Only your accepted logo becomes public.':'Local testing: previews are saved on this PC. Public launch URLs become available after deployment.';
+   setStatus(config.publicHosting?'Only your accepted logo becomes public.':'This preview is saved on this PC. It needs a public URL before launch.');
 
    if(saved?.id){busy=true;pending=saved.id;buttons();await poll(saved.id,run,c);if(current(run,c)&&candidate?.preview)await image.decode().catch(()=>{});}
 
-  }catch(error){if(current(run,c)){box.hidden=false;status.textContent=error.message;generate.disabled=true;}}
+  }catch(error){if(current(run,c)){box.hidden=false;setStatus(error.message);generate.disabled=true;}}
 
  }
 
  function reset(){clearTimeout(timer);epoch++;busy=false;candidate=null;pending=null;box.hidden=true;image.removeAttribute('src');download.removeAttribute('href');style.value='';}
 
- return {open,reset,isPending:()=>busy||!!pending,accept:()=>accept.click(),discard:()=>discard.click(),create:description=>{if(config?.enabled&&config?.eligible){style.value=description;void start(false);}else status.textContent='Logo creation is unavailable for this account.';},hasUnselected:()=>!!pending||busy||!!candidate?.preview&&!candidate.accepted};
+ return {open,reset,isPending:()=>busy||!!pending,accept:()=>accept.click(),discard:()=>discard.click(),create:description=>{if(config?.enabled&&config?.eligible){style.value=description;void start(false);}else setStatus('Logo creation is unavailable for this account.');},hasUnselected:()=>!!pending||busy||!!candidate?.preview&&!candidate.accepted};
 
 }
 

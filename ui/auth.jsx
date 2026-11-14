@@ -6,7 +6,7 @@ import {checkWalletSigning} from '../src/signing-probe.mjs';
 ﻿import React,{useEffect,useState,useRef,Component} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createPortal} from 'react-dom';
-import {PrivyProvider,usePrivy,useWallets,useCreateWallet,useSignTransaction,useConnectWallet,useLoginWithOAuth} from '@privy-io/react-auth';
+import {PrivyProvider,usePrivy,useWallets,useCreateWallet,useSignTransaction,useSendTransaction,useConnectWallet,useLoginWithOAuth} from '@privy-io/react-auth';
 const oauthReturn=new URLSearchParams(window.location.search).has('privy_oauth_code');
 const emit=detail=>window.dispatchEvent(new CustomEvent('launchflow:auth',{detail}));
 function AuthRecovery({message='Sign-in could not connect. Your saved drafts are still here.'}){return <><p className="auth-error" role="alert">{message}</p><button className="social-login" onClick={()=>window.location.reload()}>Retry sign-in</button></>;}
@@ -19,6 +19,7 @@ class Boundary extends Component{
 function Account({accountHost,networkName,networkId,walletConnectProjectId}){
  const {ready,authenticated,user,logout,linkGoogle,linkTwitter,exportWallet,error:privyError}=usePrivy();
  const {wallets,ready:walletsReady}=useWallets();
+ const {sendTransaction}=useSendTransaction();const sendTransactionRef=useRef(sendTransaction);sendTransactionRef.current=sendTransaction;
  const {createWallet}=useCreateWallet();
  const {signTransaction}=useSignTransaction();
  const [probeStatus,setProbeStatus]=useState('');
@@ -75,7 +76,7 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
   connectDeployer(selected,networkId,invalidated).then(connection=>{
    if(!current()||!connection.isValid()){connection.dispose();return;}
    dispose=connection.dispose;setWalletStatus('');setWalletError('');
-   emit({state:'connected',authenticated:true,userId:user?.id,provider:connection.provider,address:selected.address,source:selected.walletClientType==='privy'?'embedded':'external'});
+   emit({state:'connected',authenticated:true,userId:user?.id,provider:connection.provider,address:selected.address,source:selected.walletClientType==='privy'?'embedded':'external',sendTransaction:selected.walletClientType==='privy'?sendTransactionRef.current:null});
    if(launchChoice.current?.user===user?.id&&launchChoice.current?.key===selectedKey){launchChoice.current=null;window.dispatchEvent(new CustomEvent('dinn:launch-wallet-selected',{detail:{userId:user.id,address:selected.address,label:selected.walletClientType==='privy'?'Dinn wallet':selected.meta?.name||'External wallet'}}));}
   }).catch(()=>{if(current()){setWalletStatus('Reconnect your wallet and approve the network connection to continue.');emit({state:'wallet-needed',authenticated:true,userId:user?.id});}});
   return()=>{cancelled=true;dispose?.();};

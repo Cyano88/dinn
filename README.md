@@ -1,6 +1,6 @@
 # Dinn
 
-Dinn is an AI workspace for Pons token operations and agent research. People use chat to prepare and review Robinhood Chain launches, wallet actions and fee claims. Trading agents can hire Dinn Labs on the NEAR AI Agent Market for a sourced, read-only token report.
+Dinn is an AI workspace for Pons token operations and agent research. People use chat to prepare and review Robinhood Chain launches, wallet actions, fee claims and explicit self-burns for verified Pons v2 tokens. Trading agents can hire Dinn Labs on the NEAR AI Agent Market for a sourced, read-only token report.
 
 The agent research service covers Pons launch age and phase, bonding-curve activity and fees, indexed holders and sampled wallet history, market references, contract controls, and supported PinkLock records. Every report is tied to a checked Robinhood Chain block. Missing or partial data stays visible. Dinn does not trade, sign, verify wallet ownership, or certify a token as safe.
 
@@ -46,7 +46,7 @@ This is a local engineering preview, NOT a live trading product or completed hac
 
 - Responsive conversational workspace, editable launch details, receipt dashboard and agent integration page.
 - Deterministic guided intent detection; optional server-side 0G model explanations.
-- Seven-step conversational launch setup with inline choices, validation, pause/resume, tab-scoped draft recovery, editable review and JSON export. Fixed 1 billion supply, zero builder fee and no initial buy.
+- Text-first launch setup and review in Dinn chat, with validation, pause/resume, account-scoped draft recovery and explicit wallet approval. Fixed 1 billion supply, zero builder fee and optional opening purchase.
 - Ascend `launchChecked` read/simulation adapter. It checks chain 99901, contract code, factory linkage, launch pause and allowed pair; reads current rules/start tick; simulates the exact call; returns predicted addresses and unsigned calldata.
 - Human wallet approval and launch submission are implemented behind ENABLE_LIVE_LAUNCH (off by default). No server signer, deposits, live trading or fee collection. A successful simulation is not a deployment.
 - Buy/sell/claim are documented integration work, not implemented execution. Locks/burns/DEX services/funding are visibly unavailable until their adapters and terms are verified.

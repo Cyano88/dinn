@@ -11,15 +11,14 @@ import {renderInspection} from './token-report.js';
 
 import {appendChatState,restoreChatState} from './chat-state.js';
 
-import {dexCheckoutFor} from './dex-profile.js';
+import {dexCheckoutFor,profileText} from './dex-profile.js';
 
 import {renderAssistantText} from './chat-format.js';
 
-import {mountDexService} from './dex-service.js';
 
 import {pairCandidates} from './pons-assets.js';
 
-import {cleanBrief,cleanPonsSettings,nextField,workspaceCommand} from './pons-flow.js';
+import {cleanBrief,cleanPonsSettings,workspaceCommand} from './pons-flow.js';
 
 import {receiveChat} from './chat.js';
 
@@ -32,15 +31,28 @@ function currentSocials(){return cleanSocials(Object.fromEntries(socialFields.ma
 
 let launchPair=null,setupActive=false,requestedSupply=null;
 
-let feeClaims=null,walletUI=null,walletNetworkBusy=false;
-async function openFeeClaim(address){if(!/^0x[0-9a-f]{40}$/i.test(address||''))return;view('assistant');if(!feeClaims){const {mountPonsClaims}=await import('/pons/entry.js');feeClaims=mountPonsClaims({host:$('chat-thread'),api,getAccount:()=>account,getProvider:()=>provider,getEpoch:()=>epoch});}await feeClaims.open(address);}
-let account=null,user=null,history=[],chatResults=[],controller=null,epoch=0,brief={},awaiting=null,provider=null,setupBusy=false,selectedToken=null,authBootTimer=null,authBootTimedOut=false,authBootResolved=false;
+let walletUI=null,walletNetworkBusy=false,claimBusy=false,claimApprovalBusy=false,claimRecoveryKey=null,chatPendingApproval=null,chatApprovalBusy=false;
+async function openFeeClaim(address){
+ if(!/^0x[0-9a-f]{40}$/i.test(address||''))return;view('assistant');const owner=account,run=epoch;
+ if(!owner||!provider||!['embedded','external'].includes(walletSource)){say('Connect the wallet that owns these Pons fees, then ask me to check the claim again.');return;}
+ if(claimBusy){say('A fee claim check is already running.');return;}claimBusy=true;
+ let recordKey='dinn.pons.claim.v1:4663:'+owner.toLowerCase(),record;
+ try{record=JSON.parse(localStorage.getItem(recordKey)||'null');}catch{claimBusy=false;say('Saved claim history cannot be read. Check wallet activity before continuing.');return;}
+ const link=(body,hash)=>{if(!/^0x[0-9a-f]{64}$/i.test(hash||''))return;const a=document.createElement('a');a.href='https://robinhoodchain.blockscout.com/tx/'+hash;a.target='_blank';a.rel='noopener noreferrer';a.textContent='View transaction';body.append(a);};
+ const poll=async(hash,claim,attempt=0)=>{if(epoch!==run||account!==owner)return;try{const result=await api('/api/pons/fees/receipt',{hash,claim});if(epoch!==run||account!==owner)return;if(!['pending','confirming','verified','reverted'].includes(result.state)||result.hash?.toLowerCase()!==hash.toLowerCase()||result.state==='verified'&&(result.recipient?.toLowerCase()!==claim.account.toLowerCase()||result.asset?.toLowerCase()!==claim.asset.toLowerCase()||result.amountWei!==claim.amountWei))throw Error('Receipt did not match the reviewed fee claim.');record={...record,phase:result.state};localStorage.setItem(recordKey,JSON.stringify(record));if(result.state==='verified'){const body=say('✓ Fee claim confirmed. The payout went to '+result.recipient+'.');body.parentElement.classList.add('operation-success');link(body,hash);return;}if(result.state==='reverted'){const body=say('The fee claim transaction reverted. No fees were claimed.');link(body,hash);return;}if(attempt<12){setTimeout(()=>void poll(hash,claim,attempt+1),5000);return;}const body=say('Fee claim is '+result.state+'. Say “check fee claim” to check again.');link(body,hash);}catch(error){const body=say('I could not verify the fee claim yet: '+error.message+' No new transaction was sent.');link(body,hash);}};
+ try{
+  if(record&&!['verified','reverted','rejected'].includes(record.phase)){if(record.hash){say('Checking your previous fee claim…');void poll(record.hash,record.claim);return;}claimRecoveryKey=recordKey;say('The previous fee claim result is unknown. Paste its transaction hash here so I can check it. Do not submit another claim.');return;}
+  say('Dinn is checking your claimable Pons fees…');const preparedReview=await api('/api/pons/fees/prepare',{address,account:owner});if(epoch!==run||account!==owner)return;
+  const review=say('Claim review: '+preparedReview.amount+' '+preparedReview.symbol+' to '+owner+'. Estimated network fee: '+preparedReview.estimatedGas+' ETH. Would you like me to claim these fees now? Reply “yes” or “approve” to send, or “cancel” to stop. Nothing has been sent.');
+  chatPendingApproval={label:'fee claim',run:async body=>{if(claimApprovalBusy)return;claimApprovalBusy=true;let rechecking;try{rechecking=appendChatActionNote(body,'Rechecking the claim amount before sending…',{pending:true});const fresh=await api('/api/pons/fees/prepare',{address,account:owner});if(epoch!==run||account!==owner)return;if(JSON.stringify(fresh.claim)!==JSON.stringify(preparedReview.claim))throw Error('The claimable amount changed. Ask me to refresh the review.');const {requestPonsClaim}=await import('/pons/entry.js');record=await requestPonsClaim({prepared:fresh,provider,sendTransaction:walletSource==='embedded'?walletSendTransaction:null,address:owner,source:walletSource||'unavailable',storage:localStorage,key:recordKey,isCurrent:()=>epoch===run&&account===owner,withLock:navigator.locks?fn=>navigator.locks.request('dinn-wallet:'+owner.toLowerCase(),fn):null});if(epoch!==run)return;if(record.phase==='rejected'){appendChatActionNote(body,'Fee claim was declined. Nothing was sent.');return;}if(record.phase==='unknown'&&record.error)throw Error(record.error);if(record.hash){appendChatActionNote(body,'Fee claim submitted. Waiting for confirmation…',{pending:true});link(body,record.hash);void poll(record.hash,record.claim);}else appendChatActionNote(body,'Wallet result is uncertain. Check wallet activity before trying again.');if(record.storageWarning)appendChatActionNote(body,'Recovery storage failed. Save the transaction hash: '+(record.hash||'unavailable'));}catch(error){if(epoch===run)appendChatActionNote(body,'Fee claim could not be submitted: '+error.message);}finally{rechecking?.classList.remove('chat-action-pending');claimApprovalBusy=false;}}};
+ }catch(error){if(epoch===run)say('I could not prepare the fee claim: '+error.message+' No transaction was sent.');}
+ finally{claimBusy=false;}
+}
+let account=null,user=null,history=[],chatResults=[],controller=null,epoch=0,brief={},awaiting=null,provider=null,walletSource=null,walletSendTransaction=null,setupBusy=false,selectedToken=null,authBootTimer=null,authBootTimedOut=false,authBootResolved=false;
 
 for(const a of pairCandidates){const o=document.createElement('option');o.value=a.symbol;o.label=a.name+' - '+a.address;$('pair-candidates').append(o);}
 
 function pairAddress(value){if(/^(eth|native eth)$/i.test(value))return '0x'+'0'.repeat(40);const matches=pairCandidates.filter(a=>a.symbol.toLowerCase()===value.toLowerCase());if(matches.length===1)return matches[0].address;if(/^0x[0-9a-f]{40}$/i.test(value))return value;throw Error('Choose ETH, a catalog ticker, or paste the Robinhood pairing-token address.');}
-
-const dexService=mountDexService({getUser:()=>user,getBrief:()=>({...brief,logo:$('launch-logo').value}),getToken:()=>selectedToken,api,onOpen:()=>view('assistant')});
 
 const key=kind=>'dinn.multi.'+kind+'.v1:'+user;
 
@@ -66,7 +78,7 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 
 async function api(path,data,signal){const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data),signal});const v=await r.json();if(!r.ok)throw Error(v.error||'Could not complete the request.');return v;}
 
-function view(name){for(const n of ['assistant','launchpads','drafts','wallet'])$(n+'-view').hidden=n!==name;document.querySelectorAll('[data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===name);if(b.dataset.view===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$('view-name').textContent=name[0].toUpperCase()+name.slice(1);if(name==='wallet')void walletUI?.refresh();}
+function view(name){for(const n of ['assistant','launchpads','tools','drafts','wallet'])$(n+'-view').hidden=n!==name;document.querySelectorAll('[data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===name);if(b.dataset.view===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$('view-name').textContent=name==='tools'?'Dinn tools':name[0].toUpperCase()+name.slice(1);if(name==='wallet')void walletUI?.refresh();}
 
 function scrollChat(){requestAnimationFrame(()=>$('chat-thread').scrollTop=$('chat-thread').scrollHeight);}
 
@@ -74,7 +86,7 @@ function syncBrief(){invalidateLaunch();for(const f of ['name','symbol','descrip
 
 function message(role,text){const el=document.createElement('div');el.className='message '+role;const label=document.createElement('small');label.textContent=role==='user'?'You':'Dinn';const body=document.createElement('div');body.className='message-body';if(role==='assistant')renderAssistantText(body,text);else body.textContent=text;el.append(label,body);$('messages').append(el);$('welcome').hidden=true;scrollChat();return body;}
 
-function restore(){const restored=restoreChatState(read('chat'));history=restored.messages;chatResults=restored.results;$('messages').replaceChildren();history.forEach((m,i)=>{const body=message(m.role,m.content);if(chatResults[i])renderToolResult(body,{message:m.content,...chatResults[i]});});try{const saved=JSON.parse(read('pons-brief'));brief=saved?.launchpad==='pons'&&saved.chainId===4663?cleanBrief(Object.fromEntries(['name','symbol','description'].filter(f=>saved[f]!==undefined).map(f=>[f,saved[f]]))):{};}catch{brief={};}try{const setup=JSON.parse(read('setup'));awaiting=setup?.awaiting||null;setupActive=setup?.active===true;requestedSupply=typeof setup?.requestedSupply==='string'&&/^[1-9]\d{0,23}$/.test(setup.requestedSupply)?setup.requestedSupply:null;}catch{awaiting=null;setupActive=false;requestedSupply=null;}syncBrief();}
+function restore(){const restored=restoreChatState(read('chat'));chatPendingApproval=null;chatResults=restored.results;history=restored.messages.map((m,i)=>m.role==='assistant'&&/reply\s+[“"]approve[”"]/i.test(m.content)&&!chatResults[i]?.actions?.some(action=>action.id==='wallet_approve')?{...m,content:m.content.replace(/If these details are correct, reply\s+[“"]approve[”"].*$/im,'This approval review expired when the chat was refreshed. Ask Dinn to check the current terms again before proceeding.').replace(/If these terms are right, reply\s+[“"]approve[”"].*$/im,'This launch check expired when the chat was refreshed. Ask Dinn to check the current terms again before proceeding.')}:m);$('messages').replaceChildren();history.forEach((m,i)=>{const body=message(m.role,m.content);if(chatResults[i])renderToolResult(body,{message:m.content,...chatResults[i]});});try{const saved=JSON.parse(read('pons-brief'));brief=saved?.launchpad==='pons'&&saved.chainId===4663?cleanBrief(Object.fromEntries(['name','symbol','description'].filter(f=>saved[f]!==undefined).map(f=>[f,saved[f]]))):{};}catch{brief={};}try{const setup=JSON.parse(read('setup'));awaiting=setup?.awaiting||null;setupActive=setup?.active===true;requestedSupply=typeof setup?.requestedSupply==='string'&&/^[1-9]\d{0,23}$/.test(setup.requestedSupply)?setup.requestedSupply:null;}catch{awaiting=null;setupActive=false;requestedSupply=null;}syncBrief();}
 
 function keepBrief(){save('pons-brief',{...brief,launchpad:'pons',chainId:4663});save('setup',{awaiting,active:setupActive,requestedSupply});syncBrief();}
 
@@ -86,51 +98,51 @@ $('chat-review').onclick=()=>{$('review-launch').click();};
 
 $('prompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('chat').requestSubmit();}});
 
-let launchConversationStep=null,launchLinkIndex=0,confirmedLaunchWallet=null;
+let launchConversationStep=null,launchLinkIndex=0,confirmedLaunchWallet=null,resetDraftPending=false;
 
 const conversationStages={profile:'launch-profile-dialog',links:'launch-links-step',wallet:'launch-wallet-step',purchase:'launch-purchase-dialog',preparing:'launch-preparing-dialog',review:'pons-review-dialog'};
 
-const launchConversation=document.createElement('section');launchConversation.id='launch-conversation';launchConversation.hidden=true;launchConversation.setAttribute('aria-label','Launch setup with Dinn');
+// Keep legacy controls mounted for their validated handlers, but never surface their panels in chat.
+$('chat-thread').dataset.conversationalActions='true';for(const id of Object.values(conversationStages))$(id).hidden=true;
 
-const speaker=document.createElement('small');speaker.textContent='Dinn';launchConversation.append(speaker);
-
-for(const id of Object.values(conversationStages))launchConversation.append($(id));$('chat-thread').append(launchConversation);$('pons-review-dialog').append($('close-review'));$('launch-profile-dialog').append($('close-launch-profile'));$('launch-purchase-dialog').append($('close-launch-purchase'));
+function say(text){if(!text)return null;return message('assistant',text);}
+function sayLaunch(text){return say(text);}
 
 function showLaunchStage(step,persist=true){
 
- launchConversationStep=step;launchConversation.hidden=!step;
- $('launch-preparing-dialog').setAttribute('aria-busy',String(step==='preparing'));$('launch-preparing-dialog').querySelector('[role="status"]').classList.toggle('status-shimmer',step==='preparing');
+ const changed=launchConversationStep!==step;launchConversationStep=step;
+ for(const id of Object.values(conversationStages))$(id).hidden=true;
 
- for(const [name,id] of Object.entries(conversationStages))$(id).hidden=name!==step;
+ $('choices').hidden=true;$('setup-context').hidden=true;
 
- $('choices').hidden=!!step;
+ if(user&&persist)save('launch-conversation',{step:step==='preparing'?'purchase':step,name:brief.name,symbol:brief.symbol,linkIndex:launchLinkIndex});
 
- if(user&&persist)save('launch-conversation',{step:['preparing','review'].includes(step)?'purchase':step,name:brief.name,symbol:brief.symbol,linkIndex:launchLinkIndex});
-
- if(step){view('assistant');$('welcome').hidden=true;requestAnimationFrame(()=>launchConversation.scrollIntoView({block:'start'}));}
+  if(step){view('assistant');$('welcome').hidden=true;if(changed){const prompts={profile:'Before launch, you can add a logo. Send a public HTTPS or IPFS logo URL, say “create a logo” with an optional style, or say “skip logo”. You can also ask me to use the current logo.',links:launchLinkSteps[launchLinkIndex]?.prompt||'Send a project link or say skip.',wallet:'Which wallet should pay the launch costs and receive any opening purchase? Say “Dinn wallet” or “external wallet”. You can also change the connected wallet from the account menu.',purchase:'Would you like to buy tokens as part of the launch? Enter an amount in '+(pairCandidates.find(a=>a.address?.toLowerCase()===pairAddress($('launch-pair').value).toLowerCase())?.symbol||$('launch-pair').value)+', or say “skip purchase”. I’ll show a USD reference when available; launch fee and gas are paid in ETH.',preparing:'Dinn is checking the current launch terms…'};if(step==='review')return;const body=say(prompts[step]);if(step==='preparing'&&body){body.classList.add('chat-action-pending');body.setAttribute('aria-busy','true');}}}
 
 }
 
 function pauseLaunchConversation(){showLaunchStage(null);logoCreator.reset();renderSetupChoices();}
 
-function restoreLaunchConversation(){let saved;try{saved=JSON.parse(read('launch-conversation'));}catch{}if(!saved||saved.name!==brief.name||saved.symbol!==brief.symbol)return;if(saved.step==='profile')void openLaunchProfile();else if(saved.step==='links')openLaunchLinks(Number.isInteger(saved.linkIndex)?saved.linkIndex:0);else if(saved.step==='wallet')openLaunchWallet();else if(saved.step==='purchase')openLaunchPurchase();}
+function restoreLaunchConversation(){let saved;try{saved=JSON.parse(read('launch-conversation'));}catch{}if(!saved||saved.name!==brief.name||saved.symbol!==brief.symbol)return;if(saved.step==='profile')void openLaunchProfile();else if(saved.step==='links')openLaunchLinks(Number.isInteger(saved.linkIndex)?saved.linkIndex:0);else if(saved.step==='wallet')openLaunchWallet();else if(saved.step==='purchase')openLaunchPurchase();else if(saved.step==='review')void openLaunchReview();}
 
-function recordSetupReply(text,reply){const state=appendChatState(history,chatResults,text,reply,{});history=state.messages;chatResults=state.results;save('chat',state);message('user',text);message('assistant',reply);}
+function recordSetupReply(text,reply){const state=appendChatState(history,chatResults,text,reply,{});history=state.messages;chatResults=state.results;save('chat',state);message('user',text);return message('assistant',reply);}
 
 function handleLaunchReply(text){
+
+ if(claimRecoveryKey){if(/^(?:cancel|stop|never mind|nevermind)$/i.test(text)){claimRecoveryKey=null;recordSetupReply(text,'Okay. The saved claim stays unresolved, and no new transaction will be sent.');return true;}const hash=text.trim();if(!/^0x[0-9a-f]{64}$/i.test(hash)){say('Paste the full 0x transaction hash to check the saved fee claim, or say “cancel”.');return true;}try{const record=JSON.parse(localStorage.getItem(claimRecoveryKey)||'null');if(!record?.claim)throw Error('Saved claim review is unavailable.');record.hash=hash;record.phase='submitted';localStorage.setItem(claimRecoveryKey,JSON.stringify(record));claimRecoveryKey=null;recordSetupReply(text,'Thanks. Dinn is checking that fee claim receipt; it will not submit another transaction.');void openFeeClaim(record.claim.address);}catch(error){claimRecoveryKey=null;say('Could not recover the saved fee claim: '+error.message);}return true;}
 
  if(!launchConversationStep)return false;
 
  if(launchBusy){$('feedback').textContent='Dinn is preparing this step. Please wait.';return true;}
 
- if(/^(pause|pause setup|cancel)$/i.test(text)){pauseLaunchConversation();return true;}
+ if(/^(pause|pause setup|cancel)$/i.test(text)){pauseLaunchConversation();say('Launch setup paused. Your saved draft is still here.');return true;}
 
- if(launchConversationStep==='wallet'){if(/^(?:use )?(?:dinn|dinn wallet|embedded wallet)$/i.test(text)){$('use-dinn-wallet')?.click();return true;}if(/^(?:connect |use )?(?:external|external wallet)$/i.test(text)){$('connect-launch-wallet')?.click();return true;}$('launch-wallet-error').textContent='Choose Dinn wallet or connect an external wallet to continue.';return true;}
+ if(launchConversationStep==='wallet'){if(/^(?:use )?(?:dinn|dinn wallet|embedded wallet)$/i.test(text)){$('use-dinn-wallet')?.click();return true;}if(/^(?:connect |use )?(?:external|external wallet)$/i.test(text)){$('connect-launch-wallet')?.click();return true;}say('Say “Dinn wallet” to use your embedded wallet, or “external wallet” to connect one. The wallet you choose pays the launch cost and receives any opening purchase.');return true;}
  if(launchConversationStep==='profile'){
 
   if(/^(skip|skip logo|no logo)$/i.test(text)){$('skip-launch-logo').click();return true;}
 
-  if(/^(use (this|the) logo|accept( logo)?)$/i.test(text)){logoCreator.accept();return true;}
+ if(/^(use (this|the) logo|accept( logo)?)$/i.test(text)){if(logoCreator.hasUnselected())logoCreator.accept();else if($('launch-logo').value.trim())$('continue-launch-profile').click();else if(hasLocalLogo())say(localLogoMessage);else say('There is no selected logo yet. Send a public logo URL, create a preview, or say “skip logo”.');return true;}
 
   if(/^(continue|next)$/i.test(text)){$('continue-launch-profile').click();return true;}
 
@@ -143,14 +155,23 @@ function handleLaunchReply(text){
  if(launchConversationStep==='links'){
   const parsed=parseLaunchLink(text,launchLinkSteps[launchLinkIndex].field);
   if(parsed){applyLinkReply(parsed,text);return true;}
-  $('launch-links-error').textContent='Paste the requested link, say keep to retain it, or skip. You can pause setup to ask another question.';return true;
+  say('Please send '+launchLinkSteps[launchLinkIndex].label+' as a valid link, say “keep” to retain the saved link, or say “skip”.');return true;
  }
  if(launchConversationStep==='purchase'){
 
   if(/^(skip|skip purchase|no purchase)$/i.test(text)){$('skip-launch-purchase').click();return true;}
 
-  const value=text.match(/^(?:(?:buy|spend)\s+)?(\d+(?:\.\d+)?)(?:\s+([a-z0-9]+))?$/i);if(value){const pair=pairCandidates.find(a=>a.address.toLowerCase()===pairAddress($('launch-pair').value).toLowerCase())?.symbol||'ETH';if(value[2]&&value[2].toUpperCase()!==pair.toUpperCase()){$('purchase-error').textContent='Enter the amount to spend in '+pair+'.';return true;}$('purchase-amount').value=value[1];$('continue-launch-purchase').click();return true;}
+  const value=text.match(/^(?:(?:buy|spend)\s+)?(\d+(?:\.\d+)?)(?:\s+([a-z0-9]+))?$/i);if(value){const pair=pairCandidates.find(a=>a.address.toLowerCase()===pairAddress($('launch-pair').value).toLowerCase())?.symbol||'ETH';if(value[2]&&value[2].toUpperCase()!==pair.toUpperCase()){say('Enter the amount in '+pair+', or say “skip purchase”.');return true;}$('purchase-amount').value=value[1];$('continue-launch-purchase').click();return true;}
 
+ }
+
+ if(launchConversationStep==='review'){
+  if(/^(?:check|simulate|check launch|simulate launch)$/i.test(text)){if(reviewed){$('simulate-launch').click();return true;}say('The launch review expired. Ask me to review the launch again.');return true;}
+  if(/^(?:approve purchase|approve (?:the )?purchase|approve (?:nvda|eth|usdc|usdt))$/i.test(text)){if(reviewed?.quote.purchase?.approvalRequired){recordSetupReply(text,'Requesting the exact opening-purchase allowance. Reply “yes” to approve the exact purchase allowance; this will not launch the token.');$('approve-purchase').click();return true;}say('No separate token allowance is required for this opening purchase. Say “check launch” to continue.');return true;}
+  if(/^(?:yes|yes launch it|go ahead|approve|approve launch|launch it|continue to wallet)$/i.test(text)){if(prepared){recordSetupReply(text,'Dinn is rechecking the launch terms, then submitting the reviewed transaction.');$('approve-launch').click();return true;}if(reviewed){recordSetupReply(text,'First say “check launch” so I can simulate the current terms and estimate network fees.');return true;}}
+  if(/^(?:edit|edit logo|edit links|change logo|change links)$/i.test(text)){void openLaunchProfile();return true;}
+  if(/^(?:change wallet|edit wallet)$/i.test(text)){openLaunchWallet();return true;}
+  if(/^(?:edit purchase|change purchase)$/i.test(text)){openLaunchPurchase();return true;}
  }
 
  // General questions retain the normal agent path; resume via the setup choices.
@@ -163,7 +184,7 @@ function clearConversation(){
 
  try{save('chat',{messages:[]});}catch{ $('feedback').textContent='Browser storage is unavailable. Chat could not be cleared permanently.';return false;}
 
- showLaunchStage(null);logoCreator.reset();walletUI?.reset();feeClaims?.reset();epoch++;launchBusy=false;controller?.abort();controller=null;setupBusy=false;setupActive=false;history=[];chatResults=[];awaiting=null;launchStep=null;selectedToken=null;launchPair=null;
+ showLaunchStage(null);logoCreator.reset();walletUI?.reset();resetDraftPending=false;chatPendingApproval=null;epoch++;launchBusy=false;controller?.abort();controller=null;setupBusy=false;setupActive=false;history=[];chatResults=[];awaiting=null;launchStep=null;selectedToken=null;launchPair=null;
 
  try{save('setup',{awaiting:null,requestedSupply});saveSettings();}catch{}
 
@@ -173,9 +194,51 @@ function clearConversation(){
 
 $('new').onclick=clearConversation;
 
+function conversationalLaunchStatus(text){if(!/^(?:check|status)(?: the)? (?:(?:saved )?launch status|saved launch)[.!]?$/i.test(text))return false;const record=(()=>{try{return JSON.parse(localStorage.getItem(launchKey()));}catch{return null;}})();if(!record){say('There is no saved launch transaction to check.');return true;}recordSetupReply(text,'Dinn is checking the saved launch receipt.');void launchActivity.refresh(true);return true;}
+
 $('stop-response').onclick=()=>controller?.abort();
 
-$('chat').onsubmit=async e=>{e.preventDefault();if(!user)return;const text=$('prompt').value.trim();if(!text)return;const command=workspaceCommand(text);if(command==='clear-chat'){clearConversation();return;}if(command==='reset-draft'){$('reset-draft-dialog').hidden=false;$('chat-thread').append($('reset-draft-dialog'));$('reset-draft-dialog').scrollIntoView({block:'nearest'});return;}if(handleLaunchReply(text)){$('prompt').value='';return;}if(controller||setupBusy)return;const generation=epoch,draftRevision=launchRevision;controller=new AbortController();const request=controller;$('prompt').value='';$('send').disabled=true;$('stop-response').hidden=false;$('feedback').textContent='';message('user',text);const reply=message('assistant','');reply.textContent='Thinking';reply.classList.add('thinking');reply.setAttribute('aria-label','Dinn is thinking');for(let i=0;i<3;i++){const dot=document.createElement('span');dot.className='thinking-dot';dot.textContent='.';dot.setAttribute('aria-hidden','true');reply.append(dot);}let received=false;try{const {getAccessToken}=await import('/auth/entry.js');const accessToken=await getAccessToken();const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json',...(accessToken?{authorization:'Bearer '+accessToken}:{})},body:JSON.stringify({message:text,history,ponsBrief:brief,ponsSettings:currentSettings(),ponsSetup:{requestedSupply,active:setupActive||!!awaiting||!!launchStep,field:awaiting||({'launch-pair':'pairToken','launch-config':'configId','launch-tax':'creatorTaxBps','launch-buyback':'buybackEnabled','launch-recipient':'creatorFeeRecipient'})[launchStep]||null,logo:$('launch-logo').value},...(account?{walletAccount:account}:{}),...(selectedToken?{tokenAddress:selectedToken}:{})}),signal:request.signal});const result=await receiveChat(r,delta=>{if(epoch===generation){if(!received){reply.textContent='';reply.classList.remove('thinking');reply.removeAttribute('aria-label');received=true;}reply.textContent+=delta;scrollChat();}});if(epoch!==generation)return;if(result.launchDraft){try{if(launchRevision!==draftRevision)throw Error('Your draft changed while Dinn was responding. Please retry against the updated draft.');applyLaunchDraft(result.launchDraft);}catch(error){received=false;reply.textContent='';throw error;}}const state=appendChatState(history,chatResults,text,result.message,result);history=state.messages;chatResults=state.results;save('chat',state);renderToolResult(reply,result);}catch(err){if(epoch===generation){const failure=err.name==='AbortError'?'Response stopped. Your message is ready to retry.':err.message;reply.classList.remove('thinking');reply.removeAttribute('aria-label');reply.textContent=(received&&reply.textContent.trim()?reply.textContent+'\n\n':'')+'Could not finish: '+failure;reply.setAttribute('role','status');$('prompt').value=text;$('feedback').textContent='Your message is ready to retry.';}}finally{if(controller===request){controller=null;$('send').disabled=false;$('stop-response').hidden=true;}}};
+function forgetWalletApproval(action){
+ const index=chatResults.findLastIndex(result=>result?.actions?.some(item=>item.id==='wallet_approve'&&JSON.stringify(item.review)===JSON.stringify(action.review)));
+ if(index>=0){chatResults[index]={...chatResults[index],actions:chatResults[index].actions.filter(item=>item.id!=='wallet_approve')};try{save('chat',{messages:history,results:chatResults});}catch{}}
+}
+function handlePendingChatApproval(text){
+ if(!chatPendingApproval)return false;
+ if(/^(?:cancel|stop|never mind|nevermind|keep setup)[.!]?$/i.test(text.trim())){const pending=chatPendingApproval;chatPendingApproval=null;pending.cancel?.();if(pending.action)forgetWalletApproval(pending.action);recordSetupReply(text,'Canceled. No transaction was sent.');return true;}
+ if(!/^(?:yes|yes do it|go ahead|approve|approve this|approve action|approve transaction|confirm|confirm this|continue)[.!]?$/i.test(text.trim()))return false;
+ const pending=chatPendingApproval;chatPendingApproval=null;if(pending.action)forgetWalletApproval(pending.action);const body=recordSetupReply(text,walletSource==='embedded'?'Dinn is submitting the reviewed '+pending.label+' from your Dinn wallet now.':'Your external wallet will open for your confirmation of the reviewed '+pending.label+'.');chatApprovalBusy=true;void Promise.resolve(pending.run(body)).catch(error=>appendChatActionNote(body,'Could not continue the wallet action: '+error.message)).finally(()=>{chatApprovalBusy=false;});return true;
+}
+
+$('chat').onsubmit=async e=>{
+ e.preventDefault();if(!user)return;const text=$('prompt').value.trim();if(!text)return;if(chatApprovalBusy||claimBusy){say('Dinn is still checking or processing the current wallet action. Please wait before starting another one.');$('prompt').value='';return;}
+ const command=workspaceCommand(text);
+ if(command==='clear-chat'){clearConversation();return;}
+ if(command==='reset-draft'){
+  resetDraftPending=true;recordSetupReply(text,'This clears the token setup and conversation but keeps saved transaction records. Reply “confirm reset” to continue, or “keep setup” to cancel.');$('prompt').value='';return;
+ }
+ if(resetDraftPending){
+  if(/^(?:confirm|confirm reset|reset it|yes)[.!]?$/i.test(text)){resetDraftPending=false;recordSetupReply(text,'Resetting token setup.');$('confirm-reset-draft').click();$('prompt').value='';return;}
+  if(/^(?:keep|keep setup|cancel|no)[.!]?$/i.test(text)){resetDraftPending=false;recordSetupReply(text,'Okay. Your token setup is unchanged.');$('prompt').value='';return;}
+  say('Reply “confirm reset” to clear setup, or “keep setup” to cancel.');$('prompt').value='';return;
+ }
+ if(conversationalLaunchStatus(text)){$('prompt').value='';return;}
+ if(handleLaunchReply(text)){$('prompt').value='';return;}
+ if(handlePendingChatApproval(text)){$('prompt').value='';return;}
+ if(chatPendingApproval&&!/^(?:what|why|how|explain|can you explain)\b/i.test(text)){const pending=chatPendingApproval;chatPendingApproval=null;if(pending.action)forgetWalletApproval(pending.action);say('I cleared the earlier approval review before handling this request. Ask me to check the current terms again before proceeding.');}
+ if(controller||setupBusy)return;
+ const generation=epoch,draftRevision=launchRevision;controller=new AbortController();const request=controller;$('prompt').value='';$('send').disabled=true;$('stop-response').hidden=false;$('feedback').textContent='';message('user',text);const reply=message('assistant','');reply.textContent='Thinking';reply.classList.add('thinking');reply.setAttribute('aria-label','Dinn is thinking');for(let i=0;i<3;i++){const dot=document.createElement('span');dot.className='thinking-dot';dot.textContent='.';dot.setAttribute('aria-hidden','true');reply.append(dot);}let received=false;
+ try{
+  const {getAccessToken}=await import('/auth/entry.js');const accessToken=await getAccessToken();
+  const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json',...(accessToken?{authorization:'Bearer '+accessToken}:{})},body:JSON.stringify({message:text,history,ponsBrief:brief,ponsSettings:currentSettings(),ponsSetup:{requestedSupply,active:setupActive||!!awaiting||!!launchStep,field:awaiting||({'launch-pair':'pairToken','launch-config':'configId','launch-tax':'creatorTaxBps','launch-buyback':'buybackEnabled','launch-recipient':'creatorFeeRecipient'})[launchStep]||null,logo:$('launch-logo').value},...(account?{walletAccount:account}:{}),...(selectedToken?{tokenAddress:selectedToken}:{})}),signal:request.signal});
+  const result=await receiveChat(r,delta=>{if(epoch===generation){if(!received){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');received=true;}reply.append(document.createTextNode(delta));scrollChat();}});
+  if(epoch!==generation)return;
+  if(result.launchDraft){try{if(launchRevision!==draftRevision)throw Error('Your token details changed while Dinn was responding. Retry against the current details.');applyLaunchDraft(result.launchDraft);}catch(error){received=false;reply.replaceChildren();throw error;}}
+  const walletAction=result.actions?.find(action=>action.id==='wallet_approve');if(walletAction)result.message+='\n\nWould you like me to continue with these exact terms? Reply “yes” or “approve” to send, or “cancel” to stop. Nothing has been sent yet.';
+  const state=appendChatState(history,chatResults,text,result.message,result);history=state.messages;chatResults=state.results;save('chat',state);renderToolResult(reply,result);
+ }catch(err){if(epoch===generation){const failure=err.name==='AbortError'?'Response stopped. Your message is ready to retry.':err.message;reply.classList.remove('thinking');reply.removeAttribute('aria-label');reply.textContent=(received&&reply.textContent.trim()?reply.textContent+'\n\n':'')+'Could not finish: '+failure;reply.setAttribute('role','status');$('prompt').value=text;$('feedback').textContent='Your message is ready to retry.';}}
+ finally{if(controller===request){controller=null;$('send').disabled=false;$('stop-response').hidden=true;}}
+};
+
 
 $('brief-form').onsubmit=async e=>{e.preventDefault();const generation=epoch;if(!user)return;try{const b=await api('/api/pons/brief',{launchpad:'pons',chainId:4663,...Object.fromEntries(['name','symbol','description'].map(f=>[f,$('brief-'+f).value]))});if(epoch!==generation)return;brief=cleanBrief({name:b.name,symbol:b.symbol,description:b.description});awaiting=null;keepBrief();$('brief-status').textContent='Brief saved in this browser. Not deployed.';}catch(err){if(epoch===generation)$('brief-status').textContent=err.message;}};
 
@@ -194,13 +257,13 @@ window.addEventListener('launchflow:auth',e=>{const d=e.detail;if(d.state==='loa
 if(user&&((nextUser===user)||d.state==='loading'&&!nextUser)){
  if(d.state==='loading')return;
  if(d.state==='wallet-changing'||walletNetworkBusy&&d.state==='wallet-needed')return;
- if(d.state==='connected'&&d.address===account){provider=d.provider||provider;walletUI?.changed();return;}
+ if(d.state==='connected'&&d.address===account){provider=d.provider||provider;walletSource=d.source||walletSource;walletSendTransaction=d.sendTransaction||null;walletUI?.changed();return;}
  if(d.state==='connected'||d.state==='wallet-needed'){
-  feeClaims?.reset();epoch++;controller?.abort();launchBusy=false;confirmedLaunchWallet=null;invalidateLaunch();launchActivity.stop();account=d.address||null;provider=d.provider||null;
+  epoch++;controller?.abort();chatPendingApproval=null;launchBusy=false;confirmedLaunchWallet=null;invalidateLaunch();launchActivity.stop();account=d.address||null;provider=d.provider||null;walletSource=d.source||null;walletSendTransaction=d.sendTransaction||null;
   $('wallet-address').textContent=account||'Choose your launch wallet.';$('wallet-balance').textContent=' - ETH';walletUI?.changed();return;
  }
 }
-feeClaims?.reset();if(nextUser===user&&d.state==='connected'&&d.address===account&&d.provider===provider)return;showLaunchStage(null,false);if(!$('pons-review-dialog').hidden)showLaunchStage(null);epoch++;launchBusy=false;logoCreator.reset();controller?.abort();launchActivity.stop();selectedToken=null;confirmedLaunchWallet=null;account=d.address||null;provider=d.provider||null;invalidateLaunch();user=d.authenticated?(d.userId||account):null;const loading=d.state==='loading';$('session-loading').hidden=!loading;$('auth-gate').hidden=loading||!!user;$('workspace').hidden=loading||!user;$('workspace').inert=loading||!user;history=[];$('messages').replaceChildren();for(const id of ['feedback','brief-status','pons-status','wallet-status'])$(id).textContent='';$('wallet-address').textContent=account||'Your wallet is getting ready.';$('wallet-balance').textContent=' -  ETH';if(user){restore();restoreLaunch();restoreSettings();if(account){let prior;try{prior=JSON.parse(read('last-deployer'));}catch{}const recipient=$('launch-recipient');if(prior&&recipient.value.toLowerCase()===prior.toLowerCase()){recipient.value=account;saveSettings();}save('last-deployer',account);}renderTokenSummary();renderSetupChoices();restoreLaunchConversation();}else {brief={};awaiting=null;syncBrief();}if(!user)for(const f of ['name','symbol','description'])$('brief-'+f).value='';draftSync.start(user);walletUI?.changed();});
+if(nextUser===user&&d.state==='connected'&&d.address===account&&d.provider===provider)return;showLaunchStage(null,false);if(!$('pons-review-dialog').hidden)showLaunchStage(null);epoch++;launchBusy=false;logoCreator.reset();controller?.abort();launchActivity.stop();selectedToken=null;confirmedLaunchWallet=null;account=d.address||null;provider=d.provider||null;walletSource=d.source||null;walletSendTransaction=d.sendTransaction||null;invalidateLaunch();user=d.authenticated?(d.userId||account):null;const loading=d.state==='loading';$('session-loading').hidden=!loading;$('auth-gate').hidden=loading||!!user;$('workspace').hidden=loading||!user;$('workspace').inert=loading||!user;history=[];$('messages').replaceChildren();for(const id of ['feedback','brief-status','pons-status','wallet-status'])$(id).textContent='';$('wallet-address').textContent=account||'Your wallet is getting ready.';$('wallet-balance').textContent=' -  ETH';if(user){restore();restoreLaunch();restoreSettings();if(account){let prior;try{prior=JSON.parse(read('last-deployer'));}catch{}const recipient=$('launch-recipient');if(prior&&recipient.value.toLowerCase()===prior.toLowerCase()){recipient.value=account;saveSettings();}save('last-deployer',account);}renderTokenSummary();renderSetupChoices();restoreLaunchConversation();}else {brief={};awaiting=null;syncBrief();}if(!user)for(const f of ['name','symbol','description'])$('brief-'+f).value='';draftSync.start(user);walletUI?.changed();});
 
 ﻿let reviewed=null,prepared=null,launchBusy=false,launchRevision=0;
 
@@ -216,7 +279,7 @@ async function openLaunchProfile(){
 
  profileEpoch=epoch;$('launch-profile-error').textContent='';$('continue-launch-profile').textContent='Continue';
 
- $('launch-preparing-dialog').querySelector('[role="status"]').textContent='Dinn is getting your logo ready';showLaunchStage('preparing');
+ say('Dinn is checking whether logo preview is available for this account…');
 
  try{await logoCreator.open();if(generation===epoch){showLaunchStage('profile');if(hasLocalLogo())$('launch-profile-error').textContent=localLogoMessage;}}finally{if(generation===epoch)launchBusy=false;}
 
@@ -232,7 +295,8 @@ const externalLogo=document.createElement('details');externalLogo.className='pro
 
 $('launch-links-fields').append($('launch-socials'));$('launch-socials').open=false;$('launch-socials').querySelector('summary').textContent='Add or edit links';
 
-const logoCreator=mountLogoCreator({host:profileFields,getContext:()=>({user,name:brief.name||'',symbol:brief.symbol||'',description:brief.description||''}),onAccept:result=>{
+let lastLogoEvent='';
+const logoCreator=mountLogoCreator({host:profileFields,getContext:()=>({user,name:brief.name||'',symbol:brief.symbol||'',description:brief.description||''}),onPreview:result=>{if(!result.preview)return;const body=say('Logo preview ready. Review it below. Say “use this logo”, “create another logo” with a style, or “skip logo”.');const img=document.createElement('img');img.src=result.preview;img.alt='Generated token logo preview';img.width=192;img.height=192;img.className='chat-logo-preview';body?.append(img);},onStatus:text=>{if(!text||text===lastLogoEvent)return;lastLogoEvent=text;if(/Creating your preview|No logo has been replaced|unavailable for this account|saved on this PC|needs a public|Logo selected|request is saved/i.test(text))say(text==='Creating your preview…'?'Dinn is creating your logo preview…':text);},onAccept:result=>{
 
  if(result.url){let original;try{original=JSON.parse(read('logo-original'));}catch{}if(original?.name!==brief.name||original?.symbol!==brief.symbol)save('logo-original',{name:brief.name,symbol:brief.symbol,url:$('launch-logo').value});$('launch-logo').value=result.url;$('launch-logo').dispatchEvent(new Event('input',{bubbles:true}));save('logo-local-choice',null);}else save('logo-local-choice',{name:brief.name,symbol:brief.symbol,id:result.id});
 
@@ -253,7 +317,7 @@ $('continue-launch-profile').onclick=async()=>{
 
  try{if(hasLocalLogo())throw Error(localLogoMessage);if(logoCreator.hasUnselected())throw Error('Choose Use this logo, or discard the preview before continuing.');currentSocials();const logo=$('launch-logo').value.trim();if(logo){const url=new URL(logo);if(!['https:','ipfs:'].includes(url.protocol)||url.username||url.password)throw Error('Use a public HTTPS or IPFS logo URL.');}saveSettings();}
 
- catch(error){$('launch-profile-error').textContent=error.message;return;}
+ catch(error){say(error.message);return;}
 
  recordSetupReply('Continue with this logo setup.','Logo setup saved.');openLaunchLinks();
 
@@ -269,18 +333,18 @@ function renderLinkQuestion(){
 }
 function applyLinkReply(parsed,text){
  const step=launchLinkSteps[launchLinkIndex];
- if(parsed.action==='error'){$('launch-links-error').textContent=parsed.message;return;}
+ if(parsed.action==='error'){say(parsed.message);return;}
  if(parsed.action==='skip-all'){for(const id of metadataIds)$(id).value='';invalidateLaunch();saveSettings();recordSetupReply(text,'Continuing without project links.');openLaunchPurchase();return;}
- if(parsed.action==='keep'&&!$('launch-'+step.field).value){$('launch-links-error').textContent='No '+step.label+' link is saved yet. Paste one or say skip.';return;}
+ if(parsed.action==='keep'&&!$('launch-'+step.field).value){say('No '+step.label+' link is saved yet. Paste one or say “skip”.');return;}
  const field=parsed.field||step.field,previous=$('launch-'+field).value;
  try{if(parsed.action==='set')$('launch-'+field).value=parsed.url;else if(parsed.action==='skip')$('launch-'+field).value='';currentSocials();$('launch-'+field).dispatchEvent(new Event('input',{bubbles:true}));}
- catch(e){$('launch-'+field).value=previous;$('launch-links-error').textContent=e.message;return;}
+ catch(e){$('launch-'+field).value=previous;say(e.message);return;}
  recordSetupReply(text,parsed.action==='skip'?'Skipped '+step.label+'.':(launchLinkSteps.find(s=>s.field===field)?.label||field)+' link saved.');
  if(field!==step.field){renderLinkQuestion();return;}
  if(++launchLinkIndex<launchLinkSteps.length)renderLinkQuestion();else openLaunchPurchase();
 }
 $('back-launch-logo').onclick=()=>void openLaunchProfile();
-$('skip-launch-logo').onclick=()=>{if(logoCreator.isPending()){$('launch-profile-error').textContent='Check the saved logo request before skipping, or pause setup and return later.';return;}logoCreator.discard();$('launch-logo').value='';$('launch-logo').dispatchEvent(new Event('input',{bubbles:true}));recordSetupReply('Skip logo.','Continuing without a logo.');openLaunchLinks();};
+$('skip-launch-logo').onclick=()=>{if(logoCreator.isPending()){say('The logo request is still running. Ask me to check it before skipping.');return;}logoCreator.discard();$('launch-logo').value='';$('launch-logo').dispatchEvent(new Event('input',{bubbles:true}));recordSetupReply('Skip logo.','Continuing without a logo.');openLaunchLinks();};
 $('continue-launch-links').onclick=()=>{const field=launchLinkSteps[launchLinkIndex].field,value=$('launch-'+field).value;const parsed=value?parseLaunchLink(value,field):{action:'keep',field};applyLinkReply(parsed,'Keep my '+launchLinkSteps[launchLinkIndex].label+' link.');};
 $('skip-launch-links').onclick=()=>applyLinkReply({action:'skip',field:launchLinkSteps[launchLinkIndex].field},'Skip '+launchLinkSteps[launchLinkIndex].label+'.');
 $('skip-all-launch-links').onclick=()=>applyLinkReply({action:'skip-all'},'Skip all links.');
@@ -334,72 +398,37 @@ function approvalKey(){return 'dinn.pons.approval.v1:4663:'+account?.toLowerCase
 
 function approvalRecord(){try{return JSON.parse(localStorage.getItem(approvalKey()));}catch{return null;}}
 
-function updateApprovalUI(){const buy=reviewed?.quote.purchase,old=approvalRecord(),pending=old&&!['verified','reverted','rejected'].includes(old.phase);$('approve-purchase').hidden=!buy?.approvalRequired&&!pending;$('approve-purchase').textContent=pending?'Check saved approval':'Approve '+(reviewed?.quote.pair||'purchase asset');$('approval-recovery-label').hidden=!pending||!!old.hash;$('simulate-launch').disabled=!!buy?.approvalRequired||!!pending;}
+function updateApprovalUI(){const buy=reviewed?.quote.purchase,old=approvalRecord(),pending=old&&!['verified','reverted','rejected'].includes(old.phase);$('approve-purchase').hidden=true;$('approve-purchase').textContent=pending?'Check saved approval':'Approve '+(reviewed?.quote.pair||'purchase asset');$('approval-recovery-label').hidden=!pending||!!old.hash;$('simulate-launch').disabled=!!buy?.approvalRequired||!!pending;}
 
 $('approve-purchase').onclick=async()=>{
 
  if(launchBusy||!reviewed)return;const generation=epoch,revision=launchRevision,key=approvalKey();launchBusy=true;$('approve-purchase').disabled=true;
 
- try{const old=approvalRecord();if(old&&!['verified','reverted','rejected'].includes(old.phase)){const hash=old.hash||$('approval-recovery-hash').value.trim();if(!/^0x[0-9a-f]{64}$/i.test(hash))throw Error('Check your wallet activity and enter the approval transaction hash. Do not submit another approval while the result is unknown.');const r=await api('/api/pons/approval-receipt',{...old,hash});if(generation!==epoch)return;if(['verified','reverted'].includes(r.state)){localStorage.setItem(key,JSON.stringify({...old,hash,phase:r.state}));$('simulation-status').textContent=r.state==='verified'?'Approval confirmed. Refreshing your launch terms…':'Approval reverted. You can retry.';if(r.state==='verified'){launchBusy=false;await openLaunchReview();}}else $('simulation-status').textContent='Approval is '+r.state+'. Check again after confirmation.';
+ try{const old=approvalRecord();if(old&&!['verified','reverted','rejected'].includes(old.phase)){const hash=old.hash||$('approval-recovery-hash').value.trim();if(!/^0x[0-9a-f]{64}$/i.test(hash))throw Error('Check your wallet activity and enter the approval transaction hash. Do not submit another approval while the result is unknown.');const r=await api('/api/pons/approval-receipt',{...old,hash});if(generation!==epoch)return;if(['verified','reverted'].includes(r.state)){localStorage.setItem(key,JSON.stringify({...old,hash,phase:r.state}));$('simulation-status').textContent=r.state==='verified'?'Approval confirmed. Refreshing your launch terms…':'Approval reverted. You can retry.';say($('simulation-status').textContent);if(r.state==='verified'){launchBusy=false;await openLaunchReview();}}else {$('simulation-status').textContent='Approval is '+r.state+'. Check again after confirmation.';say($('simulation-status').textContent);}
 
- }else{const p=await api('/api/pons/approval',reviewed);if(generation!==epoch||revision!==launchRevision)return;if(!p.required){launchBusy=false;await openLaunchReview();return;}if(!provider)throw Error('Your selected launch wallet is not ready.');const {requestPonsApproval}=await import('/pons/entry.js');$('simulation-status').textContent=p.amount==='0'?'Reset the existing allowance in your wallet, then approve the exact purchase amount.':'Approve only the opening purchase amount in your wallet.';const r=await requestPonsApproval({prepared:p,configuration:reviewed.configuration,provider,storage:localStorage,key,isCurrent:()=>epoch===generation&&launchRevision===revision,withLock:navigator.locks?fn=>navigator.locks.request('dinn-wallet:'+account.toLowerCase(),fn):null});if(generation!==epoch)return;$('simulation-status').textContent=r.phase==='rejected'?'Approval declined.':r.hash?'Approval submitted. Check its confirmation before continuing.':'Approval result is uncertain. Check wallet activity before retrying.';if(r.storageWarning)$('simulation-status').textContent+=' Save this hash: '+(r.hash||'unavailable');}
+ }else{const p=await api('/api/pons/approval',reviewed);if(generation!==epoch||revision!==launchRevision)return;if(!p.required){launchBusy=false;await openLaunchReview();return;}if(!provider||!['embedded','external'].includes(walletSource)||walletSource==='embedded'&&!walletSendTransaction)throw Error('Your selected launch wallet is not ready. Reconnect it, then review the launch again.');const {requestPonsApproval}=await import('/pons/entry.js');const approvalAction=p.amount==='0'?'reset the existing allowance':'approve only the opening purchase amount';$('simulation-status').textContent=walletSource==='embedded'?'Dinn is submitting to '+approvalAction+'.':'Your external wallet will ask you to confirm '+approvalAction+'.';say($('simulation-status').textContent);const r=await requestPonsApproval({prepared:p,configuration:reviewed.configuration,provider,sendTransaction:walletSource==='embedded'?walletSendTransaction:null,address:account,source:walletSource||'unavailable',storage:localStorage,key,isCurrent:()=>epoch===generation&&launchRevision===revision,withLock:navigator.locks?fn=>navigator.locks.request('dinn-wallet:'+account.toLowerCase(),fn):null});if(generation!==epoch)return;$('simulation-status').textContent=r.phase==='rejected'?'Approval declined.':r.hash?'Approval submitted. Check its confirmation before continuing.':'Approval result is uncertain. Check wallet activity before retrying.';if(r.storageWarning)$('simulation-status').textContent+=' Save this hash: '+(r.hash||'unavailable');say($('simulation-status').textContent);}
 
- }catch(e){if(generation===epoch)$('simulation-status').textContent=e.message;}finally{launchBusy=false;$('approve-purchase').disabled=false;if(generation===epoch)updateApprovalUI();}
+ }catch(e){if(generation===epoch){$('simulation-status').textContent=e.message;say(e.message);}}finally{launchBusy=false;$('approve-purchase').disabled=false;if(generation===epoch)updateApprovalUI();}
 
 };
 
 function renderLaunchReview(c,q){
-
- const root=$('launch-summary');root.replaceChildren();
-
- const node=(tag,text,cls)=>{const el=document.createElement(tag);el.textContent=text;if(cls)el.className=cls;return el;};
-
- root.append(node('h2',c.name+' ('+c.symbol+')'),node('p','Pons · Robinhood Chain','review-network'));
-
- if(c.description)root.append(node('p',c.description,'review-description'));
-
- const facts=document.createElement('dl');facts.className='review-facts';
-
- const row=(label,value)=>{facts.append(node('dt',label),node('dd',value));};
-
- row('Trading pair',q.pair);row('Token supply',new Intl.NumberFormat('en').format(Number(q.config.supply)/1e18));
-
- row('Trading fee',(Number(q.config.curveFeeBps)/100+c.creatorTaxBps/100)+'% total');
-
- row('Fee breakdown',Number(q.config.curveFeeBps)/100+'% base + '+c.creatorTaxBps/100+'% creator tax');
-
- if(q.purchase){row('Opening purchase',q.purchase.amount+' '+q.pair);row('Approx. USD value','Checking…');facts.lastElementChild.id='review-purchase-usd';row('Estimated tokens',new Intl.NumberFormat('en',{maximumFractionDigits:4}).format(Number(q.purchase.tokensOut))+' '+c.symbol);row('Minimum tokens',new Intl.NumberFormat('en',{maximumFractionDigits:4}).format(Number(q.purchase.minTokensOut))+' '+c.symbol);row('Slippage',q.purchase.slippageBps/100+'%');}else row('Opening purchase','None');
-
- row('Launch wallet',c.account);row('Creator buybacks',c.buybackEnabled?'Enabled':'Disabled');row('Launch cost',q.launchFee+' ETH + network fee');
-
- root.append(facts);if(q.purchase){const usdNote=node('p','USD is a reference estimate for the opening purchase only; launch fees and gas are separate.','review-note');usdNote.id='review-usd-source';root.append(usdNote);void refreshPurchaseUsd();}
-
- const profile=document.createElement('details');profile.className='review-profile';profile.append(node('summary','Logo & links'));
-
- if(c.logo)profile.append(node('p','Logo URL: '+c.logo));
-
- const links=socialFields.filter(k=>c.socials[k]);for(const k of links)profile.append(node('p',socialLabels[k]+': '+c.socials[k]));
-
- if(!c.logo&&!links.length)profile.append(node('p','You are continuing without a logo or social links.'));
-
- root.append(profile);
-
- const details=document.createElement('details');details.className='review-details';details.append(node('summary','Launch details'));
-
+ const lines=['Review your launch',c.name+' ('+c.symbol+') · Pons on Robinhood Chain'];
+ if(c.description)lines.push(c.description);
+ lines.push('Trading pair: '+q.pair,'Token supply: '+new Intl.NumberFormat('en').format(Number(q.config.supply)/1e18),'Trading fee: '+(Number(q.config.curveFeeBps)/100+c.creatorTaxBps/100)+'% total ('+Number(q.config.curveFeeBps)/100+'% base + '+c.creatorTaxBps/100+'% creator tax)');
+ if(q.purchase){lines.push('Opening purchase: '+q.purchase.amount+' '+q.pair,'Estimated tokens: '+new Intl.NumberFormat('en',{maximumFractionDigits:4}).format(Number(q.purchase.tokensOut))+' '+c.symbol,'Minimum tokens: '+new Intl.NumberFormat('en',{maximumFractionDigits:4}).format(Number(q.purchase.minTokensOut))+' '+c.symbol,'Slippage: '+q.purchase.slippageBps/100+'%');const address=pairAddress(c.pairToken).toLowerCase();if(purchaseUsd?.available&&purchaseUsd.pairToken===address&&purchaseUsd.expiresAt>Date.now())try{lines.push('Reference value: approximately $'+usdTotal(q.purchase.amount,purchaseUsd.unitPriceUsd)+' USD. Excludes launch fee and gas.');}catch{lines.push('USD reference unavailable.');}else lines.push('USD reference unavailable. Launch fee and gas are separate.');}else lines.push('Opening purchase: none');
+ lines.push('Launch wallet: '+c.account,'Creator buybacks: '+(c.buybackEnabled?'enabled':'disabled'),'Launch cost: '+q.launchFee+' ETH plus network fee');
  const target=q.pairAsset.native?Number(q.config.graduationThreshold)/1e18:q.pairAsset.graduationTarget;
-
- for(const text of ['Graduation target: '+target+' '+q.pair+' in quote reserves; not market cap.','Creator fee recipient: '+c.creatorFeeRecipient,'Pair contract: '+q.pairToken,c.purchase?'Opening purchase goes to '+c.account+'. No extra opening-tax exemptions.':'No initial purchase. No extra opening-tax exemptions.'])details.append(node('p',text));
-
- root.append(details,node('p','Logo and links are included at launch and cannot be edited through this token contract afterward.','review-note'));
-
+ lines.push('Graduation target: '+target+' '+q.pair+' in quote reserves; this is not a market-cap goal.','Creator fee recipient: '+c.creatorFeeRecipient,'Pair contract: '+q.pairToken,'Logo: '+(c.logo||'none'),'Links: '+(socialFields.filter(k=>c.socials[k]).map(k=>socialLabels[k]+': '+c.socials[k]).join(' · ')||'none'),'Logo and links are included at launch and cannot be edited through this token contract afterward.','No transaction has been sent.','Say “check launch” to simulate these terms and estimate network fees.');
+ sayLaunch(lines.join('\n'));
 }
 
-function invalidateLaunch(){launchRevision++;reviewed=null;prepared=null;$('launch-review').hidden=true;$('approve-launch').hidden=true;if(!$('pons-review-dialog').hidden)showLaunchStage(null);}
+function invalidateLaunch(){launchRevision++;reviewed=null;prepared=null;$('launch-review').hidden=true;$('approve-launch').hidden=true;if(launchConversationStep==='review')showLaunchStage(null);}
 
 function launchKey(){return 'dinn.pons.pending.v1:4663:'+account?.toLowerCase();}
 
-$('chat-thread').append($('launch-recovery'));$('launch-recovery').classList.add('chat-launch-recovery');
-const launchActivity=mountLaunchActivity({onPonsWallet:()=>view('wallet'),getAccount:()=>account,getEpoch:()=>epoch,getRecord:()=>{try{return JSON.parse(localStorage.getItem(launchKey()));}catch{return null;}},setRecord:r=>localStorage.setItem(launchKey(),JSON.stringify(r)),api,onResearch:address=>{selectedToken=address;view('assistant');submitChoice('check token '+address);},onDex:address=>{selectedToken=address;view('assistant');submitChoice('Prepare DEX Screener profile for '+address);}});
+$('drafts-view').append($('launch-recovery'));$('launch-recovery').classList.add('chat-launch-recovery');
+let lastLaunchStatus='';const launchActivity=mountLaunchActivity({onPonsWallet:()=>view('wallet'),getAccount:()=>account,getEpoch:()=>epoch,getRecord:()=>{try{return JSON.parse(localStorage.getItem(launchKey()));}catch{return null;}},setRecord:r=>localStorage.setItem(launchKey(),JSON.stringify(r)),api,onResearch:address=>{selectedToken=address;view('assistant');submitChoice('check token '+address);},onDex:address=>{selectedToken=address;view('assistant');submitChoice('Prepare DEX Screener profile for '+address);},onStatus:({result,token,account:owner,hash,error})=>{if(error){const key='error:'+hash;if(key!==lastLaunchStatus){lastLaunchStatus=key;say('Launch status check incomplete: '+error+'. Say “check saved launch” to retry.');}return;}if(!result)return;const key=result.state+':'+hash;if(key===lastLaunchStatus)return;lastLaunchStatus=key;if(result.state==='verified'&&token){const body=say('✓ Token launched and verified on Robinhood Chain. Token: '+token+'.');body.parentElement.classList.add('operation-success');const pons=document.createElement('a');pons.href='https://ponsfamily.com/launchpad/'+token;pons.target='_blank';pons.rel='noopener noreferrer';pons.textContent='Open on Pons';const explorer=document.createElement('a');explorer.href='https://robinhoodchain.blockscout.com/token/'+token;explorer.target='_blank';explorer.rel='noopener noreferrer';explorer.textContent='View token';body.append(pons,document.createTextNode(' · '),explorer);}else if(result.state==='reverted')say('The launch transaction reverted. No token deployment was verified.');else if(result.state==='pending'||result.state==='confirming')say('Launch transaction '+result.state+'. Dinn will continue checking the saved transaction.');}});
 
 function restoreLaunch(){launchActivity.restore();}
 
@@ -413,17 +442,17 @@ function configuration(){if(hasLocalLogo())throw Error(localLogoMessage);if(!acc
 
 
 
-async function openLaunchReview(){if(launchBusy)return;if(!account||confirmedLaunchWallet!==account.toLowerCase()){openLaunchWallet();return;}if(hasLocalLogo()){await openLaunchProfile();return;}invalidateLaunch();const generation=epoch,revision=launchRevision;launchBusy=true;$('review-launch').disabled=true;$('launch-feedback').textContent='';$('launch-preparing-dialog').querySelector('[role="status"]').textContent='Dinn is preparing your launch';showLaunchStage('preparing');try{const c=configuration();const q=await api('/api/pons/review',c);if(generation!==epoch||revision!==launchRevision)return;reviewed={configuration:c,quote:q};renderLaunchReview(c,q);updateApprovalUI();$('launch-review').hidden=false;$('simulation-status').textContent=q.purchase?.approvalRequired?'Next: approve '+q.pair+' for your opening purchase, then check the launch. The approval does not launch your token.':'Next: choose Check launch. If it passes, Dinn will ask you to approve the launch in your wallet.';$('launch-feedback').textContent='';showLaunchStage(null);showLaunchStage('review');}catch(e){if(epoch===generation){launchBusy=false;openLaunchPurchase();$('purchase-error').textContent=e.message;}}finally{launchBusy=false;$('review-launch').disabled=false;}};
+async function openLaunchReview(){if(launchBusy)return;if(!account||confirmedLaunchWallet!==account.toLowerCase()){openLaunchWallet();return;}if(hasLocalLogo()){await openLaunchProfile();return;}invalidateLaunch();const generation=epoch,revision=launchRevision;launchBusy=true;$('review-launch').disabled=true;$('launch-feedback').textContent='';showLaunchStage('preparing');try{const c=configuration();const q=await api('/api/pons/review',c);if(generation!==epoch||revision!==launchRevision)return;reviewed={configuration:c,quote:q};renderLaunchReview(c,q);updateApprovalUI();$('launch-review').hidden=false;if(q.purchase?.approvalRequired)say('Your opening purchase needs an ERC-20 allowance first. Say “approve purchase” to review the exact allowance. The approval does not launch your token.');$('launch-feedback').textContent='';showLaunchStage('review');}catch(e){if(epoch===generation){showLaunchStage(null);say('I could not prepare the launch review: '+e.message+' No transaction was sent. Edit the token details in Drafts, then ask me to review the launch again.');}}finally{launchBusy=false;$('review-launch').disabled=false;}};
 
-$('simulate-launch').onclick=async()=>{if(!reviewed||launchBusy)return;const generation=epoch,revision=launchRevision;launchBusy=true;$('simulate-launch').disabled=true;$('approve-launch').hidden=true;$('simulation-status').textContent='Checking your launch and estimating network fees…';$('simulation-status').classList.add('status-shimmer');$('simulation-status').setAttribute('aria-busy','true');try{const p=await api('/api/pons/simulate',reviewed);if(generation!==epoch||revision!==launchRevision)return;prepared=p;$('simulation-status').textContent=`Launch check passed. Estimated network fee: ${p.estimatedGas} ETH (changes with network fees). You can now continue to your wallet. This check is valid for 60 seconds.`;$('approve-launch').hidden=false;}catch(e){if(epoch===generation)$('simulation-status').textContent=e.message;}finally{$('simulation-status').classList.remove('status-shimmer');$('simulation-status').removeAttribute('aria-busy');launchBusy=false;$('simulate-launch').disabled=false;}};
+$('simulate-launch').onclick=async()=>{if(!reviewed||launchBusy)return;const generation=epoch,revision=launchRevision;launchBusy=true;$('simulate-launch').disabled=true;$('approve-launch').hidden=true;const checking=say('Dinn is checking the launch and estimating network fees…');checking?.classList.add('chat-action-pending');checking?.setAttribute('aria-busy','true');try{const p=await api('/api/pons/simulate',reviewed);if(generation!==epoch||revision!==launchRevision)return;prepared=p;const body=say('✓ Launch check passed. Estimated network fee: '+p.estimatedGas+' ETH; the amount may change with network fees. This check is valid for 60 seconds. Would you like me to launch with these terms? Reply “yes” or “approve” to send. '+(walletSource==='embedded'?'Dinn will submit from your Dinn wallet.':'Your external wallet will ask you to confirm.')); body.parentElement.classList.add('operation-success');}catch(e){if(epoch===generation)say('Launch check could not complete: '+e.message+' No transaction was sent.');}finally{checking?.classList.remove('chat-action-pending');checking?.removeAttribute('aria-busy');launchBusy=false;$('simulate-launch').disabled=false;}};
 
-$('approve-launch').onclick=async()=>{if(!prepared||!reviewed||launchBusy)return;const generation=epoch,revision=launchRevision,frozen=reviewed,original=prepared,pendingKey=launchKey();launchBusy=true;$('approve-launch').disabled=true;try{if(!provider)throw Error('Your selected launch wallet is not ready.');const fresh=await api('/api/pons/simulate',frozen);if(generation!==epoch||revision!==launchRevision)return;if(fresh.transaction.data!==original.transaction.data||fresh.transaction.value!==original.transaction.value)throw Error('Launch terms changed. Review again.');const {requestPonsLaunch}=await import('/pons/entry.js');const record=await requestPonsLaunch({prepared:fresh,configuration:frozen.configuration,provider,storage:localStorage,key:pendingKey,isCurrent:()=>epoch===generation&&launchRevision===revision,withLock:navigator.locks?fn=>navigator.locks.request('dinn-wallet:'+frozen.configuration.account.toLowerCase(),fn):null});if(epoch===generation){restoreLaunch();if(record.hash){showLaunchStage(null);view('assistant');$('launch-recovery').scrollIntoView({block:'start'});}$('simulation-status').textContent=record.phase==='rejected'?'Wallet request declined.':record.hash?'Submitted: '+record.hash+'. Verify its receipt below.':'Wallet result is uncertain. Check wallet activity before trying again.';if(record.storageWarning)$('simulation-status').textContent+=' Recovery storage failed. Copy the hash now.';prepared=null;$('approve-launch').hidden=true;}}catch(e){if(epoch===generation)$('simulation-status').textContent=e.message;}finally{launchBusy=false;$('approve-launch').disabled=false;}};
-
-
+$('approve-launch').onclick=async()=>{if(!prepared||!reviewed||launchBusy)return;const generation=epoch,revision=launchRevision,frozen=reviewed,original=prepared,pendingKey=launchKey();launchBusy=true;$('approve-launch').disabled=true;try{if(!provider||!['embedded','external'].includes(walletSource)||walletSource==='embedded'&&!walletSendTransaction)throw Error('Your selected launch wallet is not ready. Reconnect it, then review the launch again.');const fresh=await api('/api/pons/simulate',frozen);if(generation!==epoch||revision!==launchRevision)return;if(fresh.transaction.data!==original.transaction.data||fresh.transaction.value!==original.transaction.value)throw Error('Launch terms changed. Review again.');const {requestPonsLaunch}=await import('/pons/entry.js');const record=await requestPonsLaunch({prepared:fresh,configuration:frozen.configuration,provider,sendTransaction:walletSource==='embedded'?walletSendTransaction:null,address:frozen.configuration.account,source:walletSource||'unavailable',storage:localStorage,key:pendingKey,isCurrent:()=>epoch===generation&&launchRevision===revision,withLock:navigator.locks?fn=>navigator.locks.request('dinn-wallet:'+frozen.configuration.account.toLowerCase(),fn):null});if(epoch===generation){restoreLaunch();showLaunchStage(null);$('simulation-status').textContent=record.phase==='rejected'?'Wallet request declined.':record.hash?'Submitted: '+record.hash+'. Dinn is checking the receipt.':'Wallet result is uncertain. Check wallet activity before trying again.';say($('simulation-status').textContent);if(record.hash){const body=say('Launch transaction submitted: '+record.hash+'.');const link=document.createElement('a');link.href='https://robinhoodchain.blockscout.com/tx/'+record.hash;link.target='_blank';link.rel='noopener noreferrer';link.textContent='View transaction';body.append(link);}if(record.storageWarning)say('Recovery storage failed. Save the transaction hash: '+(record.hash||'unavailable'));prepared=null;$('approve-launch').hidden=true;}}catch(e){if(epoch===generation){$('simulation-status').textContent=e.message;say(e.message);}}finally{launchBusy=false;$('approve-launch').disabled=false;}};
 
 
 
-﻿let launchStep=null,launchOptions=null,setupOptionsRequest=null,setupOptionsError="";
+
+
+﻿let launchStep=null;
 
 const economicFields=[['launch-pair','Pairing asset'],['launch-config','Launch configuration'],['launch-tax','Creator tax'],['launch-buyback','Creator buyback'],['launch-recipient','Fee recipient']];
 
@@ -431,43 +460,22 @@ function currentSettings(){const s={};try{s.socials=currentSocials();}catch{}if(
 
 function saveSettings(){if(user)save('pons-settings',{values:Object.fromEntries([...economicFields.map(v=>v[0]),'launch-logo',...metadataIds].map(k=>[k,$(k).value])),launchStep});}
 
-function restoreSettings(){let saved;try{saved=JSON.parse(read('pons-settings'));}catch{}for(const k of [...economicFields.map(v=>v[0]),'launch-logo',...metadataIds]){const v=typeof saved?.values?.[k]==='string'?saved.values[k]:'';if(k==='launch-config'&&v&&!Array.from($(k).options).some(o=>o.value===v))$(k).add(new Option('Config '+v+' (recheck at review)',v));$(k).value=v;}launchStep=economicFields.some(([k])=>k===saved?.launchStep)?saved.launchStep:null;launchOptions=null;}
+function restoreSettings(){let saved;try{saved=JSON.parse(read('pons-settings'));}catch{}for(const k of [...economicFields.map(v=>v[0]),'launch-logo',...metadataIds]){const v=typeof saved?.values?.[k]==='string'?saved.values[k]:'';if(k==='launch-config'&&v&&!Array.from($(k).options).some(o=>o.value===v))$(k).add(new Option('Config '+v+' (recheck at review)',v));$(k).value=v;}launchStep=economicFields.some(([k])=>k===saved?.launchStep)?saved.launchStep:null;}
 
 
 
 function renderTokenSummary(){const has=Object.keys(brief).length>0||!!awaiting;$('summary-panel').hidden=!has;$('token-name').textContent=brief.name||'Untitled token';$('token-avatar').textContent=brief.symbol?.slice(0,2)||'-';$('token-meta').textContent=(brief.symbol?'$'+brief.symbol+' · ':'')+'Pons / Robinhood Chain';const rows=[['brief-name','Token name',brief.name],['brief-symbol','Ticker',brief.symbol],['brief-description','Description',brief.description],...economicFields.map(([id,label])=>[id,label,$(id).value||undefined])];const count=rows.filter(r=>r[2]!==undefined).length;$('progress').value=count;$('progress-label').textContent=count+' of 8 settings';$('summary').replaceChildren();for(const [id,label,value] of rows){const row=document.createElement('div');row.className='summary-row';const name=document.createElement('span');name.textContent=label;const button=document.createElement('button');button.textContent=value===undefined?'Not set':id==='launch-pair'?(pairCandidates.find(a=>a.address.toLowerCase()===value?.toLowerCase())?.symbol||value):id==='launch-tax'?value+'%':id==='launch-buyback'?(value==='true'?'Enabled':'Disabled'):value||'None';button.title=button.textContent;button.setAttribute('aria-label','Edit '+label);button.onclick=()=>{view('assistant');if(id.startsWith('brief-')){awaiting=id.slice(6);launchStep=null;setupActive=true;submitChoice('I want to change '+({name:'name',symbol:'ticker',description:'description'})[awaiting]);}else{awaiting=null;launchStep=id;askEconomic();}$('prompt').focus();};row.append(name,button);$('summary').append(row);}$('chat-review').disabled=count!==8;$('summary-note').textContent=count===8?'Next: add optional logo and links, then review.':'Complete your settings in chat to review.';}
 
-function choice(label,fn){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=fn;$('choices').append(b);}
-
 function submitChoice(text){$('prompt').value=text;$('chat').requestSubmit();}
-
-async function refreshSetupOptions(){
-
- const requestKey=epoch+':'+launchStep;if(setupOptionsRequest===requestKey)return;
-
- setupOptionsRequest=requestKey;setupOptionsError='';const generation=epoch,step=launchStep;
-
- try{const options=await api('/api/pons/readiness',account?{account}:{});if(epoch!==generation||launchStep!==step)return;launchOptions=options;}
-
- catch(error){if(epoch!==generation||launchStep!==step)return;setupOptionsError=error.message;}
-
- finally{if(epoch===generation&&launchStep===step)renderSetupChoices();}
-
-}
-
-function renderSetupChoices(){$('choices').hidden=!!launchConversationStep;$('choices').replaceChildren();$('setup-context').hidden=!awaiting&&!launchStep;if(awaiting){$('setup-context').textContent='Next: '+({name:'Token name',symbol:'Ticker',description:'Description'})[awaiting];if(awaiting==='description')choice('Skip for now',()=>submitChoice('skip'));choice('Pause setup',()=>submitChoice('pause setup'));}else if(launchStep){$('setup-context').textContent='Next: '+economicFields.find(([k])=>k===launchStep)?.[1];if(launchStep==='launch-pair'){for(const symbol of ['ETH','USDG','NVDA','TSLA','AAPL'])if(symbol==='ETH'||pairCandidates.some(a=>a.symbol===symbol))choice(symbol,()=>submitChoice(symbol));}if(launchStep==='launch-config'){for(const c of launchOptions?.configs||[])choice(new Intl.NumberFormat('en',{notation:'compact'}).format(Number(c.supply)/1e18)+' tokens · '+Number(c.curveFeeBps)/100+'% base fee',()=>submitChoice(String(c.id)));}if(launchStep==='launch-tax'&&launchOptions)for(const fee of ['0%','1%','2%'])if(Number(fee.slice(0,-1))*100<=Number(launchOptions?.maxCreatorTaxBps||10000))choice(fee,()=>submitChoice(fee));if(launchStep==='launch-buyback'){choice('Enable',()=>submitChoice('enable'));choice('Disable',()=>submitChoice('disable'));}if(launchStep==='launch-recipient'&&account)choice('Use connected wallet',()=>submitChoice('Use connected wallet'));if(['launch-config','launch-tax'].includes(launchStep)&&!launchOptions){const requestKey=epoch+':'+launchStep;if(setupOptionsRequest!==requestKey){void refreshSetupOptions();}if(setupOptionsError){$('setup-context').textContent='Could not reload current launch options. '+setupOptionsError;choice('Retry launch options',()=>{setupOptionsRequest=null;setupOptionsError='';renderSetupChoices();});}else $('setup-context').textContent='Checking current Pons launch options…';}else if(launchStep==='launch-config'&&launchOptions){$('setup-context').textContent=launchOptions.configs.length?'Pons currently supports the supplies shown below. Custom supply is unavailable; creator tax is chosen separately.':'Pons has no enabled launch configurations at this check.';}choice('Pause setup',()=>submitChoice('pause setup'));}else if(!nextField(brief)&&economicFields.every(([k])=>$(k).value!=='')){choice('Add logo & links',openLaunchProfile);choice('Continue to review',openLaunchProfile);}}
-
+function renderSetupChoices(){$('choices').replaceChildren();$('choices').hidden=true;$('setup-context').textContent='';$('setup-context').hidden=true;}
 function askEconomic(){submitChoice('I want to change '+(economicFields.find(([k])=>k===launchStep)?.[1]||'my launch settings'));}
-
-
-
 $('welcome-launchpads').onclick=()=>view('launchpads');$('summary-profile').textContent='Logo & social links';$('summary-profile').onclick=$('attach-details').onclick=openLaunchProfile;$('new-launch').textContent='Continue setup';$('new-launch').onclick=()=>{view('assistant');submitChoice('resume setup');};$('close-review').onclick=()=>showLaunchStage(null);
 
 
 
 $('cancel-reset-draft').onclick=()=>$('reset-draft-dialog').hidden=true;
 
-$('confirm-reset-draft').onclick=()=>{try{requestedSupply=null;save('opening-purchase',null);save('logo-local-choice',null);save('logo-original',null);save('pons-brief',{launchpad:'pons',chainId:4663});save('pons-settings',{values:{},launchStep:null});for(const id of [...economicFields.map(v=>v[0]),'launch-logo',...metadataIds])$(id).value='';launchStep=null;if(!clearConversation())return;brief={};awaiting=null;restoreSettings();syncBrief();$('brief-status').textContent='';$('reset-draft-dialog').hidden=true;$('feedback').textContent='Token setup and chat cleared. Saved transaction records are kept.';}catch{$('reset-feedback').textContent='Browser storage is unavailable. Reset could not finish.';}};
+$('confirm-reset-draft').onclick=()=>{try{requestedSupply=null;save('opening-purchase',null);save('logo-local-choice',null);save('logo-original',null);save('pons-brief',{launchpad:'pons',chainId:4663});save('pons-settings',{values:{},launchStep:null});for(const id of [...economicFields.map(v=>v[0]),'launch-logo',...metadataIds])$(id).value='';launchStep=null;if(!clearConversation())return;brief={};awaiting=null;restoreSettings();syncBrief();$('brief-status').textContent='';$('reset-draft-dialog').hidden=true;say('Token setup and chat cleared. Saved transaction records are kept.');}catch{say('Browser storage is unavailable. The draft was not reset.');}};
 
 function applyLaunchDraft(d){
 
@@ -489,7 +497,7 @@ function applyLaunchDraft(d){
 
  const kinds=['pons-brief','pons-settings','setup'],old=kinds.map(read);try{save('pons-brief',{...nextBrief,launchpad:'pons',chainId:4663});save('pons-settings',{values,launchStep:nextStep});save('setup',{awaiting:nextAwaiting,active:d.active,requestedSupply:d.requestedSupply||null});}catch(error){kinds.forEach((k,i)=>{try{if(old[i]===null)localStorage.removeItem(key(k));else localStorage.setItem(key(k),old[i]);}catch{}});throw Error('Browser storage could not save the validated draft. Please retry.');}
 
- requestedSupply=d.requestedSupply||null;brief=nextBrief;awaiting=nextAwaiting;setupActive=d.active;restoreSettings();launchOptions=d.options||launchOptions;launchPair=d.pair||launchPair;syncBrief();renderSetupChoices();
+ requestedSupply=d.requestedSupply||null;brief=nextBrief;awaiting=nextAwaiting;setupActive=d.active;restoreSettings();launchPair=d.pair||launchPair;syncBrief();renderSetupChoices();
 
 }
 
@@ -499,42 +507,43 @@ function appendChatActionNote(body,text,{success=false,pending=false,hash,chainI
  const i=history.findLastIndex(m=>m.role==='assistant');if(i>=0){history[i].content+='\n\n'+text;try{save('chat',{messages:history,results:chatResults});}catch{}}
  scrollChat();return p;
 }
-async function approveWalletFromChat(action,body,button){
- button.disabled=true;button.textContent='Waiting for wallet approval…';button.classList.add('action-loading');try{
-  const review=action.review;if(!review)throw Error('This review is unavailable. Ask Dinn to check the action again.');const record=await walletUI.approveChat(review);button.classList.remove('action-loading');
-  if(record.state==='rejected'){button.textContent='Cancelled';appendChatActionNote(body,'Wallet request declined. Nothing was sent.');return;}
-  if(!record.hash){button.textContent='Check wallet activity';appendChatActionNote(body,'Wallet result is uncertain. Check wallet activity before retrying.');return;}
-  button.textContent='Submitted';const pendingNote=appendChatActionNote(body,'Submitted on '+({4663:'Robinhood Chain',8453:'Base',42161:'Arbitrum'}[review.chainId]||'the selected network')+'. Waiting for confirmation.',{pending:true});
+async function approveWalletFromChat(action,body){
+ let pendingNote;try{
+  const review=action.review;if(!review)throw Error('This review is unavailable. Ask Dinn to check the action again.');if(!walletUI)throw Error('Your wallet is not ready. Reconnect it, then ask Dinn to review the action again.');pendingNote=appendChatActionNote(body,walletSource==='embedded'?'Dinn is submitting from your Dinn wallet…':'Waiting for your external wallet confirmation…',{pending:true});const record=await walletUI.approveChat(review);
+  if(record.state==='rejected'){pendingNote.classList.remove('chat-action-pending');appendChatActionNote(body,'Wallet request declined. Nothing was sent.');return;}
+  if(!record.hash){pendingNote.classList.remove('chat-action-pending');appendChatActionNote(body,'Wallet result is uncertain. Check wallet activity before asking Dinn to review it again.');return;}
+  pendingNote.textContent='Submitted on '+({4663:'Robinhood Chain',8453:'Base',42161:'Arbitrum'}[review.chainId]||'the selected network')+'. Waiting for confirmation.';
   if(record.networkWarning)appendChatActionNote(body,'Your wallet could not return to its previous network. Switch it back manually before your next action.');if(record.storageWarning)appendChatActionNote(body,'Save this transaction hash: '+record.hash);
   const actionEpoch=epoch,actionAccount=account;let attempts=0;const clearPending=()=>pendingNote.classList.remove('chat-action-pending');
   const check=async()=>{if(epoch!==actionEpoch||account!==actionAccount)return;try{
-   const result=await api(review.kind==='send'?'/api/robinhood/wallet/receipt':'/api/robinhood/route/status',{hash:record.hash,review});if(epoch!==actionEpoch||account!==actionAccount)return;if(result.hash?.toLowerCase()!==record.hash.toLowerCase()){clearPending();appendChatActionNote(body,'The returned status did not match this transaction. Ask Dinn to check it again.');return;}
-   if(result.state==='verified'){clearPending();appendChatActionNote(body,review.kind==='send'?'✓ Transfer confirmed on '+({4663:'Robinhood Chain',8453:'Base',42161:'Arbitrum'}[review.chainId]||'the selected network')+'.':review.kind==='bridge'?'✓ Funds received on Robinhood Chain.':'✓ Swap completed on '+({4663:'Robinhood Chain',8453:'Base',42161:'Arbitrum'}[review.destinationChainId]||'the destination network')+'.',{success:true,hash:result.destinationHash||record.hash,chainId:result.destinationHash?(result.refundChainId||review.destinationChainId||4663):review.chainId});return;}
+   const endpoint=review.kind==='send'?'/api/robinhood/wallet/receipt':review.kind==='burn'?'/api/pons/burn/receipt':'/api/robinhood/route/status',result=await api(endpoint,{hash:record.hash,review});if(epoch!==actionEpoch||account!==actionAccount)return;if(result.hash?.toLowerCase()!==record.hash.toLowerCase()){clearPending();appendChatActionNote(body,'The returned status did not match this transaction. Ask Dinn to check it again.');return;}
+   if(result.state==='verified'&&review.kind==='burn'){clearPending();appendChatActionNote(body,'\u2713 Burn confirmed: '+result.amount+' '+result.symbol+' removed. Supply fell from '+result.supplyBefore+' to '+result.supplyAfter+' (at least '+result.supplyDecreaseAtLeast+' since review).',{success:true,hash:record.hash,chainId:review.chainId});return;}if(result.state==='verified'){clearPending();appendChatActionNote(body,review.kind==='send'?'✓ Transfer confirmed on '+({4663:'Robinhood Chain',8453:'Base',42161:'Arbitrum'}[review.chainId]||'the selected network')+'.':review.kind==='bridge'?'✓ Funds received on Robinhood Chain.':'✓ Swap completed on '+({4663:'Robinhood Chain',8453:'Base',42161:'Arbitrum'}[review.destinationChainId]||'the destination network')+'.',{success:true,hash:result.destinationHash||record.hash,chainId:result.destinationHash?(result.refundChainId||review.destinationChainId||4663):review.chainId});return;}
    if(result.state==='refunded'){clearPending();appendChatActionNote(body,'✓ Refund confirmed. Network and provider fees may have been deducted.',{success:true,hash:result.destinationHash,chainId:result.refundChainId||review.chainId});return;}
-   if(result.state==='reverted'){clearPending();appendChatActionNote(body,'The transaction reverted. No successful transfer was confirmed.',{hash:record.hash,chainId:review.chainId});return;}
+   if(result.state==='reverted'){clearPending();appendChatActionNote(body,review.kind==='burn'?'The burn transaction reverted. No tokens were burned.':'The transaction reverted. No successful transfer was confirmed.',{hash:record.hash,chainId:review.chainId});return;}
    if(result.state==='refund-reported'||result.needsRecovery){clearPending();appendChatActionNote(body,result.message||'The route needs recovery. Do not send again until its status is resolved.');return;}
    if(attempts++<18){setTimeout(check,10000);return;}clearPending();appendChatActionNote(body,'Confirmation is still pending. Ask Dinn to check this transaction again.');
   }catch(error){if(epoch===actionEpoch&&account===actionAccount){clearPending();appendChatActionNote(body,'Could not verify the transaction status yet. No additional transaction was sent. '+error.message);}}};setTimeout(check,2500);
- }catch(error){button.classList.remove('action-loading');button.textContent='Review expired';appendChatActionNote(body,error.message||'Wallet approval could not be completed.');}finally{button.disabled=true;}
+ }catch(error){pendingNote?.classList.remove('chat-action-pending');appendChatActionNote(body,error.message||'Wallet approval could not be completed.');}
 }
 function renderToolResult(body,result){
 
  renderAssistantText(body,result.message);
 
- if(result.tokenState){const d=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Details';d.append(summary);for(const text of ['Token: '+result.tokenState.address,'Fee recipient: '+result.tokenState.feeRecipient,'Fees shown for: '+result.tokenState.viewerAccount,'Checked at block '+result.tokenState.blockNumber+' - '+result.tokenState.checkedAt,result.tokenState.claimScope]){const p=document.createElement('p');p.textContent=text;d.append(p);}body.append(d);}
+ if(result.tokenState){const extra=document.createElement('p');extra.className='research-transcript';extra.textContent=['Token: '+result.tokenState.address,'Fee recipient: '+result.tokenState.feeRecipient,'Fees shown for: '+result.tokenState.viewerAccount,'Checked at block '+result.tokenState.blockNumber+' · '+result.tokenState.checkedAt,result.tokenState.claimScope].filter(Boolean).join('\n');body.append(extra);}
  if(result.tokenAddress&&/^0x[0-9a-f]{40}$/i.test(result.tokenAddress))selectedToken=result.tokenAddress;
-
- const actions={wallet_approve:(a,b)=>void approveWalletFromChat(a,body,b),claim:a=>openFeeClaim(a.address),new_setup:()=>submitChoice('Start a new token'),resume_setup:()=>submitChoice('Resume saved token'),launch:()=>{view('assistant');submitChoice('resume setup');},review:()=>{if($('chat-review').disabled){view('assistant');submitChoice('resume setup');}else $('chat-review').click();},wallet:()=>view('wallet'),dex:a=>dexService.open({address:/^0x[0-9a-f]{40}$/i.test(a?.address||'')?a.address:undefined,preparation:a?.preparation}),launchpads:()=>view('launchpads')};
 
  if(result.toolsUsed?.some(n=>n!=='open_dex_profile'&&n!=='inspect_token'&&n!=='manage_launch_draft'&&n!=='request_guidance'&&n!=='pons_token_state'&&n!=='review_pons_claim'&&n!=='open_wallet_action')){const note=document.createElement('small');note.className='tool-evidence';note.textContent='Checked with Dinn: '+result.toolsUsed.filter(n=>typeof n==='string'&&n!=='open_dex_profile').join(', ').replaceAll('_',' ');body.append(document.createElement('br'),note);}
 
- for(const a of result.actions||[]){if(!actions[a.id])continue;const b=document.createElement('button');b.type='button';b.className='tool-action subtle';b.textContent=a.id==='dex'&&a.preparation?.profile?.name?'Review '+String(a.preparation.profile.name).slice(0,80)+' profile':({wallet_approve:'Approve in wallet',claim:'Review fee claim',new_setup:'Start new token',resume_setup:'Resume saved token',launch:'Start or resume launch',review:'Review launch',wallet:'Open wallet',dex:'Prepare DEX Screener profile',launchpads:'View launchpads'})[a.id];b.onclick=()=>actions[a.id](a,b);body.append(b);if(a.id==='dex'&&a.address){try{const link=document.createElement('a');link.className='tool-action subtle';link.href=dexCheckoutFor(a.address);link.target='_blank';link.rel='noopener noreferrer';link.textContent='Continue on DEX Screener';body.append(link);}catch{}}}
+ for(const a of result.actions||[]){if(a.id==='wallet_approve'){const kind=a.review?.kind||'wallet';chatPendingApproval={label:({send:'transfer',bridge:'bridge',swap:'swap',burn:'burn'}[kind]||'wallet action'),action:a,run:body=>approveWalletFromChat(a,body)};continue;}if(a.id==='claim'){void openFeeClaim(a.address);continue;}if(a.id==='dex'&&a.address){try{const link=document.createElement('a');link.className='inline-link';link.href=dexCheckoutFor(a.address);link.target='_blank';link.rel='noopener noreferrer';link.textContent='Continue on DEX Screener';body.append(document.createTextNode(' '),link);if(a.preparation?.profile){const content=profileText(a.preparation.profile);const pre=document.createElement('pre');pre.className='research-transcript';pre.textContent=content;body.append(pre);}}catch{}}}
+ if((result.actions||[]).some(a=>a.id==='review')){if($('chat-review').disabled){view('assistant');queueMicrotask(()=>submitChoice('resume setup'));}else void openLaunchProfile();}
+ if((result.actions||[]).some(a=>['new_setup','resume_setup','launch'].includes(a.id))){view('assistant');const next=(result.actions||[]).some(a=>a.id==='new_setup')?'Start a new token':'resume setup';queueMicrotask(()=>submitChoice(next));}
+ if((result.actions||[]).some(a=>a.id==='launchpads'))view('launchpads');
 
- if(result.inspection)renderInspection(body,result.inspection,{restored:!!result.restored,onRecheck:address=>submitChoice('check token '+address),onHolders:address=>submitChoice('Research top holders, their ETH balances and other token holdings for '+address)});if(result.inspection)body.scrollIntoView({block:'start',behavior:'instant'});else scrollChat();
+ if(result.inspection){const transcript=document.createElement('div');renderInspection(transcript,result.inspection,{restored:!!result.restored});transcript.querySelectorAll('button,.inspection-controls').forEach(b=>b.remove());const evidence=document.createElement('p');evidence.className='research-transcript';evidence.textContent=[...transcript.children].map(el=>el.innerText||el.textContent).filter(Boolean).join('\n\n').trim();body.append(evidence);for(const source of result.inspection.sources||[]){try{const link=document.createElement('a');link.href=source.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=source.label;body.append(document.createTextNode(' '),link);}catch{}}body.scrollIntoView({block:'start',behavior:'instant'});}else scrollChat();
 
 }
 
-function renderToolDirectory(capabilities){const host=$('tool-directory');host.replaceChildren();for(const [id,c]of Object.entries(capabilities||{})){const card=document.createElement('article');card.className='pad-card';const h=document.createElement('h3');h.textContent=c.title;const status=document.createElement('span');status.className='badge';status.textContent=c.status;const p=document.createElement('p');p.textContent=c.description;card.append(status,h,p);if(['launch','inspect','balance','transaction','options','dex'].includes(id)){const b=document.createElement('button');b.className='subtle';b.textContent='Ask Dinn';b.onclick=()=>{view('assistant');const prompts={launch:'I want to launch',inspect:'check a token',balance:'check my balance',transaction:'How do I check a transaction?',dex:'Prepare DEX Screener profile',options:'show launch options'};submitChoice(prompts[id]);};card.append(b);}host.append(card);}}
+function renderToolDirectory(capabilities){const host=$('tool-directory');host.replaceChildren();const prompts={launch:'I want to launch',inspect:'Research a token',balance:'Check my Robinhood Chain ETH balance',transaction:'How do I check a transaction?',options:'Show current Pons launch options',lock:'Can Dinn create a token lock?',burn:'Burn Pons tokens',buy:'Can Dinn buy tokens?',sell:'Can Dinn sell tokens?',claim:'Check my claimable Pons fees',transfer:'Send tokens',fund:'Bridge funds',swap:'Swap assets',portfolio:'Check my wallet portfolio on Robinhood Chain',dex:'Prepare a DEX Screener profile'},labels={'wallet-approval':'Wallet approval','read-only':'Read-only','unavailable':'Unavailable','coming-soon':'Coming soon','external-checkout':'External checkout'};for(const [id,c]of Object.entries(capabilities||{})){const card=document.createElement('article');card.className='pad-card';const status=document.createElement('span');status.className='badge capability-status '+String(c.status||'').replace(/[^a-z-]/g,'');status.textContent=labels[c.status]||'Status unavailable';const h=document.createElement('h3');h.textContent=c.title;const p=document.createElement('p');p.textContent=c.description;card.append(status,h,p);if(prompts[id]){const b=document.createElement('button');b.className='subtle';b.textContent='Ask Dinn';b.onclick=()=>{view('assistant');submitChoice(prompts[id]);};card.append(b);}host.append(card);}}
 
-startAuthBootTimer();try{const [config,status]=await Promise.all([fetch('/api/auth/config').then(r=>r.json()),fetch('/api/status').then(r=>r.json())]);draftSync.configure(status.draftSyncEnabled);renderToolDirectory(status.capabilities);if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}const {mountRobinhoodWallet}=await import('/pons/entry.js');walletUI=mountRobinhoodWallet({api,getAccount:()=>account,getProvider:()=>provider,getEpoch:()=>epoch,onSwitch:(value,restored)=>{walletNetworkBusy=value;if(!value&&restored)window.dispatchEvent(new CustomEvent('dinn:wallet-network-restored'));}});const {mountEmbeddedAuth}=await import('/auth/entry.js');mountEmbeddedAuth($('embedded-auth'),config,$('account-controls'));}catch{clearAuthBootTimer();authBootResolved=true;$('session-loading').hidden=true;$('auth-gate').hidden=false;$('embedded-auth').replaceChildren();const note=document.createElement('p');note.textContent='Sign-in could not connect. Your saved drafts are still here.';const retry=document.createElement('button');retry.className='social-login';retry.textContent='Retry sign-in';retry.onclick=()=>location.reload();$('embedded-auth').append(note,retry);}
+startAuthBootTimer();try{const [config,status]=await Promise.all([fetch('/api/auth/config').then(r=>r.json()),fetch('/api/status').then(r=>r.json())]);draftSync.configure(status.draftSyncEnabled);renderToolDirectory(status.capabilities);if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}const {mountRobinhoodWallet}=await import('/pons/entry.js');walletUI=mountRobinhoodWallet({api,getAccount:()=>account,getProvider:()=>provider,getSendTransaction:()=>walletSource==='embedded'?walletSendTransaction:null,getWalletSource:()=>walletSource,getEpoch:()=>epoch,onSwitch:(value,restored)=>{walletNetworkBusy=value;if(!value&&restored)window.dispatchEvent(new CustomEvent('dinn:wallet-network-restored'));}});const {mountEmbeddedAuth}=await import('/auth/entry.js');mountEmbeddedAuth($('embedded-auth'),config,$('account-controls'));}catch{clearAuthBootTimer();authBootResolved=true;$('session-loading').hidden=true;$('auth-gate').hidden=false;$('embedded-auth').replaceChildren();const note=document.createElement('p');note.textContent='Sign-in could not connect. Your saved drafts are still here.';const retry=document.createElement('button');retry.className='social-login';retry.textContent='Retry sign-in';retry.onclick=()=>location.reload();$('embedded-auth').append(note,retry);}
 

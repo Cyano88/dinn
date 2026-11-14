@@ -31,3 +31,5 @@ Validation: build completed; syntax checks passed; 154 tests passed (including n
 2026-11-10 tool follow-up: see PRODUCT-TOOLS-AUDIT-2026-11-10.md for the full capability matrix and validation. Real local clear/reset commands and bare launch intent are restored. Thinking dots animate. The AI uses a bounded read-only tool registry for native balance, current Pons options, TS/SC/contract evidence and general transaction status, with evidence and UI action buttons. The original chat layout remains. Unsupported locks/burns and paused Elysium writes are not represented as executable. Final suite: 169 passing tests; no live wallet transaction sent.
 
 2026-11-10 pairing update: ETH-only restriction removed. See PONS-PAIRS-AND-DEX-2026-11-10.md for current functionality, verification and remaining production work.
+
+2026-11-14 burn follow-up: current Pons v2 tokens can be self-burned through Dinn chat after an explicit amount and token address are reviewed. See PRODUCT-TOOLS-AUDIT-2026-11-10.md for the verification boundary. This does not support arbitrary ERC-20s or older Pons token versions; no live burn was submitted during implementation.

@@ -11,6 +11,8 @@ The signed-out HTML contains an inert, hidden workspace. A configured Privy sess
 - Neutral light surfaces, charcoal actions, subtle sage selection, consistent outlined navigation icons.
 - Assistant, Launches and Agent access are the only navigation items.
 - Chat has clearly separated outgoing/incoming messages, contextual replies and a fixed composer. No typing animation, pulses, ambient glow, fake stats or placeholder service cards.
+- Chat actions use transcript messages. Launch setup, the final terms, token-research evidence, fee-claim review and transaction feedback are shown as text; no chat-side forms or operation cards are displayed. Wallet actions show the exact reviewed terms and one explicit approval control, then report submission and verified receipt in chat. The external wallet’s own signing prompt remains required.
+- Wallet-tab send, bridge and swap forms remain in the Wallet view. Draft details and saved launch-receipt recovery remain in Drafts; their presence does not redirect chat actions away from the conversation.
 - Launch details appear after setup starts. Settings remain editable; changing a setting discards stale review/simulation.
 - New launch requires confirmation before replacing a nonempty draft.
 - Mobile details occupy their own panel with an explicit close action and return to chat when editing.
@@ -57,7 +59,7 @@ Chat now streams real 0G answers, supports Stop, and restores up to six complete
 
 ## Conversational setup correction
 
-Greetings and questions during launch setup route to streaming chat with the current pending field as context. Explicit field values remain validated locally; conversational replies cannot mutate the draft. Choice buttons return after the response. The composer stays Ask Dinn, with a separate Next: label. Plain launch requests such as launch GOK TOKEN recognize the requested name; a conflicting saved name requires confirmation before replacement.
+Greetings and questions during launch setup route to streaming chat with the current pending field as context. Explicit field values remain validated locally; conversational replies cannot mutate the draft. Earlier UI snapshots used suggested reply buttons; the current chat keeps those prompts in the transcript and accepts typed replies. Plain launch requests such as launch GOK TOKEN recognize the requested name; a conflicting saved name requires confirmation before replacement.
 
 Validation: 51 tests passed. Live 0G browser reproduction of the reported GOK flow confirmed that HI receives a greeting without setting the pair, choices remain available, and use HYPE advances to the trading fee. Browser auth was a fixture, inference was live.
 
@@ -165,7 +167,7 @@ Available now:
 - Public Montra token list/search, bounded and sanitized, cached for one minute. Listings are metadata, not safety endorsements; selection is checked onchain before quoting.
 - Persistent swap/approval recovery; unknown results never auto-retry. Pending transfer/market/local-swap/launch records prevent conflicting actions. One Swap CTA leads from quote to a separate wallet review. Confirmation requires the exact transaction and a matching Swapped event with expected pool, sender, recipient, input, direction and minimum output.
 
-Not enabled: Ascend launches and swaps (Montra explicitly excludes them); ERC-20 sends outside the scoped adapter; bridge deposits/withdrawals; holdings locks, burns, fee claims, NEAR funding and DEX service payments. Those require their own verified routes/adapters. Ascend's current public docs provide metadata/indexer guidance but no general partner submission endpoint. This release does not change Ascend launch planning or simulation into a Montra launch.
+Not enabled: Ascend launches and swaps (Montra explicitly excludes them); ERC-20 sends outside the scoped adapter; bridge deposits/withdrawals; holdings locks, fee claims, NEAR funding and DEX service payments. Dinn separately supports self-burning an explicit amount of a verified Pons v2 token, with wallet approval and receipt checks; it does not burn arbitrary tokens. Ascend's current public docs provide metadata/indexer guidance but no general partner submission endpoint. This release does not change Ascend launch planning or simulation into a Montra launch.
 
 Evidence: 97 tests passed (output/build/execution-release-tests.log). scripts/fork-montra.mjs now executes the actual Dinn preparation and browser submission helpers on local Anvil, with read-only upstream allowlisting. Verified native send, Montra buy, exact sell approval and sell with matching receipts; output/research/montra-execution-fork.log. Browser used a simulated non-signing wallet for a single send/confirmed test and separate mobile review QA; fixtures were removed afterward. Live API returned 20 discoverable tokens and the relay reported sends enabled. No user's funds were moved. Actual Privy-to-public-relay execution has not been smoke-tested with real funds; fork and simulated browser success do not prove that final live path.
 

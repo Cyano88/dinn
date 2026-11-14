@@ -1,6 +1,6 @@
 ﻿const hash=v=>typeof v==='string'&&/^0x[0-9a-f]{64}$/i.test(v);const address=v=>typeof v==='string'&&/^0x[0-9a-f]{40}$/i.test(v)&&!/^0x0{40}$/i.test(v);
 export function confirmedLaunchToken(result){return result?.state==='verified'&&result.chainId===4663&&hash(result.hash)&&address(result.token)&&address(result.curve)?result.token:null;}
-export function mountLaunchActivity({getAccount,getEpoch,getRecord,setRecord,api,onResearch,onDex,onPonsWallet=()=>{},doc=document,interval=5000}){
+export function mountLaunchActivity({getAccount,getEpoch,getRecord,setRecord,api,onResearch,onDex,onPonsWallet=()=>{},onStatus=()=>{},doc=document,interval=5000}){
  const $=id=>doc.getElementById(id);let timer=null,controller=null,revision=0,attempts=0,token=null;
  const identity=r=>JSON.stringify({hash:r?.hash,configuration:r?.configuration,quote:r?.quote});
  function hideActions(){token=null;$('launch-activity').className='';$('launch-next-actions').hidden=true;$('launched-contract').removeAttribute('href');$('launched-pons').removeAttribute('href');}
@@ -18,8 +18,9 @@ export function mountLaunchActivity({getAccount,getEpoch,getRecord,setRecord,api
    const labels={pending:'Transaction pending or not yet found. Checking again automatically…',confirming:'Launch mined. Waiting for confirmation…',verified:'\u2713 Token deployed. Confirmed on Robinhood Chain.',reverted:'Launch transaction reverted. No successful token launch was verified.'};$('launch-activity').textContent=labels[result.state];
    token=verifiedToken;$('launch-activity').className=token?'operation-success':'';
    if(token){$('launch-activity').textContent+=' Token: '+token+'. Next: open View token, or explore its activity below.';$('launched-contract').href='https://robinhoodchain.blockscout.com/token/'+token;$('launched-pons').href='https://ponsfamily.com/launchpad/'+token;$('pons-handoff-note').textContent='On Pons, connect your launch wallet: '+account+'. Opening this page does not connect a wallet.';$('launch-next-actions').hidden=false;}
-   else if(['pending','confirming'].includes(result.state))schedule();
-  }catch(e){if(rev===revision&&epoch===getEpoch()&&e.name!=='AbortError'){$('launch-activity').textContent='Status check incomplete: '+e.message+' No transaction was sent.';if(!manual&&attempts<3)schedule();}}
+   onStatus({result,token,account,hash:txHash});
+   if(['pending','confirming'].includes(result.state))schedule();
+  }catch(e){if(rev===revision&&epoch===getEpoch()&&e.name!=='AbortError'){$('launch-activity').textContent='Status check incomplete: '+e.message+' No transaction was sent.';onStatus({error:e.message,account,hash:txHash});if(!manual&&attempts<3)schedule();}}
   finally{if(rev===revision){controller=null;$('check-receipt').disabled=false;}}
  }
  function restore(){stop();attempts=0;$('check-receipt').disabled=false;const r=getRecord();$('launch-recovery').hidden=!r;$('recover-hash').value=hash(r?.hash)?r.hash:'';if(!r)return;

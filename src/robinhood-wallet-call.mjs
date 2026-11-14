@@ -6,9 +6,15 @@ export const same=(a,b)=>typeof a==='string'&&typeof b==='string'&&a.toLowerCase
 export const address=a=>typeof a==='string'&&/^0x[0-9a-f]{40}$/i.test(a)&&!same(a,ZERO);
 export const hash=h=>typeof h==='string'&&/^0x[0-9a-f]{64}$/i.test(h);
 export const erc20=parseAbi(['function balanceOf(address) view returns(uint256)','function decimals() view returns(uint8)','function symbol() view returns(string)','function name() view returns(string)','function transfer(address,uint256) returns(bool)','event Transfer(address indexed from,address indexed to,uint256 value)']);
+const burnAbi=parseAbi(['function burn(uint256)']);
 export function units(amount,decimals){if(!Number.isInteger(decimals)||decimals<0||decimals>36||typeof amount!=='string'||!/^\d+(\.\d+)?$/.test(amount)||amount.length>78||(amount.split('.')[1]?.length||0)>decimals)throw Error('Enter an amount within the token precision.');const n=parseUnits(amount,decimals);if(n<=0n||n>=2n**256n)throw Error('Enter a positive supported amount.');return n;}
 export function walletTransaction(q){
- if(!['send','bridge','swap'].includes(q?.kind)||!networks[q.chainId]||!address(q.account)||!address(q.recipient)||!/^0x[0-9a-f]{40}$/i.test(q.asset?.address||''))throw Error('Invalid wallet review.');
+ if(!['send','bridge','swap','burn'].includes(q?.kind)||!networks[q.chainId]||!address(q.account)||!address(q.recipient)||!/^0x[0-9a-f]{40}$/i.test(q.asset?.address||''))throw Error('Invalid wallet review.');
+ if(q.kind==='burn'){
+  if(q.chainId!==4663||q.burnAdapter!=='pons-v2-self-burn'||q.sourceProfile!=='pons-v2-fixed-supply'||!same(q.account,q.recipient)||same(q.asset.address,ZERO)||!Number.isInteger(q.asset.decimals)||q.asset.decimals<0||q.asset.decimals>36||typeof q.asset.symbol!=='string'||!q.asset.symbol||q.asset.symbol.length>24||/[\x00-\x1f\x7f]/.test(q.asset.symbol)||typeof q.amountRaw!=='string'||!/^\d+$/.test(q.amountRaw)||typeof q.supplyBeforeRaw!=='string'||!/^\d+$/.test(q.supplyBeforeRaw)||typeof q.balanceBeforeRaw!=='string'||!/^\d+$/.test(q.balanceBeforeRaw)||typeof q.blockNumber!=='string'||!/^\d+$/.test(q.blockNumber)||!hash(q.blockHash))throw Error('Invalid Pons burn review.');
+  const n=units(q.amount,q.asset.decimals);if(n.toString()!==q.amountRaw||n>BigInt(q.supplyBeforeRaw)||n>BigInt(q.balanceBeforeRaw))throw Error('Burn amount differs from the reviewed balance or supply.');
+  return {from:q.account,to:q.asset.address,chainId:toHex(4663),value:'0x0',data:encodeFunctionData({abi:burnAbi,functionName:'burn',args:[n]})};
+ }
  if(q.kind==='bridge'&&![8453,42161].includes(q.chainId))throw Error('Bridge is available from Base or Arbitrum.');
  if(q.kind==='send'&&q.chainId!==4663&&!assets[q.chainId].some(a=>same(a.address,q.asset.address)&&a.decimals===q.asset.decimals))throw Error('On Base and Arbitrum, send ETH, USDC or USDT.');
  const n=units(q.amount,q.asset.decimals);

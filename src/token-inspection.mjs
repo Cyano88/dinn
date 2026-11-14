@@ -98,12 +98,22 @@ export async function inspectToken(address,{rpc,chainId=99901,client:provided,fe
 export function inspectionSummary(report,message=''){
  const find=label=>report.checks.find(c=>c.label===label);
  let selected;
- if(/\blp\b|liquidity|lock/i.test(message))selected=find('LP lock');
+ if(/pink\s*lock|vesting|vested|locked supply|supply locked|tokens? locked|lock schedule|lock records|token lock/i.test(message)){
+  const locks=report.pinkLock,records=Array.isArray(locks?.records)?locks.records:[],clean=value=>String(value??'unavailable').replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/\s+/g,' ').slice(0,180);
+  const rows=records.slice(0,3).map(row=>`- ${clean(row.kind)}: ${clean(row.remaining)} ${clean(report.symbol||'tokens')} remaining; ${clean(row.currentlyWithdrawable)} currently withdrawable; unlock/TGE ${clean(row.tgeOrUnlockDate||'not reported')}; schedule ${clean(row.tgeReleasePercent)}% at TGE and ${clean(row.cycleReleasePercent)}% every ${clean(row.cycleDays)} days.`);
+  return [`PinkLock check: ${clean(locks?.status||'unavailable')}. ${clean(locks?.reason||'No PinkLock result was returned.')}`,...(rows.length?rows:['No matching record was verified in the checked sources.']),clean(locks?.scope||'The checked sources do not cover every locker.'),'No matching record is not proof that supply is unlocked. '+report.network+' block '+report.blockNumber+'.'].join('\n');
+ }
+ else if(/launch age|token age|how old|when (?:was|did).*launch|curve.*volume|trading volume|generated fees|fees generated|fees? (?:were )?(?:generated|collected)|curve fees/i.test(message)){
+  const history=report.ponsHistory,curve=history?.curve||{},clean=value=>String(value??'unavailable').replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/\s+/g,' ').slice(0,220);
+  const coverage=clean(history?.coverage||history?.reason||'Pons launch or curve history was unavailable.');
+  return [`Launch: ${clean(history?.launchedAt)}; age at the checked snapshot: ${clean(history?.age)}.`,`Pons curve: ${clean(curve.tradeCount??curve.scannedTradeCount)} trades; ${clean(curve.totalVolume??curve.scannedVolume)} ${clean(curve.pairSymbol||report.protocol?.pairSymbol||'quote asset')} volume; generated fees ${clean(curve.totalFees??curve.scannedFees)} ${clean(curve.pairSymbol||report.protocol?.pairSymbol||'quote asset')}.`,coverage,'Generated curve fees are event totals, not creator earnings or currently claimable fees. Post-graduation pool trades are not included. '+report.network+' block '+report.blockNumber+'.'].join('\n\n');
+ }
+ else if(/\blp\b|liquidity|lock/i.test(message))selected=find('LP lock');
  else if(/\bts\b|supply/i.test(message))selected=find('Total supply (TS)');
  else if(/verified|verification|\bsc\b/i.test(message))selected=find('Source verification');
- else if(/sell|safe|honeypot/i.test(message))selected=find('Can I sell?');
+ else if(/\b(?:can (?:i|we) sell|will .* sell|sellability|sellable|honeypot|safe to trade)\b/i.test(message))selected=find('Can I sell?');
  else if(/owner/i.test(message))selected=find('Reported owner');
- else if(/holder behavior|wallet history|traded before|strong hands/i.test(message)){
+ else if(/holder behavior|wallet history|traded before|strong hands|holder.*(?:buy|sell|flow)|(?:buy|sell|flow).*holder|top holders?.*(?:buy|sell|trade)/i.test(message)){
   const behavior=report.holders?.behavior,summary=behavior?.summary;
   const clean=value=>String(value??'unavailable').replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/\s+/g,' ').slice(0,180);
   const holders=Array.isArray(report.holders?.rows)?report.holders.rows:[],sample=holders.filter(row=>!row.infrastructure&&!row.sink).slice(0,3),holdings=sample.map(row=>{
@@ -114,12 +124,23 @@ export function inspectionSummary(report,message=''){
    const legs=[...(Array.isArray(trade.tokenFlows)?trade.tokenFlows.slice(0,4).map(flow=>`${flow.direction} ${flow.amount} ${flow.symbol||flow.tokenAddress}`):[]),...(Array.isArray(trade.nativeFlows)?trade.nativeFlows.slice(0,2).map(flow=>`${flow.direction} ${flow.amount} ${flow.symbol||'ETH'}`):[])].map(clean).join('; ');
    return `- ${clean(row.address)}: ${clean(trade.targetTokenAction)}; ${clean(trade.timestamp)}; ${legs||'asset legs unavailable'}; ${clean(trade.transactionUrl)}.`;
   });
-  const lines=[`Holder-flow triage: ${behavior?.status||'unavailable'}. ${clean(summary?.holderSignal||behavior?.reason||'No holder-history signal was returned.')}`,`Suggested next step: ${clean(summary?.nextStep||'manual_review')}. Target-token swap candidates: ${clean(summary?.targetTokenBuyCandidates??'unknown')} buy / ${clean(summary?.targetTokenSellCandidates??'unknown')} sell across ${clean(summary?.walletsAnalyzed??0)} sampled addresses.`,'Current indexed top-holder candidates (not a complete holder census):',...(holdings.length?holdings:['- No eligible holder snapshot was available.']),'Recent decoded swap candidates in the bounded sample:',...(activity.length?activity:['- None observed here; this does not prove inactivity.']),'An address is not a person. Holdings and swaps are partial evidence; they do not show profitability, conviction or community quality. This is research triage, not a buy recommendation.'];
+  const curveActivity=Array.isArray(report.ponsHistory?.holderActivity)?report.ponsHistory.holderActivity.filter(row=>row.buys||row.sells).slice(0,3):[],curveLines=curveActivity.map(row=>`- ${clean(row.address)}: ${clean(row.buys)} cumulative Pons curve buys / ${clean(row.sells)} sells; ${clean(row.buyQuote)} ${clean(report.protocol?.pairSymbol||'quote asset')} bought / ${clean(row.sellQuote)} sold.`);
+  const lines=[`Holder-flow triage: ${behavior?.status||'unavailable'}. ${clean(summary?.holderSignal||behavior?.reason||'No holder-history signal was returned.')}`,`Suggested next step: ${clean(summary?.nextStep||'manual_review')}. Recent target-token swap candidates: ${clean(summary?.targetTokenBuyCandidates??'unknown')} buy / ${clean(summary?.targetTokenSellCandidates??'unknown')} sell across ${clean(summary?.walletsAnalyzed??0)} sampled wallets.`,...(curveLines.length?['Cumulative Pons curve events matched to today’s indexed top-holder sample (not the recent 30-day history):',...curveLines]:[]),'Current indexed top-holder candidates (not a complete holder census):',...(holdings.length?holdings:['- No eligible holder snapshot was available.']),'Recent decoded wallet swaps within the bounded 30-day sample:',...(activity.length?activity:['- No decoded two-sided swap candidate was observed; this does not prove inactivity.']),'An address is not a person. Holdings and swaps are partial evidence; they do not show profitability, conviction or community quality. This is research triage, not a buy recommendation.'];
   return lines.join('\n')+'\n\n'+report.network+' (chain '+report.chainId+'), block '+report.blockNumber+'. Transaction history is bounded and can omit activity.';
  }
  else if(/holder|dev|deployer/i.test(message))selected=find('Holder concentration');
  else if(/mint|blacklist|pause/i.test(message))selected=find('Control functions');
  const code=find('Contract code');
+ if(!selected&&!/\b(?:ts\b|supply|verified|verification|\bsc\b|owner|mint|blacklist|pause|sellability|sellable|honeypot|safe to trade)\b/i.test(message)){
+  const clean=value=>String(value??'unavailable').replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/\s+/g,' ').slice(0,180),supply=find('Total supply (TS)'),source=find('Source verification'),history=report.ponsHistory,curve=history?.curve||{},state=report.ponsState,holders=report.holders,behavior=holders?.behavior,lock=report.pinkLock;
+  const basics=`${report.tokenName||'Token'}${report.symbol?' ('+report.symbol+')':''}: ${clean(supply?.value||supply?.detail||'total supply unavailable')}${source?.status==='verified'?'; source matched to runtime':'; source not confirmed'}.`;
+  const trades=curve.tradeCount??curve.scannedTradeCount,volume=curve.totalVolume??curve.scannedVolume,fees=curve.totalFees??curve.scannedFees,ponsStatus=state?.status||(report.ponsStateUnavailable?'live state unavailable':report.protocol?.name||'not identified');
+  const market=`Pons: ${ponsStatus}${history?.launchedAt?'; launched '+clean(history.age)+' ago':''}${trades!==null&&trades!==undefined?`; ${clean(trades)} curve trades, ${clean(volume)} ${clean(curve.pairSymbol||report.protocol?.pairSymbol||'quote asset')} volume, ${clean(fees)} generated curve fees`:''}${state?.curve?`; ${clean(state.curve.progressPercent)}% of graduation reserve`:''}${state?.market?.marketCapUsd?`; reported market cap $${clean(state.market.marketCapUsd)}`:''}.`;
+  const holderText=holders?.rows?.length?`${clean(holders.topSharePercent)}% of supply across the listed holder sample; holder-wallet signal: ${clean(behavior?.summary?.holderSignal||behavior?.status||'unavailable')}`:'Holder concentration unavailable';
+  const lockText=lock?`${clean(lock.status)} PinkLock checks, ${Array.isArray(lock.records)?lock.records.length:0} matching record(s)${lock.status==='observed'&&!lock.records?.length?' (no match does not prove supply is unlocked)':''}`:'PinkLock check unavailable';
+  const caveat=history?.coverage||lock?.scope||'This is a dated read-only snapshot; unknown does not mean safe.';
+  return `- ${basics}\n- ${market}\n- Holders: ${holderText}. Locks: ${lockText}.\n\n${clean(caveat)} These checks are not a security audit or a safe-to-trade verdict.`;
+ }
  const lead=code.status==='not-found'?code.detail:selected?selected.label+': '+selected.detail:'Checked the contract. '+(report.tokenName?'It reports the name '+report.tokenName+'. ':'')+(find('Total supply (TS)')?.detail||'');
  return lead+'\n\n'+report.network+' (chain '+report.chainId+'), block '+report.blockNumber+'. Checked '+report.checkedAt+'. These limited checks do not establish that the token is safe to trade.';
 }

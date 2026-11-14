@@ -42,7 +42,7 @@ test('discovers a verified PinkLock02 holder and returns the onchain amount, sch
   return {name:'PinkLock02',is_verified:true,deployed_bytecode:runtime};
  }});
  assert.equal(report.status,'observed');assert.equal(report.records.length,1);
- const found=report.records[0];assert.equal(found.id,'1000858');assert.equal(found.adapter,'PinkLock02');assert.equal(found.amount,'67061829.096493628409909994');assert.equal(found.remaining,found.amount);assert.equal(found.unlocked,'0');assert.equal(found.currentlyWithdrawable,'0');assert.equal(found.owner,lock.owner);assert.equal(found.lockDate,'2026-09-15T01:47:03.000Z');assert.equal(found.tgeOrUnlockDate,'2026-12-05T01:43:00.000Z');assert.equal(found.description,'{"l":"Grail Lock"}');assert.equal(found.pinkSaleUrl,'https://www.pinksale.finance/pinklock/robinhood/record/1000858');assert.match(found.sourceUrl,new RegExp(pinkLock02,'i'));
+ const found=report.records[0];assert.equal(found.id,'1000858');assert.equal(found.adapter,'PinkLock02');assert.equal(found.amount,'67061829.096493628409909994');assert.equal(found.remaining,found.amount);assert.equal(found.unlocked,'0');assert.equal(found.currentlyWithdrawable,'0');assert.equal(found.owner,lock.owner);assert.equal(found.lockDate,'2026-09-15T01:47:03.000Z');assert.equal(found.tgeOrUnlockDate,'2026-12-05T01:43:00.000Z');assert.equal(found.description,'Grail Lock');assert.equal(found.pinkSaleUrl,'https://www.pinksale.finance/pinklock/robinhood/record/1000858');assert.match(found.sourceUrl,new RegExp(pinkLock02,'i'));
 });
 
 test('does not treat unverified or bytecode-mismatched holder contracts as PinkLock02',async()=>{
