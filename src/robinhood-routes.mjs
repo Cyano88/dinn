@@ -25,12 +25,21 @@ async function payoutProof(txHash,q,o,chainId=q.destinationChainId||4663){const 
  else{const tx=await c.getTransaction({hash:txHash});if(same(tx.to,q.account))amount+=tx.value;if(amount>=BigInt(q.minimumRaw))return true;const directAmount=amount;try{const trace=await c.request({method:'debug_traceTransaction',params:[txHash,{tracer:'callTracer'}]});const walk=(t,root=false)=>{if(t.error)return;if(!root&&['CALL','SELFDESTRUCT'].includes(t.type)&&same(t.to,q.account)&&/^0x[0-9a-f]+$/i.test(t.value||''))amount+=BigInt(t.value);for(const child of t.calls||[])walk(child);};walk(trace,true);}catch{amount=directAmount;try{const traces=await (o.traceRead||blockscoutRead)('transactions/'+txHash+'/internal-transactions',{chainId,fetchImpl:o.fetcher||fetch});if(!Array.isArray(traces.items)||traces.next_page_params)return false;for(const t of traces.items)if(t.success===true&&t.type==='call'&&same(t.to?.hash,q.account)&&uint(t.value))amount+=BigInt(t.value);}catch{return false;}}}
  return amount>=BigInt(q.minimumRaw);
 }
+async function relayDepositProof(txHash,q,o){
+ const c=walletClient(q.chainId,o),b=await walletSnapshot(c,q.chainId,o.now),r=await c.getTransactionReceipt({hash:txHash});
+ if(!same(r.transactionHash,txHash)||r.status!=='success'||(await c.getBlock({blockNumber:r.blockNumber})).hash!==r.blockHash||b.number-r.blockNumber+1n<2n)return false;
+ const amount=units(q.amount,q.asset.decimals);
+ if(same(q.asset.address,ZERO)){const tx=await c.getTransaction({hash:txHash});return same(tx.from,q.depositAddress)&&tx.value>=amount;}
+ return r.logs.some(log=>{try{const event=decodeEventLog({abi:erc20,data:log.data,topics:log.topics});return !log.removed&&same(log.address,q.asset.address)&&event.eventName==='Transfer'&&same(event.args.from,q.depositAddress)&&event.args.value>=amount;}catch{return false;}});
+}
 export async function robinhoodRouteStatus(input,o={}){
  const q=input?.review;walletTransaction(q);if(!hash(q.requestId)||!hash(input.hash)||!uint(q.minimumRaw)||BigInt(q.minimumRaw)<=0n)throw Error('Invalid saved route.');
  const source=await walletSourceReceipt(input,o);if(source.state!=='verified')return {...source,stage:'source'};
  let requestId=q.requestId,s=await readJson('https://api.relay.link/intents/status/v3?requestId='+requestId,{},o.fetcher);
  if(s.status==='waiting'){try{const data=await readJson('https://api.relay.link/requests/v3?depositAddress='+q.depositAddress+'&limit=10',{},o.fetcher);const match=data.requests?.find(r=>same(r.depositAddress?.address,q.depositAddress)&&same(r.depositAddress?.depositTxHash,input.hash)&&same(r.recipient,q.account));if(hash(match?.id)){requestId=match.id;s=await readJson('https://api.relay.link/intents/status/v3?requestId='+requestId,{},o.fetcher);}}catch{}}
- if(s.originChainId!==q.chainId||s.status!=='refund'&&s.destinationChainId!==q.destinationChainId||!s.inTxHashes?.some(h=>same(h,input.hash)))return {state:'pending',stage:'route',message:'Source payment verified; waiting for the matching route.',hash:input.hash};
+ const reportedInputs=(s.inTxHashes||[]).filter(hash).slice(0,5);let matchedInput=reportedInputs.some(h=>same(h,input.hash));
+ if(!matchedInput&&s.originChainId===q.chainId)for(const h of reportedInputs)try{if(await relayDepositProof(h,q,o)){matchedInput=true;break;}}catch{}
+ if(s.originChainId!==q.chainId||s.status!=='refund'&&s.destinationChainId!==q.destinationChainId||!matchedInput)return {state:'pending',stage:'route',message:'Source payment verified; waiting for the matching route.',hash:input.hash};
  const txHashes=[...new Set((s.txHashes||[]).filter(hash))].slice(0,5);
  if(s.status==='success'){for(const h of txHashes)try{if(await payoutProof(h,q,o))return {state:'verified',stage:'destination',hash:input.hash,destinationHash:h,requestId};}catch{}return {state:'confirming',stage:'destination',hash:input.hash,message:'Relay reports delivery. Destination payout verification is still pending.',destinationHash:txHashes[0]};}
  if(s.status==='refund'){for(const h of txHashes)for(const [chainId,asset] of [[q.chainId,q.asset],[q.destinationChainId,q.outputAsset]])try{if(await payoutProof(h,{...q,outputAsset:asset,minimumRaw:'1'},o,chainId))return {state:'refunded',hash:input.hash,destinationHash:h,refundChainId:chainId,requestId,message:'Refund confirmed. Network and provider fees may have been deducted.'};}catch{}return {state:'refund-reported',hash:input.hash,message:'Relay reports a refund. Payout verification is pending; do not send again.',requestId};}
