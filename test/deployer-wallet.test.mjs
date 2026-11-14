@@ -22,6 +22,16 @@ test('connect validates network and active address without requesting signatures
  f.setAccounts([]);await assert.rejects(connectDeployer(f.wallet,4663,()=>{}),/Reconnect/);
  assert.equal(f.provider.listenerCount('accountsChanged'),0);
 });
+test('a stalled wallet provider is bounded and never reported as connected',async()=>{
+ const f=fixture();f.wallet.getEthereumProvider=()=>new Promise(()=>{});
+ await assert.rejects(connectDeployer(f.wallet,4663,()=>{},{timeoutMs:20}),/timed out/);
+});
+test('a stalled account read removes provider event listeners on timeout',async()=>{
+ const f=fixture(),request=f.provider.request;
+ f.provider.request=args=>args.method==='eth_accounts'?new Promise(()=>{}):request(args);
+ await assert.rejects(connectDeployer(f.wallet,4663,()=>{},{timeoutMs:20}),/timed out/);
+ assert.equal(f.provider.listenerCount('disconnect'),0);
+});
 for(const event of ['accountsChanged','chainChanged','disconnect'])test(event+' invalidates once and disposes listeners',async()=>{
  const f=fixture();let invalidations=0;
  const connection=await connectDeployer(f.wallet,4663,()=>invalidations++);
