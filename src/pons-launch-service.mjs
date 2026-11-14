@@ -7,6 +7,7 @@ import {createPonsLaunchStore} from './pons-launch-store.mjs';
 
 const PATHS=new Set(['/api/dinn/launches/list','/api/dinn/launches/register']);
 const validAddress=value=>typeof value==='string'&&/^0x[0-9a-f]{40}$/i.test(value);
+const publicLaunch=item=>Object.fromEntries(['hash','token','curve','name','symbol','logo','pairToken','pairSymbol','blockNumber','launchedAt'].filter(key=>item[key]!==undefined).map(key=>[key,item[key]]));
 function publicMetrics(state){
  const curve=state.curve?{progressPercent:state.curve.progressPercent,raised:state.curve.raised,threshold:state.curve.threshold,priceQuote:state.curve.priceQuote,fdvQuote:state.curve.fdvQuote}:null;
  const pairUsd=state.quoteUsd?.available?state.quoteUsd:null;
@@ -32,8 +33,8 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
    if(Object.keys(data).some(k=>!['query','limit','offset'].includes(k)))return {status:400,body:{error:'Unexpected launch history field.'}};
    const query=data.query===undefined?'':data.query;if(typeof query!=='string'||query.length>64||/[\x00-\x1f\x7f]/.test(query))return {status:400,body:{error:'Search must be 64 characters or fewer.'}};
    const limit=data.limit===undefined?10:data.limit,offset=data.offset===undefined?0:data.offset;if(!Number.isInteger(limit)||limit<1||limit>10||!Number.isInteger(offset)||offset<0||offset>10000)return {status:400,body:{error:'Invalid launch history page.'}};
-   const rows=await (await getStore()).list(owner,{query:query.trim(),limit,offset});
-   const items=await mapLimit(rows.items,3,async item=>{try{const key=item.token.toLowerCase(),cached=metricsCache.get(key);let metrics;if(cached&&now()-cached.at<60000)metrics=cached.value;else{metrics=publicMetrics(await readMetrics({address:item.token}));metricsCache.set(key,{at:now(),value:metrics});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);}return {...item,metrics};}catch{return {...item,metrics:null};}});
+   const rows=await (await getStore()).list({query:query.trim(),limit,offset});
+   const items=await mapLimit(rows.items,3,async item=>{try{const key=item.token.toLowerCase(),cached=metricsCache.get(key);let metrics;if(cached&&now()-cached.at<60000)metrics=cached.value;else{metrics=publicMetrics(await readMetrics({address:item.token}));metricsCache.set(key,{at:now(),value:metrics});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);}return {...publicLaunch(item),metrics};}catch{return {...publicLaunch(item),metrics:null};}});
    return {status:200,body:{items,total:rows.total,limit,offset,source:'Dinn verified Pons launch receipts'}};
   }
   if(Object.keys(data).some(k=>!['hash','configuration','quote'].includes(k))||!hashValid(data.hash)||!data.configuration||!data.quote||JSON.stringify(data.quote).length>10000)return {status:400,body:{error:'Invalid verified launch record.'}};
