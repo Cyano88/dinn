@@ -104,3 +104,5 @@ img.brandmark{background:none;border-radius:0;object-fit:contain}img.signin-symb
 
 .creator-fees form{display:grid;gap:14px;padding:18px 0}.creator-fees label{display:grid;gap:7px;font-size:13px}.creator-fees input,.creator-fees select{box-sizing:border-box;width:100%;min-width:0;padding:11px 12px;border:1px solid #dce3dd;border-radius:8px;background:#fff;font:inherit}.creator-fees form button{justify-self:start}.creator-fees h3{margin:12px 0;font-size:18px}.creator-fees [role=status]>p{margin:12px 0;font-size:13px;line-height:1.6}.creator-fees [role=status] details{margin-top:18px;font-size:12px;overflow-wrap:anywhere}
 .creator-fees form,.creator-fees .fee-result,.creator-fees .fee-recovery{padding:16px}.creator-fees .fee-result:empty,.creator-fees .fee-recovery:empty{display:none}.creator-fees .fee-result button{margin:4px 8px 4px 0}.creator-fees .transaction-hash{overflow-wrap:anywhere}
+
+#prompt-suggestion{font-size:13px;line-height:1.65;color:#9ba29c;transition:opacity .18s ease}#prompt-suggestion.is-changing{opacity:0}@media(prefers-reduced-motion:reduce){#prompt-suggestion{transition:none}}

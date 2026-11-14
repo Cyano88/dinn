@@ -22,7 +22,7 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
  const {wallets,ready:walletsReady}=useWallets();
  const {sendTransaction}=useSendTransaction();const sendTransactionRef=useRef(sendTransaction);sendTransactionRef.current=sendTransaction;
  const {refreshUser}=useUser();const {createWallet}=useCreateWallet();
- const [walletBootstrap,setWalletBootstrap]=useState({error:''}),[bootstrapAttempt,setBootstrapAttempt]=useState(0);
+ const [walletBootstrap,setWalletBootstrap]=useState({error:''}),[bootstrapAttempt,setBootstrapAttempt]=useState(0),[walletReadyTimeout,setWalletReadyTimeout]=useState(false);
  const walletSnapshot=useRef(null);walletSnapshot.current={user,wallets,refreshUser,createWallet};
  const {signTransaction}=useSignTransaction();
  const [probeStatus,setProbeStatus]=useState('');
@@ -49,6 +49,7 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
  useEffect(()=>{const restored=()=>setRetry(value=>value+1);window.addEventListener('dinn:wallet-network-restored',restored);return()=>window.removeEventListener('dinn:wallet-network-restored',restored);},[]);
  const connectionVersion=useRef(0),launchChoice=useRef(null),connectionRetries=useRef({key:'',count:0});
  const preference=selection&&selection.user===user?.id?selection.key:'';
+ useEffect(()=>{if(!authenticated||walletsReady){setWalletReadyTimeout(false);return;}const timer=setTimeout(()=>setWalletReadyTimeout(true),25000);return()=>clearTimeout(timer);},[authenticated,walletsReady,bootstrapAttempt]);
  useEffect(()=>{setSelection(null);setWalletBootstrap({error:''});},[user?.id]);
  useEffect(()=>{
   if(!ready||authPending||!authenticated||!walletsReady||!user?.id)return;let current=true;const id=user.id;setWalletBootstrap({error:''});
@@ -68,7 +69,7 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
  const {connectWallet}=useConnectWallet({onSuccess:({wallet})=>{const purpose=walletPurpose.current;walletPurpose.current='launch';if(wallet.type==='ethereum'){if(purpose==='wallet')chooseWallet(wallet);else selectLaunchWallet(wallet);}},onError:()=>{walletPurpose.current='launch';setWalletError('External wallet connection did not complete. Your selected wallet has not changed.');}});
  function connectExternal(purpose='launch') { walletPurpose.current=purpose;setWalletError('');connectWallet({walletChainType:'ethereum-only',walletList:['detected_ethereum_wallets','metamask'],description:purpose==='wallet'?'Connect an external wallet for the Wallet page.':'Connect the wallet you want to use for your launch.'}); }
  const walletUiRef=useRef(null);
- async function connectDinn(){setWalletError('');if(embedded){chooseWallet(embedded);return;}setSelection(null);setWalletBootstrap({error:''});setBootstrapAttempt(value=>value+1);}
+ async function connectDinn(){setWalletError('');setWalletReadyTimeout(false);if(embedded){chooseWallet(embedded);return;}setSelection(null);setWalletBootstrap({error:''});setBootstrapAttempt(value=>value+1);}
  walletUiRef.current={select:detail=>{if(detail?.type==='embedded')void connectDinn();else if(detail?.type==='external'){const wallet=wallets.find(item=>item.walletClientType!=='privy'&&item.address?.toLowerCase()===detail.address?.toLowerCase());if(wallet)chooseWallet(wallet);}},connect:()=>connectExternal('wallet')};
  useEffect(()=>{const select=e=>walletUiRef.current?.select(e.detail),connect=()=>walletUiRef.current?.connect();window.addEventListener('dinn:select-wallet',select);window.addEventListener('dinn:connect-external-wallet',connect);return()=>{window.removeEventListener('dinn:select-wallet',select);window.removeEventListener('dinn:connect-external-wallet',connect);};},[]);
  const walletOptionsKey=wallets.map(walletKey).join('|');
@@ -84,7 +85,7 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
   if(initTimedOut){emit({state:'error',authenticated:false});return;}
   if(authPending){emit({state:'loading',authenticated:false});return;}
   if(!authenticated){emit({state:'signed-out',authenticated:false});return;}
-  if(!walletsReady){const message='Connecting your Dinn wallet...';setWalletStatus(message);emit({state:'wallet-changing',authenticated:true,userId:user?.id,walletStatus:message});return;}
+  if(!walletsReady){const message=walletReadyTimeout?'Dinn wallet is taking too long to connect. Refresh the page to retry.':'Connecting your Dinn wallet...';setWalletStatus(message);emit({state:walletReadyTimeout?'wallet-needed':'wallet-changing',authenticated:true,userId:user?.id,walletStatus:message});return;}
   if(!selected){const message=preference?'The selected external wallet is disconnected. Choose Dinn wallet or reconnect your external wallet.':walletBootstrap.error||'Connecting your Dinn wallet...';setWalletStatus(message);emit({state:preference||walletBootstrap.error?'wallet-needed':'wallet-changing',authenticated:true,userId:user?.id,walletStatus:message,canUseEmbedded:!!embedded});return;}
   setWalletStatus('Connecting your selected wallet...');
   emit({state:'wallet-changing',authenticated:true,userId:user?.id,walletStatus:'Connecting your selected wallet...'});
@@ -96,7 +97,7 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
    if(launchChoice.current?.user===user?.id&&launchChoice.current?.key===selectedKey){launchChoice.current=null;window.dispatchEvent(new CustomEvent('dinn:launch-wallet-selected',{detail:{userId:user.id,address:selected.address,label:selected.walletClientType==='privy'?'Dinn wallet':selected.meta?.name||'External wallet'}}));}
   }).catch(()=>{if(current()){if(selected.walletClientType==='privy'){if(connectionRetries.current.key!==selectedKey)connectionRetries.current={key:selectedKey,count:0};if(connectionRetries.current.count<3){const attempt=++connectionRetries.current.count;setWalletStatus('Connecting your Dinn wallet...');retryTimer=setTimeout(()=>{if(current())setRetry(value=>value+1);},attempt*1000);return;}}const message='Your wallet could not finish connecting. Retry connecting.';setWalletStatus(message);emit({state:'wallet-needed',authenticated:true,userId:user?.id,walletStatus:message,canUseEmbedded:!!embedded&&selected.walletClientType!=='privy'});}});
   return()=>{cancelled=true;clearTimeout(retryTimer);dispose?.();};
- },[ready,authPending,initTimedOut,walletsReady,authenticated,selectedKey,user?.id,privyError,networkId,retry,walletBootstrap.error]);
+ },[ready,authPending,initTimedOut,walletsReady,authenticated,selectedKey,user?.id,privyError,networkId,retry,walletBootstrap.error,walletReadyTimeout]);
  async function run(fn){setError('');setWorking(true);try{await fn();}catch{setError('That action could not complete. Please try again.');}finally{setWorking(false);}}
  if(privyError)return <AuthRecovery/>;
  if(initTimedOut)return <AuthRecovery message="Sign-in could not finish loading. Reload to try again."/>;
