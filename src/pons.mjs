@@ -3,7 +3,8 @@ export const PONS_CHAIN_ID=4663;
 export const PONS_RPC='https://rpc.mainnet.chain.robinhood.com';
 export const PONS_FACTORY='0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e';
 const abi=parseAbi(['struct LaunchConfig { uint256 supply; uint256 curveFeeBps; uint256 phantomQuote; uint256 graduationThreshold; uint24 poolFee; int24 tickSpacing; bool enabled; }','function launchConfigCount() view returns(uint256)','function getLaunchConfig(uint256 id) view returns(LaunchConfig)','function launchFee() view returns(uint256)','function maxCreatorTaxBps() view returns(uint16)','function canLaunch(address) view returns(bool)']);
-export function getClient(o){return o.client||createPublicClient({transport:http(process.env.ROBINHOOD_RPC_URL||PONS_RPC,{timeout:10000,retryCount:1,retryDelay:250})});}
+import {serverRpcUrl} from './rpc-config.mjs';
+export function getClient(o={}){return o.client||createPublicClient({transport:http(serverRpcUrl(PONS_CHAIN_ID,o.env||process.env),{timeout:10000,retryCount:1,retryDelay:250})});}
 export async function snapshot(c,now=Date.now){if(await c.getChainId()!==4663)throw Error('Wrong Robinhood network.');const b=await c.getBlock();if(!b.hash||Math.abs(now()-Number(b.timestamp)*1000)>120000)throw Error('Robinhood network data is stale.');return b;}
 export async function ponsReadiness(input={},o={}){
  if(input.account!==undefined&&!isAddress(input.account,{strict:false}))throw Error('Invalid wallet address.');

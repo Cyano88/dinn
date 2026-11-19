@@ -19,16 +19,21 @@ function requestedResearchInput(row,job){
  const addresses=[...new Set(sources.flatMap(value=>typeof value==='string'?[...value.matchAll(TOKEN_RE)].map(match=>match[0].toLowerCase()):[]))];
  if(addresses.length!==1)return null;
  const text=sources.filter(value=>typeof value==='string').join('\n');
- const serviceLines=[...text.matchAll(/^\s*service\s*:\s*([a-z][a-z0-9.]*)\s*$/gim)].map(match=>match[1].toLowerCase());
+ const serviceLines=[...text.matchAll(/^\s*service\s*:\s*([a-z][a-z0-9.-]*)\s*$/gim)].map(match=>match[1].toLowerCase());
  if(/^\s*service\s*:/im.test(text)&&!serviceLines.length)return null;
- const services=[...new Set(serviceLines)];if(services.length>1||services.some(value=>!['token.research','token.inspect'].includes(value)))return null;
+ const services=[...new Set(serviceLines)];if(services.length>1||services.some(value=>!['token.research','token.inspect','base.stock-paired.research'].includes(value)))return null;
  const service=services[0]||'token.research';
+ const chainLines=[...text.matchAll(/^\s*chain\s*:\s*(\d+)\s*$/gim)].map(match=>Number(match[1]));
+ if(/^\s*chain\s*:/im.test(text)&&!chainLines.length)return null;
+ if(service==='base.stock-paired.research'){
+  if(chainLines.length&&(new Set(chainLines).size!==1||chainLines[0]!==8453))return null;
+  return {service,address:addresses[0]};
+ }
  if(service==='token.inspect'){
-  const chainLines=[...text.matchAll(/^\s*chain\s*:\s*(\d+)\s*$/gim)].map(match=>Number(match[1]));
-  if(/^\s*chain\s*:/im.test(text)&&!chainLines.length)return null;
   if(new Set(chainLines).size!==1||chainLines[0]!==4663)return null;
   return {service,address:addresses[0],chainId:4663};
  }
+ if(chainLines.length&&(new Set(chainLines).size!==1||chainLines[0]!==4663))return null;
  return {service,address:addresses[0]};
 }
 export function eligibleNearResearchJob(row,fullJob,agentId,{minimumEscrow,escrowToken}={}){
@@ -74,7 +79,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     if(!input){await store.save(lock,{...lock.data,phase:'stopped-before-research'});await event('stopped-before-research');return {assignmentId:a.assignmentId,state:'stopped-before-research'};}
     assertLease();
     const {service,...reportInput}=input;
-    const made=await report({service,requestId:'near-'+a.assignmentId,input:reportInput});
+    const made=await report({service,requestId:'near-'+a.assignmentId,input:reportInput},{paidMarketplaceHire:full.isTestRun===false});
     if(made.status!=='completed'||typeof made.deliverableMarkdown!=='string'||!made.deliverableMarkdown.length||made.deliverableMarkdown.length>250000||!/^\w{64}$/.test(made.evidence?.sha256||''))throw Error('Research report was incomplete or too large.');
     data={phase:'prepared',markdown:made.deliverableMarkdown,evidenceHash:made.evidence.sha256,service,tokenAddress:input.address,testRun:full.isTestRun===true,preparedAt:now().toISOString()};
     await store.save(lock,data);await event('report-prepared');

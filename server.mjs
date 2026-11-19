@@ -29,6 +29,8 @@ import {prepareDeposit} from './src/funding-deposit.mjs';
 import {depositReceipt} from './src/funding-receipt.mjs';
 import {fundingRoute,fundingBalance} from './src/funding-route.mjs';
 import {marketTokens} from './src/market-tokens.mjs';
+import {baseStockLookup} from './src/base-stock-data.mjs';
+import {researchBaseStockPairedToken} from './src/base-stock-paired-research.mjs';
 import {nativeTransfersEnabled,montraSwapsEnabled,ascendLaunchEnabled,ascendFeesEnabled} from './src/execution-policy.mjs';
 import {prepareMarketTrade,marketTradeReceipt} from './src/market-execution.mjs';
 import {walletRouteCheck,trackMontraDelivery} from './src/delivery-status.mjs';
@@ -74,6 +76,20 @@ const server=createServer(async(req,res)=>{
   res.setHeader('Referrer-Policy','no-referrer');
   res.setHeader('Content-Security-Policy',contentSecurityPolicy(authConfig));
   const path=new URL(req.url,'http://localhost').pathname;
+  if(req.method==='GET'&&path==='/api/base/stocks'){
+   walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);
+   if(walletReadStarts.length>=40)return json(res,429,{error:'Base stock checks are busy. Try again shortly.'});
+   walletReadStarts.push(Date.now());
+   try{const query=new URL(req.url,'http://localhost').searchParams;return json(res,200,await baseStockLookup({address:query.get('address')||undefined,query:query.get('q')||undefined}));}
+   catch(error){return json(res,503,{error:error.name==='Error'&&!/https?:|api.key/i.test(error.message)?error.message:'Base stock references are temporarily unavailable. Try again shortly.'});}
+  }
+  if(req.method==='GET'&&path==='/api/base/stock-paired/research'){
+   walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);
+   if(walletReadStarts.length>=40)return json(res,429,{error:'Base research checks are busy. Try again shortly.'});
+   walletReadStarts.push(Date.now());
+   try{const query=new URL(req.url,'http://localhost').searchParams;return json(res,200,await researchBaseStockPairedToken({address:query.get('address')},{holderSnapshotEnabled:false}));}
+   catch(error){return json(res,400,{error:error.name==='Error'&&!/https?:|api.key/i.test(error.message)?error.message:'Base token research is temporarily unavailable. Try again shortly.'});}
+  }
   if(isPausedRoute(path)||path==='/execution/entry.js')return json(res,410,{error:pausedMessage,code:'COMING_SOON'});
   if(req.method==='HEAD' && path==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});return res.end();}
   if(req.method==='GET' && path==='/api/tools')return json(res,200,{tools:productTools,capabilities:productCapabilities,chainId:4663,canSign:false});
@@ -92,7 +108,7 @@ const server=createServer(async(req,res)=>{
    const data=await body(req,path==='/api/chat'?100000:16000);
    if(path==='/api/chat'||path==='/api/agent/request'&&data.service==='plan'){const denied=await checkInferenceAccess(req);if(denied)return json(res,denied.status,{error:denied.error});}
    if(path==='/api/dex/logo-download'){const image=await downloadDexLogo(data);res.writeHead(200,{'content-type':image.type,'content-disposition':'attachment; filename="'+image.filename+'"','cache-control':'no-store'});return res.end(image.bytes);}
-   if(path==='/api/tools/run'){if(Object.keys(data).some(k=>!['name','args','walletAccount'].includes(k)))throw Error('Unknown tool request field.');walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);if(walletReadStarts.length>=40)return json(res,429,{error:'Tool checks are busy.'});walletReadStarts.push(Date.now());return json(res,200,await executeProductTool(data.name,data.args,{walletAccount:data.walletAccount,env:process.env}));}
+   if(path==='/api/tools/run'){if(Object.keys(data).some(k=>!['name','args','walletAccount'].includes(k)))throw Error('Unknown tool request field.');walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);if(walletReadStarts.length>=40)return json(res,429,{error:'Tool checks are busy.'});walletReadStarts.push(Date.now());return json(res,200,await executeProductTool(data.name,data.args,{walletAccount:data.walletAccount,env:process.env,holderSnapshotEnabled:false}));}
    const robinhoodWalletRoutes={'/api/robinhood/wallet/balances':robinhoodBalances,'/api/robinhood/wallet/prepare':prepareRobinhoodSend,'/api/robinhood/wallet/receipt':walletSourceReceipt,'/api/robinhood/route/quote':robinhoodRouteQuote,'/api/robinhood/route/prepare':prepareRobinhoodRoute,'/api/robinhood/route/status':robinhoodRouteStatus,'/api/pons/burn/validate':validatePonsBurn,'/api/pons/burn/receipt':ponsBurnReceipt,'/api/pons/trade/prepare':preparePonsTrade,'/api/pons/trade/receipt':ponsTradeReceipt};
    if(robinhoodWalletRoutes[path]){walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);if(walletReadStarts.length>=80)return json(res,429,{error:'Wallet checks are busy. Try again shortly.'});walletReadStarts.push(Date.now());try{return json(res,200,await robinhoodWalletRoutes[path](data));}catch(e){return json(res,400,{error:e.name==='Error'&&!/https?:|api.key|Bearer/i.test(e.message)?e.message:'Wallet provider could not complete this check. No transaction was sent.'});}}
    if(path==='/api/pons/brief')return json(res,200,ponsBrief(data));
@@ -121,7 +137,7 @@ const server=createServer(async(req,res)=>{
     return;
    }
    if(path==='/api/agent/request'){
-    if(Object.hasOwn(agentServices,data.service)){walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);if(walletReadStarts.length>=40)return json(res,429,{error:'Agent reads are busy. Try again shortly.'});walletReadStarts.push(Date.now());try{return json(res,200,await agentAccessRequest(data));}catch(e){return json(res,400,{error:e.name==='Error'&&!/https?:|api.key|Bearer/i.test(e.message)?e.message:'Agent evidence could not be verified. No paid delivery or transaction occurred.'});}}
+    if(Object.hasOwn(agentServices,data.service)){walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);if(walletReadStarts.length>=40)return json(res,429,{error:'Agent reads are busy. Try again shortly.'});walletReadStarts.push(Date.now());try{return json(res,200,await agentAccessRequest(data,{paidMarketplaceHire:false}));}catch(e){return json(res,400,{error:e.name==='Error'&&!/https?:|api.key|Bearer/i.test(e.message)?e.message:'Agent evidence could not be verified. No paid delivery or transaction occurred.'});}}
     if(data.service==='plan')return json(res,200,await buildPlan(data.input?.message));
     if(data.service==='pons.brief')return json(res,200,ponsBrief(data.input));
     return json(res,410,{error:'This service is unavailable. Discover supported services at /api/agent/schema.'});

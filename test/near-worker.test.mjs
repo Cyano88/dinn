@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {eligibleNearResearchJob} from '../src/near-worker.mjs';
+import {eligibleNearResearchJob,createNearWorker} from '../src/near-worker.mjs';
 
 const agentId='11111111-1111-4111-8111-111111111111';
 const assignmentId='22222222-2222-4222-8222-222222222222';
@@ -45,6 +45,28 @@ test('routes explicit Robinhood token inspections to the inspection service',()=
  assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'token.inspect',address:tokenAddress,chainId:4663});
 });
 
+test('routes explicit Base stock-paired research to the Base service',()=>{
+ for(const chain of ['',`\nChain: 8453`]){
+  const {row,fullJob}=fixture({description:`Service: base.stock-paired.research${chain}\nToken: ${tokenAddress}`});
+  assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'base.stock-paired.research',address:tokenAddress});
+ }
+});
+
+test('delivers an explicit Base marketplace hire through the Base research service',async()=>{
+ const {row,fullJob}=fixture({description:`Service: base.stock-paired.research\nChain: 8453\nToken: ${tokenAddress}`});
+ const calls=[],events=[],reportContexts=[],lock={data:null};
+ const store={acquire:async()=>lock,renew:async()=>{},save:async(_lock,data)=>{lock.data=data;},event:async(_lock,name)=>events.push(name),release:async()=>{},get:async()=>null};
+ const client={assignments:async()=>[row],job:async()=>fullJob,start:async()=>calls.push('start'),assignment:async()=>row,submit:async(_id,markdown)=>{calls.push(markdown);return {assignmentId,status:'submitted'};}};
+ const worker=createNearWorker({agentId,minimumEscrow:options.minimumEscrow,escrowToken:options.escrowToken,store,client,wait:async()=>{},report:async(request,context)=>{calls.push(request);reportContexts.push(context);return {status:'completed',deliverableMarkdown:'# Base stock-paired research',evidence:{sha256:'a'.repeat(64)}};}});
+ const result=await worker.runOnce();
+ assert.equal(result.results[0].state,'submitted',JSON.stringify(result.results[0]));
+ assert.deepEqual(calls[1],{service:'base.stock-paired.research',requestId:'near-'+assignmentId,input:{address:tokenAddress}});
+ assert.deepEqual(reportContexts,[{paidMarketplaceHire:true}]);
+ assert.equal(lock.data.service,'base.stock-paired.research');
+ assert.equal(lock.data.markdown,'# Base stock-paired research');
+ assert.ok(events.includes('submitted'));
+});
+
 test('holder, lock, activity and age questions need no service selectors',()=>{
  const {row,fullJob}=fixture({description:`Show holder buys and sells, token age, and PinkLock vesting for ${tokenAddress}`});
  assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'token.research',address:tokenAddress});
@@ -55,7 +77,10 @@ test('rejects ambiguous inspection requests, unknown services, and unsupported i
   fixture({description:`Inspect holders and contract controls for ${tokenAddress} and 0x${'9'.repeat(40)}`}),
   fixture({description:`Service: token.other\nChain: 4663\nToken: ${tokenAddress}`}),
   fixture({description:`Service: token.inspect\nChain: 99901\nToken: ${tokenAddress}`}),
-  fixture({description:`Service: token.inspect\nToken: ${tokenAddress}`})
+  fixture({description:`Service: token.inspect\nToken: ${tokenAddress}`}),
+  fixture({description:`Service: base.stock-paired.research\nChain: 4663\nToken: ${tokenAddress}`}),
+  fixture({description:`Service: base.stock-paired.research\nChain: 8453\nChain: 42161\nToken: ${tokenAddress}`}),
+  fixture({description:`Chain: 8453\nToken: ${tokenAddress}`})
  ];
  for(const {row,fullJob} of requests)assert.equal(eligibleNearResearchJob(row,fullJob,agentId,options),null);
 });

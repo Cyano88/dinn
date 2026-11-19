@@ -24,7 +24,7 @@ export async function sourceVerification(chainId,address,code,{fetchImpl=fetch,s
 }
 export async function inspectToken(address,{rpc,chainId=99901,client:provided,fetchImpl=fetch,signal}={}){
  if(typeof address!=='string'||!/^0x[0-9a-fA-F]{40}$/.test(address)||!isAddress(address,{strict:false})||address.toLowerCase()===zeroAddress)throw Error('Paste one nonzero EVM token contract address.');
- if(![4663,99801,99901].includes(chainId))throw Error('This network is not supported by the inspector.');
+ if(![4663,8453,99801,99901].includes(chainId))throw Error('This network is not supported by the inspector.');
  if(!rpc&&!provided)throw Error('The read-only chain connection is not configured.');
  const client=provided||createPublicClient({transport:http(rpc,{retryCount:1,retryDelay:250,timeout:10000,fetchOptions:{signal}})});
  try{
@@ -32,7 +32,7 @@ export async function inspectToken(address,{rpc,chainId=99901,client:provided,fe
   const block=await client.getBlock();if(!block.hash||block.number===null)throw Error('MISSING_BLOCK');
   if(chainId===4663&&(!block.timestamp||Math.abs(Date.now()-Number(block.timestamp)*1000)>120000))throw Error('STALE_BLOCK');
   const blockNumber=block.number;
-  const report={address:address.toLowerCase(),chainId,network:chainId===4663?'Robinhood Chain':chainId===99801?'Elysium testnet':'Elysium mainnet',blockNumber:blockNumber.toString(),blockHash:block.hash,checkedAt:Number.isFinite(Number(block.timestamp))?new Date(Number(block.timestamp)*1000).toISOString():new Date().toISOString(),checks:[]};
+  const report={address:address.toLowerCase(),chainId,network:chainId===4663?'Robinhood Chain':chainId===8453?'Base':chainId===99801?'Elysium testnet':'Elysium mainnet',blockNumber:blockNumber.toString(),blockHash:block.hash,checkedAt:Number.isFinite(Number(block.timestamp))?new Date(Number(block.timestamp)*1000).toISOString():new Date().toISOString(),checks:[]};
   const code=await client.getCode({address,blockNumber});
   if(!code||code==='0x'){
    report.checks.push({label:'Contract code',status:'not-found',detail:'No contract was found on this network at the checked block. Is this token on another network?',evidence:['eth_getCode']});
