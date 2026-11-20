@@ -40,6 +40,12 @@ test('accepts a private A2A instant hire and reads its buyer brief',()=>{
  assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'token.research',address:tokenAddress});
 });
 
+test('routes an A2A buyer message that explicitly names Base',()=>{
+ const message={senderSide:'buyer',origin:'direct',body:`Please research this token on Base: ${tokenAddress}`,truncated:false,attachments:[]};
+ const {row,fullJob}=fixture({origin:'a2a',isPrivate:true,jobKind:'instant',description:'On-chain token report',latestMessage:message});
+ assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'base.stock-paired.research',address:tokenAddress});
+});
+
 test('routes explicit Robinhood token inspections to the inspection service',()=>{
  const {row,fullJob}=fixture({description:`Service: token.inspect\nChain: 4663\nToken: ${tokenAddress}`});
  assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'token.inspect',address:tokenAddress,chainId:4663});
@@ -49,6 +55,17 @@ test('routes explicit Base stock-paired research to the Base service',()=>{
  for(const chain of ['',`\nChain: 8453`]){
   const {row,fullJob}=fixture({description:`Service: base.stock-paired.research${chain}\nToken: ${tokenAddress}`});
   assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'base.stock-paired.research',address:tokenAddress});
+ }
+});
+
+test('routes clearly requested Base research without requiring a service selector',()=>{
+ for(const description of [
+  `Research this Base stock-paired token ${tokenAddress}`,
+  `Research token ${tokenAddress}\nChain: 8453`,
+  `Check the Bankr launch for ${tokenAddress}`
+ ]){
+  const {row,fullJob}=fixture({description});
+  assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'base.stock-paired.research',address:tokenAddress},description);
  }
 });
 
@@ -150,9 +167,13 @@ test('rejects ambiguous inspection requests, unknown services, and unsupported i
   fixture({description:`Service: token.inspect\nToken: ${tokenAddress}`}),
   fixture({description:`Service: base.stock-paired.research\nChain: 4663\nToken: ${tokenAddress}`}),
   fixture({description:`Service: base.stock-paired.research\nChain: 8453\nChain: 42161\nToken: ${tokenAddress}`}),
-  fixture({description:`Chain: 8453\nToken: ${tokenAddress}`})
+  fixture({description:`Service: token.research\nChain: 8453\nToken: ${tokenAddress}`}),
+  fixture({description:`Chain: 8453\nChain: 42161\nToken: ${tokenAddress}`}),
+  fixture({description:`Service: base.stock-paired.research\nService: token.research\nToken: ${tokenAddress}`}),
+  fixture({description:`Service: base.stock-paired.research\nChain: 8453\nChain: invalid\nToken: ${tokenAddress}`}),
+  fixture({description:`Research this token on Base and Robinhood Chain: ${tokenAddress}`})
  ];
- for(const {row,fullJob} of requests)assert.equal(eligibleNearResearchJob(row,fullJob,agentId,options),null);
+ for(const {row,fullJob} of requests)assert.equal(eligibleNearResearchJob(row,fullJob,agentId,options),null,fullJob.description);
 });
 
 test('rejects unrelated private standard jobs and unknown job origins',()=>{

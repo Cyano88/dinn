@@ -26,20 +26,26 @@ function requestedResearchInput(row,job){
  if(addresses.length!==1)return null;
  const text=sources.filter(value=>typeof value==='string').join('\n');
  const serviceLines=[...text.matchAll(/^\s*service\s*:\s*([a-z][a-z0-9.-]*)\s*$/gim)].map(match=>match[1].toLowerCase());
- if(/^\s*service\s*:/im.test(text)&&!serviceLines.length)return null;
+ if([...text.matchAll(/^\s*service\s*:/gim)].length!==serviceLines.length)return null;
  const services=[...new Set(serviceLines)];if(services.length>1||services.some(value=>!['token.research','token.inspect','base.stock-paired.research'].includes(value)))return null;
- const service=services[0]||'token.research';
  const chainLines=[...text.matchAll(/^\s*chain\s*:\s*(\d+)\s*$/gim)].map(match=>Number(match[1]));
- if(/^\s*chain\s*:/im.test(text)&&!chainLines.length)return null;
+ if([...text.matchAll(/^\s*chain\s*:/gim)].length!==chainLines.length)return null;
+ const uniqueChains=new Set(chainLines);
+ const namesBase=/\b(?:on|for|via)\s+(?:the\s+)?base(?:\s+chain)?\b|\bbase[- ]stock[- ]paired\b|\bbankr\b|\bchain\s*:\s*8453\b/i.test(text);
+ const namesRobinhood=/\brobinhood(?:\s+chain)?\b|\bpons\b|\bchain\s*:\s*4663\b/i.test(text);
+ const comparesNetworks=namesBase&&namesRobinhood&&/\b(?:and|or|vs\.?|versus|compare|both|either)\b/i.test(text);
+ if(comparesNetworks)return null;
+ const baseRequested=!services.length&&(uniqueChains.has(8453)||namesBase);
+ const service=services[0]||(baseRequested?'base.stock-paired.research':'token.research');
  if(service==='base.stock-paired.research'){
-  if(chainLines.length&&(new Set(chainLines).size!==1||chainLines[0]!==8453))return null;
+  if(chainLines.length&&(uniqueChains.size!==1||chainLines[0]!==8453))return null;
   return {service,address:addresses[0]};
  }
  if(service==='token.inspect'){
-  if(new Set(chainLines).size!==1||chainLines[0]!==4663)return null;
+  if(uniqueChains.size!==1||chainLines[0]!==4663)return null;
   return {service,address:addresses[0],chainId:4663};
  }
- if(chainLines.length&&(new Set(chainLines).size!==1||chainLines[0]!==4663))return null;
+ if(chainLines.length&&(uniqueChains.size!==1||chainLines[0]!==4663))return null;
  return {service,address:addresses[0]};
 }
 export function eligibleNearResearchJob(row,fullJob,agentId,{minimumEscrow,escrowToken}={}){
