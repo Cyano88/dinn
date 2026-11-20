@@ -86,6 +86,41 @@ test('delivers a zero-cost Base stock research test run without paid-hire accoun
  assert.equal(lock.data.testRun,true);
 });
 
+test('prioritizes unstarted hires instead of waiting behind older reports',async()=>{
+ const {row:target,fullJob}=fixture({
+  description:`Service: base.stock-paired.research\nChain: 8453\nToken: ${tokenAddress}`,
+  fullJob:{isTestRun:true},
+  assignment:{escrowAmount:'0',escrowToken:'USD',slaDeadlineAt:'2099-01-01T00:00:00Z'}
+ });
+ const older=Array.from({length:3},(_,index)=>{
+  const {row}=fixture({assignment:{startedAt:'2026-11-20T00:00:00Z'}});
+  row.assignment.assignmentId=`44444444-4444-4444-8444-44444444444${index}`;
+  row.assignment.jobId=`55555555-5555-4555-8555-55555555555${index}`;
+  row.job.jobId=row.assignment.jobId;
+  return row;
+ });
+ let releaseBlocked,notifyStarted;
+ const blocked=new Promise(resolve=>{releaseBlocked=resolve;});
+ const started=new Promise(resolve=>{notifyStarted=resolve;});
+ const rows=[...older,target];
+ const store={acquire:async()=>({data:null}),renew:async()=>{},save:async(lock,data)=>{lock.data=data;},event:async()=>{},release:async()=>{},get:async()=>null};
+ const client={
+  assignments:async()=>rows,
+  job:async id=>id===jobId?fullJob:blocked,
+  start:async id=>{if(id===assignmentId)notifyStarted();},
+  assignment:async id=>rows.find(item=>item.assignment.assignmentId===id)||null,
+  submit:async id=>({assignmentId:id,status:'submitted'})
+ };
+ const worker=createNearWorker({agentId,minimumEscrow:options.minimumEscrow,escrowToken:options.escrowToken,store,client,wait:async()=>{},report:async()=>({status:'completed',deliverableMarkdown:'# Test report',evidence:{sha256:'c'.repeat(64)}})});
+ const polling=worker.runOnce();
+ let timer,reached=false;
+ try{await Promise.race([started,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('The new hire was blocked by older reports.')),1500);})]);reached=true;}
+ catch{}
+ finally{clearTimeout(timer);releaseBlocked(null);}
+ const result=await polling;
+ assert.equal(reached,true,'The unstarted hire should start while older reports are pending.');
+ assert.ok(result.results.some(item=>item.assignmentId===assignmentId&&item.state==='submitted'));
+});
 test('does not start an assignment after its marketplace start window expires',async()=>{
  const {row}=fixture({
   fullJob:{isTestRun:true},

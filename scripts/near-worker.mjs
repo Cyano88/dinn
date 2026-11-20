@@ -30,6 +30,7 @@ async function poll(){
    pollAgain=false;
    try{
     const result=await worker.runOnce();
+    console.log(`NEAR worker poll complete: checked ${result.checked} assignments; ${result.results.length} actionable results.`);
     for(const item of result.results){
      if(item.state==='submitted')console.log('NEAR worker submitted a report; payout awaits buyer acceptance.');
      else if(item.state==='start-window-expired'&&item.recorded)console.log('NEAR worker skipped an assignment whose marketplace start window had closed.');

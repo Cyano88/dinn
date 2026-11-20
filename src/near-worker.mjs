@@ -138,12 +138,25 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
  }
  return {
   async runOnce(){
-   const rows=await client.assignments(),results=[];
-   for(const row of rows){
-    const a=row?.assignment;if(!uuid(a?.assignmentId))continue;
-    try{const result=a.status==='in_progress'?await process(row):await reconcile(row);if(result)results.push(result);}
-    catch(error){const errorCode=typeof error?.code==='string'&&/^[A-Z0-9_]{1,40}$/.test(error.code)?error.code:'WORKER_ERROR';results.push({assignmentId:a.assignmentId,state:'error',errorCode,...(Number.isInteger(error?.status)?{status:error.status}:{})});}
-   }
+   const rows=await client.assignments(),queue=rows.map((row,index)=>({row,index}));
+   const startDeadline=row=>{const value=Date.parse(row?.assignment?.slaDeadlineAt||'');return Number.isFinite(value)?value:Number.MAX_SAFE_INTEGER;};
+   queue.sort((left,right)=>{
+    const a=left.row?.assignment,b=right.row?.assignment;
+    const aNeedsStart=a?.status==='in_progress'&&!a.startedAt,bNeedsStart=b?.status==='in_progress'&&!b.startedAt;
+    if(aNeedsStart!==bNeedsStart)return aNeedsStart?-1:1;
+    return aNeedsStart?startDeadline(left.row)-startDeadline(right.row):left.index-right.index;
+   });
+   const outcomes=new Array(queue.length);let cursor=0;
+   const runNext=async()=>{
+    while(cursor<queue.length){
+     const position=cursor++,row=queue[position].row,a=row?.assignment;
+     if(!uuid(a?.assignmentId))continue;
+     try{const result=a.status==='in_progress'?await process(row):await reconcile(row);if(result)outcomes[position]=result;}
+     catch(error){const errorCode=typeof error?.code==='string'&&/^[A-Z0-9_]{1,40}$/.test(error.code)?error.code:'WORKER_ERROR';outcomes[position]={assignmentId:a.assignmentId,state:'error',errorCode,...(Number.isInteger(error?.status)?{status:error.status}:{})};}
+    }
+   };
+   await Promise.all(Array.from({length:Math.min(3,queue.length)},runNext));
+   const results=outcomes.filter(Boolean);
    return {checked:rows.length,results,checkedAt:now().toISOString()};
   },process
  };
