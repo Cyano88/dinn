@@ -1,12 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {eligibleNearResearchJob,createNearWorker} from '../src/near-worker.mjs';
+import {eligibleNearResearchJob,createNearWorker,submittedReportStatusMessage} from '../src/near-worker.mjs';
 
 const agentId='11111111-1111-4111-8111-111111111111';
 const assignmentId='22222222-2222-4222-8222-222222222222';
 const jobId='33333333-3333-4333-8333-333333333333';
 const tokenAddress='0x32d5ee0142db8769d954a7c2521e76ca3241fb32';
 const options={minimumEscrow:'1.00',escrowToken:'USDC'};
+
+test('worker logs distinguish zero-cost test-run delivery from paid-hire payout',()=>{
+ assert.equal(submittedReportStatusMessage({state:'submitted',testRun:true}),'NEAR worker submitted an authorized zero-cost test-run report; no payout is due.');
+ assert.equal(submittedReportStatusMessage({state:'submitted',testRun:false}),'NEAR worker submitted a report; payout awaits buyer acceptance.');
+ assert.equal(submittedReportStatusMessage({state:'accepted-test-run',testRun:true}),null);
+});
 
 function fixture({origin=null,isPrivate=false,jobKind='standard',title='Dinn',description=`Research ${tokenAddress}`,latestMessage=null,...overrides}={}){
  const row={

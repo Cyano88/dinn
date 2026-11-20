@@ -1,6 +1,6 @@
 import {createNearMarketClient} from '../src/near-market-client.mjs';
 import {createNearWorkerStore} from '../src/near-worker-store.mjs';
-import {createNearWorker} from '../src/near-worker.mjs';
+import {createNearWorker,submittedReportStatusMessage} from '../src/near-worker.mjs';
 import {agentAccessRequest} from '../src/agent-access.mjs';
 
 if(process.env.NEAR_WORKER_ENABLED!=='true')throw Error('Set NEAR_WORKER_ENABLED=true to start the Dinn marketplace worker.');
@@ -34,7 +34,7 @@ async function poll(){
     const result=await worker.runOnce();
     console.log(`NEAR worker poll complete: checked ${result.checked} assignments; ${result.results.length} actionable results.`);
     for(const item of result.results){
-     if(item.state==='submitted')console.log('NEAR worker submitted a report; payout awaits buyer acceptance.');
+     if(item.state==='submitted')console.log(submittedReportStatusMessage(item));
      else if(item.state==='start-window-expired'&&item.recorded)console.log('NEAR worker skipped an assignment whose marketplace start window had closed.');
      else if(item.state==='not-eligible'&&item.recorded)console.log('NEAR worker skipped an assignment outside its supported research scope.');
      else if(item.state==='error')console.error('NEAR worker assignment failed:',item.errorCode,item.status?`HTTP ${item.status}`:'');

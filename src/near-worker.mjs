@@ -3,6 +3,10 @@ import {createNearMarketClient,uuid} from './near-market-client.mjs';
 import {agentAccessRequest} from './agent-access.mjs';
 
 const TOKEN_RE=/0x[0-9a-fA-F]{40}/g;
+export function submittedReportStatusMessage(result){
+ if(result?.state!=='submitted')return null;
+ return result.testRun===true?'NEAR worker submitted an authorized zero-cost test-run report; no payout is due.':'NEAR worker submitted a report; payout awaits buyer acceptance.';
+}
 function eligibilityFingerprint(row){
  const a=row?.assignment,j=row?.job,m=row?.latestMessage;
  const value={policy:1,assignment:{assignmentId:a?.assignmentId,jobId:a?.jobId,workerAgentId:a?.workerAgentId,status:a?.status,startedAt:a?.startedAt,slaDeadlineAt:a?.slaDeadlineAt},job:{jobId:j?.jobId,title:j?.title,description:j?.description,jobKind:j?.jobKind,attachments:j?.attachments},latestMessage:m?{senderSide:m.senderSide,origin:m.origin,truncated:m.truncated,body:m.body,attachments:m.attachments}:null};
