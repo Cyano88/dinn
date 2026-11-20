@@ -18,7 +18,7 @@ export const agentServices={
  'swap.quote':{description:'Read-only same-chain route quote; no deposit or signing. Base/Arbitrum support ETH, USDC and USDT only.',required:['account','chainId','asset','outputAsset','amount'],properties:{account,chainId:{type:'integer',enum:[4663,8453,42161]},asset:account,outputAsset:account,amount:{type:'string',pattern:'^[0-9]+(\\.[0-9]+)?$'}}},
  'bridge.quote':{description:'Read-only Base/Arbitrum to Robinhood route quote; no deposit or signing.',required:['account','chainId','asset','outputAsset','amount'],properties:{account,chainId:{type:'integer',enum:[8453,42161]},asset:account,outputAsset:account,amount:{type:'string',pattern:'^[0-9]+(\\.[0-9]+)?$'}}}
 };
-export function agentAccessManifest(){return {name:'Dinn',version:'5',services:['plan','pons.brief',...Object.keys(agentServices)],discovery:{instructions:'/agent-guide.md',schema:'/api/agent/schema',tools:'/api/tools'},transport:{type:'http-json',endpoint:'/api/agent/request'},broadcastEnabled:false,canSign:false,acceptsPrivateKeys:false,payment:{mode:'free-public-preview',charged:false},marketplace:{provider:'NEAR Agent Market',status:'live',listingUrl:'https://market.near.ai/a/dinn',pricePerCallUsd:'0.10'},notes:['Public account input is a query target, not proof of ownership.','Research is a dated chain snapshot, not a security audit.','Base market data reports indexed pools and liquidity; it does not confirm an executable buy or sell route.','Marketplace payment never grants wallet authority.']};}
+export function agentAccessManifest(){return {name:'Dinn',version:'6',services:['plan','pons.brief',...Object.keys(agentServices)],discovery:{instructions:'/agent-guide.md',schema:'/api/agent/schema',tools:'/api/tools'},transport:{type:'http-json',endpoint:'/api/agent/request'},broadcastEnabled:false,canSign:false,acceptsPrivateKeys:false,payment:{mode:'free-public-preview',charged:false},marketplace:{provider:'NEAR Agent Market',status:'live',listingUrl:'https://market.near.ai/a/dinn',pricePerCallUsd:'0.10'},notes:['Public account input is a query target, not proof of ownership.','Research is a dated chain snapshot, not a security audit.','Base tradeHandoff only indicates whether the report supports asking another provider for a fresh quote; it does not confirm a route or recommend a trade.','Dinn never chooses trade side or size, prepares a transaction, signs or broadcasts.','Marketplace payment never grants wallet authority.']};}
 export function agentAccessSchema(){return {type:'object',required:['service','input'],additionalProperties:false,properties:{service:{enum:['plan','pons.brief',...Object.keys(agentServices)]},input:{type:'object'},requestId:{type:'string',pattern:'^[A-Za-z0-9._-]{1,100}$'}},serviceInputs:Object.fromEntries(Object.entries(agentServices).map(([k,v])=>[k,{type:'object',additionalProperties:false,...v}]))};}
 function validate(request){
  if(!request||typeof request!=='object'||Array.isArray(request)||Object.keys(request).some(k=>!['service','input','requestId'].includes(k)))throw Error('Expected service, input and optional requestId only.');
@@ -32,6 +32,27 @@ function validate(request){
 const safeText=v=>String(v).replace(/[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/[\\`*_{}\[\]<>#|]/g,'\\$&');
 const safeLine=(v,max=1400)=>safeText(v??'Unavailable').replace(/\s+/g,' ').slice(0,max);
 const reportNumber=value=>value!==null&&value!==undefined&&!(typeof value==='string'&&!value.trim())&&Number.isFinite(Number(value))?safeLine(value,80):'unavailable';
+function baseQuoteHandoff(result){
+ const market=result.market,launch=result.launch,reasons=[];
+ if(result.classification!=='verified-bankr-stock-paired-token'||result.verification?.status!=='verified'||!same(result.stock?.address,launch?.pairedStock?.address))reasons.push('stock_pair_not_verified');
+ if(typeof launch?.poolId!=='string'||!/^0x[0-9a-f]{64}$/i.test(launch.poolId)||market?.matchesBankrPool!==true)reasons.push('bankr_pool_not_matched');
+ const liquidity=market?.liquidityUsd===null||market?.liquidityUsd===undefined?NaN:Number(market.liquidityUsd);
+ if(!Number.isFinite(liquidity)||liquidity<=0)reasons.push('positive_pool_liquidity_unavailable');
+ const canRequestQuote=reasons.length===0;
+ return {
+  status:canRequestQuote?'request_external_quote':'review_first',
+  chainId:8453,
+  tokenAddress:result.address,
+  stockAddress:result.stock?.address||null,
+  bankrPoolId:launch?.poolId||null,
+  market:market?{source:market.source||null,poolId:market.pairAddress||null,matchesBankrPool:market.matchesBankrPool===true,reportedLiquidityUsd:Number.isFinite(liquidity)?String(market.liquidityUsd):null,referencePriceUsd:market.priceUsd??null,checkedAt:result.checkedAt}:null,
+  quote:{status:'not_requested',executable:false},
+  orderIntent:null,
+  transaction:{prepared:false,signed:false,broadcast:false},
+  nextAction:canRequestQuote?'The requesting agent may ask its own execution provider for a fresh quote and apply its own policy.':'Resolve the evidence gaps before requesting a quote.',
+  reasonCodes:reasons
+ };
+}
 function baseStockResearchDeliverable(result){
  const nav=reportNumber(result.stock?.referencePrice),coverage=result.coverage||{};
  const lines=['# Dinn Base stock-paired token research','Token: '+safeLine(result.launch?.name||result.address,100)+(result.launch?.symbol?' ('+safeLine(result.launch.symbol,24)+')':''),'Network: Base (chain 8453)','Checked at: '+safeLine(result.checkedAt,80),'Classification: '+(result.classification==='verified-bankr-stock-paired-token'?'Verified stock pairing':'Insufficient evidence to confirm stock pairing')];
@@ -51,6 +72,8 @@ function baseStockResearchDeliverable(result){
  if(holders){lines.push('Holder snapshot: GoldRush checked '+safeLine(holders.checkedAt??'timestamp unavailable',80)+'; '+reportNumber(holders.holderCount)+' holders total; '+reportNumber(holders.sampleSize)+' returned in this page; snapshot block '+reportNumber(holders.blockNumber)+'.','Holder sample coverage: '+safeLine(holders.coverage,300)+'.');if(holders.sampleTop10SharePercent!==null)lines.push('Largest 10 in '+(holders.hasMore?'the returned sample':'the full returned list')+' hold '+reportNumber(holders.sampleTop10SharePercent)+'% of total supply.');for(const row of holders.largestBalancesInSample||[])lines.push('Holder '+safeLine(row.address,64)+': '+safeLine(row.balance??'balance unavailable',100)+' tokens; '+reportNumber(row.percentOfSupply)+'% of total supply.');for(const row of holders.holderActivity||[]){lines.push('Recent holder activity for '+safeLine(row.address,64)+': '+(row.status==='available'?reportNumber(row.buys)+' classified buys and '+reportNumber(row.sells)+' classified sells in '+reportNumber(row.transactionsChecked)+' recent wallet transactions, from '+safeLine(row.oldestTransactionAt??'time unavailable',80)+' through '+safeLine(row.latestTransactionAt??'time unavailable',80)+'.':safeLine(row.reason||'unavailable',240)));for(const swap of row.recentSwaps||[]){const tx=typeof swap.transactionHash==='string'&&/^0x[0-9a-f]{64}$/i.test(swap.transactionHash)?' https://basescan.org/tx/'+swap.transactionHash.toLowerCase():'';lines.push('Observed '+safeLine(swap.side,12)+' of '+safeLine((swap.tokenAmounts||[]).join(' + ')||'amount unavailable',100)+' at '+safeLine(swap.at??'time unavailable',80)+'.'+tx);}}lines.push('Holder activity coverage: '+safeLine(holders.activityCoverage||'Only up to three sampled holders were checked; this is not complete wallet history.',320)+'.');}
  else {const rawReason=String(coverage.holders||'provider coverage unavailable'),reason=rawReason.toLowerCase().includes('not configured')?'no holder-data source is configured':rawReason.toLowerCase().includes('goldrush')?'the configured holder-data source returned no snapshot':safeLine(rawReason,220);lines.push('Holder snapshot unavailable: '+reason+'.');}
  lines.push('Pairing receipt check: '+safeLine(result.verification?.status||'unavailable',30)+'.','Coverage: Bankr fee data '+(coverage.bankrFeeRecord==='found'?'found':'unavailable')+'; Coinbase registry '+(coverage.stockRegistry==='Coinbase registry address match'?'matched':'unavailable')+'; market data '+safeLine(coverage.marketPair||'unavailable',180)+'.','Holder balances are a point-in-time snapshot. Bytecode was checked for up to three sampled holder addresses; classified activity is requested only when no contract code was observed and covers each address’s latest transaction page. A missing swap does not prove no earlier activity. Holder addresses are not identified as people or labeled as team, exchange or pool wallets. Contract safety and sellability: not assessed. NAV is a reference value, not an executable price. Market fields may be unavailable. No safe-to-trade verdict is provided.');
+ const handoff=result.tradeHandoff;
+ if(handoff)lines.push('','## Agent trade handoff','Status: '+(handoff.status==='request_external_quote'?'Request a fresh quote from the calling agent’s execution provider.':'Review evidence before requesting a quote.'),'This is a quote handoff only; Dinn did not choose a side or amount, check an executable route, or prepare, sign, or send a transaction.',handoff.reasonCodes.length?'Evidence gaps: '+handoff.reasonCodes.join(', ')+'.':'A current quote and the calling agent’s own wallet policy are still required.');
  return lines.join('\n');
 }
 const eventWord=count=>Number(count)===1?'event':'events';
@@ -175,6 +198,9 @@ export async function agentAccessRequest(request,dependencies={}){
   deliverable=inspectionDeliverable(inspection,marketAndFees,marketAndFeesUnavailable);
  }else if(request.service==='base.stock-paired.research'){
   result=await (dependencies.baseStockResearch||researchBaseStockPairedToken)(i,{fetchImpl:dependencies.fetchImpl||fetch,env:dependencies.env||process.env,holderSnapshotEnabled:dependencies.paidMarketplaceHire===true});
+  if(!result||!same(result.address,i.address)||result.chainId!==8453||!Number.isFinite(Date.parse(result.checkedAt))||!['verified-bankr-stock-paired-token','insufficient-evidence'].includes(result.classification))throw Error('Base research evidence does not match the requested token, network or checked time.');
+  if(result.classification==='verified-bankr-stock-paired-token'&&(!same(result.stock?.address,result.launch?.pairedStock?.address)||result.verification?.status!=='verified'||typeof result.launch?.poolId!=='string'||!/^0x[0-9a-f]{64}$/i.test(result.launch.poolId)))throw Error('Verified Base stock-pair evidence is internally inconsistent.');
+  result={...result,tradeHandoff:baseQuoteHandoff(result)};
   deliverable=baseStockResearchDeliverable(result);
   }else if(request.service==='token.inspect'){
    const env=dependencies.env||process.env;
