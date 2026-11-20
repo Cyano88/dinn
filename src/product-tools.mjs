@@ -1,5 +1,5 @@
 import {robinhoodBalances,prepareRobinhoodSend,walletAssetBalance} from './robinhood-wallet.mjs';
-import {prepareRobinhoodRoute} from './robinhood-routes.mjs';
+import {prepareRobinhoodRoute,robinhoodRouteQuote} from './robinhood-routes.mjs';
 import {assets,networks,address as walletAddress,same} from './robinhood-wallet-call.mjs';
 import {ponsTokenState,tokenStateMessage} from './pons-token-state.mjs';
 import {preparePonsBurn} from './pons-burn.mjs';
@@ -57,13 +57,11 @@ function baseStockResearchMessage(data){
  ].join('\n\n');
 }
 function latestBaseResearch(history=[]){for(let i=history.length-1;i>=0;i--){const m=history[i];if(m?.role!=='assistant'||!m.content?.includes('**Pairing**'))continue;const match=m.content.match(/Token contract:\s*`(0x[0-9a-f]{40})`/i);if(match)return {index:i,address:match[1],verified:/is verified as paired with/i.test(m.content)};}return null;}
-const confirmsBankrLocation=text=>/^(?:(?:yes|yeah|yep|ok|okay)(?:[, ]*(?:verified|eligible))?|verified|eligible|i(?:'m| am) eligible|i(?:'ve| have) verified(?: at bankr)? and (?:i am )?eligible|i(?:'ve| have) completed (?:the )?bankr(?:'s)? location check and (?:i am )?eligible)[.! ]*$/i.test(String(text||'').trim())&&!/\b(?:not|no|haven't|havent|didn't|didnt|unable|can't|cannot|ineligible)\b/i.test(String(text||''));
 async function baseStockTradeAction(args,context,dependencies={}){
  const kind=args.kind,history=context.history||[],found=latestBaseResearch(history),prefix=`To ${kind} this on Base, `,missing=text=>({message:prefix+text,actions:[]});
  if(!['buy','sell'].includes(kind))throw Error('Choose buy or sell.');
  if(!found?.verified)return missing('research a verified Bankr stock-paired token first, then ask me to buy or sell it.');
  if(args.address&&!same(args.address,found.address))return missing('research the token you want to trade first.');
- if(!addr(context.walletAccount))return missing('connect your wallet from the account menu first, then tell me to continue.');
  const previousUsers=history.map((m,index)=>({m,index})).filter(({m,index})=>index>found.index&&m?.role==='user');
  const currentDirection=/\b(?:buy|sell)\b/i.test(context.message||'');
  const latestDirection=previousUsers.findLast(({m})=>/\b(?:buy|sell)\b/i.test(m.content||''));
@@ -74,13 +72,10 @@ async function baseStockTradeAction(args,context,dependencies={}){
  if(amounts.length!==1)return missing(kind==='buy'?`how much ${pairSymbol} do you want to spend? Send one amount, for example 10 ${pairSymbol}.`:`how many ${tokenSymbol} do you want to sell? Send one amount, for example 100 ${tokenSymbol}.`);
  const amount=amounts[0],unitMatch=source.match(/\b\d+(?:\.\d+)?\s*([A-Za-z][A-Za-z0-9]{0,23})\b/),unit=unitMatch?.[1]?.toUpperCase(),expectedUnit=(kind==='buy'?pairSymbol:tokenSymbol).toUpperCase();
  if(unit&&unit!==expectedUnit)return missing(kind==='buy'?`use ${pairSymbol}, the token's paired asset, for the buy amount.`:`use ${tokenSymbol}, the token itself, for the sell amount.`);
- const locationConfirmed=confirmsBankrLocation(context.message);
- if(!locationConfirmed)return {message:`${prefix}Bankr requires location verification for Base tokenized-stock trades. Complete the check at [Bankr](https://bankr.bot), confirm you are eligible, then reply "verified". Dinn cannot see that check.`,actions:[]};
- const input={kind:'swap',chainId:8453,account:context.walletAccount,amount,asset:kind==='buy'?report.stock.address:found.address,outputAsset:kind==='buy'?found.address:report.stock.address,bankrLocationConfirmed:true};
- let review;try{review=await (dependencies.prepareRoute||prepareRobinhoodRoute)(input,{env:context.env||process.env,baseResearchResult:report,fetcher:dependencies.fetchImpl});}catch(error){if(/No executable route is available/i.test(error?.message||''))return {message:`I could not find a live route to ${kind} ${amount} ${kind==='buy'?pairSymbol:tokenSymbol} for this pair. No wallet approval or transaction occurred. You can try another amount.`,actions:[]};throw error;}
- const summary=kind==='buy'?`Spend ${review.amount} ${review.asset.symbol} to buy ${tokenSymbol}.`:`Sell ${review.amount} ${tokenSymbol} for ${review.outputAsset.symbol}.`;
- const message=`To ${kind} this on Base, review: ${summary} Expected: ${review.expectedAmount} ${review.outputAsset.symbol}; minimum: ${review.minimumAmount} ${review.outputAsset.symbol}. Price impact: ${review.impactPercent}%. Estimated network fee: ${review.networkFee} ETH${review.fee?`; route fee: ${review.fee} ${review.asset.symbol}`:''}. You confirmed Bankr's location check; Dinn cannot verify it. This is a route quote, not a safety verdict. No transaction has been sent.`;
- return {message,data:{walletReview:review},actions:[{id:'wallet_approve',review}]};
+ const input={kind:'swap',chainId:8453,...(addr(context.walletAccount)?{account:context.walletAccount}:{}),amount,asset:kind==='buy'?report.stock.address:found.address,outputAsset:kind==='buy'?found.address:report.stock.address};
+ let quote;try{quote=await (dependencies.quoteRoute||robinhoodRouteQuote)(input,{env:context.env||process.env,baseResearchResult:report,fetcher:dependencies.fetchImpl});}catch(error){if(/No usable Base pool quote|No executable route is available/i.test(error?.message||''))return {message:`I could not get a current pool quote to ${kind} ${amount} ${kind==='buy'?pairSymbol:tokenSymbol}. No wallet approval or transaction was prepared.`,actions:[]};throw error;}
+ const summary=kind==='buy'?`Spend ${quote.amount} ${quote.asset.symbol} to buy ${tokenSymbol}.`:`Sell ${quote.amount} ${tokenSymbol} for ${quote.outputAsset.symbol}.`;
+ return {message:`${prefix}Dinn can show a read-only pool estimate: ${summary} Estimated output: ${quote.expectedAmount} ${quote.outputAsset.symbol}; estimated minimum at 1% tolerance: ${quote.minimumAmount} ${quote.outputAsset.symbol}. This is a reference quote from the verified Base pool, not Bankr's execution quote or a safety verdict. Dinn cannot place this stock-paired trade: Bankr must provide its executable quote and perform the required location check. [Open this token on Bankr](https://bankr.bot/trade/${found.address}). No wallet permission or transaction was prepared.`,actions:[]};
 }
 async function walletActionReview(args,context){
  const kind=args.kind,chainId=Number(args.network),history=context.history||[],lastAssistant=history.at(-1)?.content||'',pending=/^To (send|bridge|swap) this,(?!\s*review:)/i.exec(lastAssistant);let sourceMessages=[context.message||''];

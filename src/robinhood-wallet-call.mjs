@@ -10,7 +10,6 @@ const burnAbi=parseAbi(['function burn(uint256)']);
 const approveAbi=parseAbi(['function approve(address spender,uint256 amount) returns(bool)']);
 const ponsCurveAbi=parseAbi(['function buy(uint256 quoteIn,uint256 minTokensOut,address recipient) payable returns(uint256 tokensOut)','function sell(uint256 tokensIn,uint256 minQuoteOut,address recipient) returns(uint256 quoteOut)']);
 const BPS=10_000n;
-const verifiedBaseStockSwap=q=>{const p=q?.baseStockPair;return q?.kind==='swap'&&q.chainId===8453&&q.destinationChainId===8453&&q.bankrLocationConfirmed===true&&p?.locationConfirmedByUser===true&&p.classification==='verified-bankr-stock-paired-token'&&/^0x[0-9a-f]{64}$/i.test(p.bankrPoolId||'')&&Number.isFinite(Date.parse(p.checkedAt||''))&&((same(q.asset?.address,p.tokenAddress)&&same(q.outputAsset?.address,p.stockAddress))||(same(q.asset?.address,p.stockAddress)&&same(q.outputAsset?.address,p.tokenAddress)));};
 export function units(amount,decimals){if(!Number.isInteger(decimals)||decimals<0||decimals>36||typeof amount!=='string'||!/^\d+(\.\d+)?$/.test(amount)||amount.length>78||(amount.split('.')[1]?.length||0)>decimals)throw Error('Enter an amount within the token precision.');const n=parseUnits(amount,decimals);if(n<=0n||n>=2n**256n)throw Error('Enter a positive supported amount.');return n;}
 export function walletTransaction(q){
  if(!['send','bridge','swap','burn','pons-approval','pons-buy','pons-sell'].includes(q?.kind)||!networks[q.chainId]||!address(q.account)||!address(q.recipient)||!/^0x[0-9a-f]{40}$/i.test(q.asset?.address||''))throw Error('Invalid wallet review.');
@@ -36,8 +35,8 @@ export function walletTransaction(q){
  if(q.kind==='send'&&q.chainId!==4663&&!assets[q.chainId].some(a=>same(a.address,q.asset.address)&&a.decimals===q.asset.decimals))throw Error('On Base and Arbitrum, send ETH, USDC or USDT.');
  const n=units(q.amount,q.asset.decimals);
  if(q.kind!=='send'&&(!hash(q.requestId)||!address(q.depositAddress)||q.destinationChainId!==(q.kind==='swap'?q.chainId:4663)||!same(q.account,q.recipient)))throw Error('Invalid route destination.');
- if(q.kind!=='send'&&q.chainId!==4663&&!assets[q.chainId].some(a=>same(a.address,q.asset.address)&&a.decimals===q.asset.decimals)&&!verifiedBaseStockSwap(q))throw Error('Unsupported source asset.');
- if(q.kind==='swap'&&q.chainId!==4663&&!assets[q.chainId].some(a=>same(a.address,q.outputAsset?.address)&&a.decimals===q.outputAsset?.decimals)&&!verifiedBaseStockSwap(q))throw Error('Unsupported swap receive asset.');
+ if(q.kind!=='send'&&q.chainId!==4663&&!assets[q.chainId].some(a=>same(a.address,q.asset.address)&&a.decimals===q.asset.decimals))throw Error('Unsupported source asset.');
+ if(q.kind==='swap'&&q.chainId!==4663&&!assets[q.chainId].some(a=>same(a.address,q.outputAsset?.address)&&a.decimals===q.outputAsset?.decimals))throw Error('Unsupported swap receive asset.');
  const to=q.kind==='send'?q.recipient:q.depositAddress;
  return {from:q.account,to:same(q.asset.address,ZERO)?to:q.asset.address,chainId:toHex(q.chainId),value:toHex(same(q.asset.address,ZERO)?n:0n),data:same(q.asset.address,ZERO)?'0x':encodeFunctionData({abi:erc20,functionName:'transfer',args:[to,n]})};
 }

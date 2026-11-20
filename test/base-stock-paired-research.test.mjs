@@ -1,12 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {encodeAbiParameters} from 'viem';
 import {researchBaseStockPairedToken} from '../src/base-stock-paired-research.mjs';
+import {baseV4PoolId} from '../src/base-stock-v4.mjs';
 
 const token='0x1111111111111111111111111111111111111111';
 const stock='0x2222222222222222222222222222222222222222';
 const other='0x3333333333333333333333333333333333333333';
 const txHash='0x'+'a'.repeat(64);
-const poolId='0x'+'b'.repeat(64);
+const poolKey={currency0:token,currency1:stock,fee:8388608,tickSpacing:200,hooks:'0x'+'6'.repeat(40)};
+const poolId=baseV4PoolId(poolKey);
 const poolManager='0x498581ff718922c3f8e6a244956af099b2652b2b';
 const initialize='0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438';
 const topicAddress=value=>'0x'+'0'.repeat(24)+value.slice(2).toLowerCase();
@@ -23,7 +26,7 @@ function setup({receiptQuote=stock,registryAddress=stock,baseRpc='https://mainne
   if(url===`https://api.dexscreener.com/token-pairs/v1/base/${token}`)return response([]);
   if(new URL(url).href===new URL(baseRpc).href){
    const body=JSON.parse(options.body);
-   if(body.method==='eth_getTransactionReceipt')return response({result:{status:'0x1',blockNumber:'0x10',logs:[{address:poolManager,topics:[initialize,poolId,topicAddress(token),topicAddress(receiptQuote)]}]} });
+   if(body.method==='eth_getTransactionReceipt'){const key={...poolKey,currency1:receiptQuote};return response({result:{status:'0x1',blockNumber:'0x10',blockHash:'0x'+'c'.repeat(64),logs:[{address:poolManager,topics:[initialize,receiptQuote===stock?poolId:'0x'+'b'.repeat(64),topicAddress(token),topicAddress(receiptQuote)],data:encodeAbiParameters([{type:'uint24'},{type:'int24'},{type:'address'},{type:'uint160'},{type:'int24'}],[key.fee,key.tickSpacing,key.hooks,1n,0])}]} });}
   }
   return response({},404);
  };
