@@ -67,6 +67,41 @@ test('delivers an explicit Base marketplace hire through the Base research servi
  assert.ok(events.includes('submitted'));
 });
 
+test('delivers a zero-cost Base stock research test run without paid-hire accounting',async()=>{
+ const {row,fullJob}=fixture({
+  description:`Service: base.stock-paired.research\nChain: 8453\nToken address: ${tokenAddress}; read only, do not trade.`,
+  fullJob:{isTestRun:true},
+  assignment:{escrowAmount:'0',escrowToken:'USD'}
+ });
+ const calls=[],reportContexts=[],lock={data:null};
+ const store={acquire:async()=>lock,renew:async()=>{},save:async(_lock,data)=>{lock.data=data;},event:async()=>{},release:async()=>{},get:async()=>null};
+ const client={assignments:async()=>[row],job:async()=>fullJob,start:async()=>calls.push('start'),assignment:async()=>row,submit:async(id,markdown)=>{calls.push({id,markdown});return {assignmentId:id,status:'submitted'};}};
+ const worker=createNearWorker({agentId,minimumEscrow:options.minimumEscrow,escrowToken:options.escrowToken,store,client,wait:async()=>{},report:async(request,context)=>{calls.push(request);reportContexts.push(context);return {status:'completed',deliverableMarkdown:'# Base stock-paired test report',evidence:{sha256:'b'.repeat(64)}};}});
+ const result=await worker.runOnce();
+ assert.deepEqual(result.results[0],{assignmentId,state:'submitted',testRun:true,payout:'none'});
+ assert.equal(calls[0],'start');
+ assert.deepEqual(calls[1],{service:'base.stock-paired.research',requestId:'near-'+assignmentId,input:{address:tokenAddress}});
+ assert.deepEqual(reportContexts,[{paidMarketplaceHire:false}]);
+ assert.deepEqual(calls[2],{id:assignmentId,markdown:'# Base stock-paired test report'});
+ assert.equal(lock.data.testRun,true);
+});
+
+test('does not start an assignment after its marketplace start window expires',async()=>{
+ const {row}=fixture({
+  fullJob:{isTestRun:true},
+  assignment:{escrowAmount:'0',escrowToken:'USD',startedAt:null,slaDeadlineAt:'2026-11-19T21:58:36.695402Z'}
+ });
+ const lock={data:null},calls=[],events=[];
+ const store={acquire:async()=>lock,renew:async()=>{},save:async(_lock,data)=>{lock.data=data;},event:async(_lock,name)=>events.push(name),release:async()=>{},get:async()=>null};
+ const client={assignments:async()=>[row],job:async()=>{calls.push('job');return null;},start:async()=>calls.push('start'),assignment:async()=>row,submit:async()=>calls.push('submit')};
+ const worker=createNearWorker({agentId,minimumEscrow:options.minimumEscrow,escrowToken:options.escrowToken,store,client,now:()=>new Date('2026-11-20T00:00:00Z'),report:async()=>{calls.push('report');}});
+ const result=await worker.runOnce();
+ assert.deepEqual(result.results[0],{assignmentId,state:'start-window-expired',recorded:true});
+ assert.deepEqual(calls,[]);
+ assert.deepEqual(events,['start-window-expired']);
+ assert.equal(lock.data.phase,'start-window-expired');
+});
+
 test('holder, lock, activity and age questions need no service selectors',()=>{
  const {row,fullJob}=fixture({description:`Show holder buys and sells, token age, and PinkLock vesting for ${tokenAddress}`});
  assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'token.research',address:tokenAddress});

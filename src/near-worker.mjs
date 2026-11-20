@@ -65,8 +65,14 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
    const event=name=>store.event(lock,name);
    let data=lock.data||{};
    await store.renew(lock);assertLease();
+   const startDeadline=typeof a.slaDeadlineAt==='string'?Date.parse(a.slaDeadlineAt):NaN;
+   if(!a.startedAt&&Number.isFinite(startDeadline)&&startDeadline<=now().getTime()){
+    const recorded=data.phase!=='start-window-expired';
+    if(recorded){await store.save(lock,{...data,phase:'start-window-expired'});await event('start-window-expired');}
+    return {assignmentId:a.assignmentId,state:'start-window-expired',recorded};
+   }
    let full=await client.job(a.jobId),input=eligibleNearResearchJob(row,full,agentId,{minimumEscrow,escrowToken});
-   if(!input){if(data.phase!=='not-eligible'){await store.save(lock,{phase:'not-eligible'});await event('not-eligible');}return {assignmentId:a.assignmentId,state:'not-eligible'};}
+   if(!input){const recorded=data.phase!=='not-eligible';if(recorded){await store.save(lock,{phase:'not-eligible'});await event('not-eligible');}return {assignmentId:a.assignmentId,state:'not-eligible',recorded};}
    if(['submitted','accepted-payout-pending','accepted-test-run'].includes(data.phase))return {assignmentId:a.assignmentId,state:data.phase,testRun:data.testRun===true,payout:data.testRun===true?'none':undefined};
    if(!data.markdown){
     assertLease();await client.start(a.assignmentId);await wait(3000);
@@ -136,7 +142,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
    for(const row of rows){
     const a=row?.assignment;if(!uuid(a?.assignmentId))continue;
     try{const result=a.status==='in_progress'?await process(row):await reconcile(row);if(result)results.push(result);}
-    catch(error){results.push({assignmentId:a.assignmentId,state:'error',error:error.message});}
+    catch(error){const errorCode=typeof error?.code==='string'&&/^[A-Z0-9_]{1,40}$/.test(error.code)?error.code:'WORKER_ERROR';results.push({assignmentId:a.assignmentId,state:'error',errorCode,...(Number.isInteger(error?.status)?{status:error.status}:{})});}
    }
    return {checked:rows.length,results,checkedAt:now().toISOString()};
   },process

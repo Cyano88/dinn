@@ -30,7 +30,12 @@ async function poll(){
    pollAgain=false;
    try{
     const result=await worker.runOnce();
-    if(result.results.some(item=>item.state==='submitted'))console.log('NEAR worker submitted a report; payout awaits buyer acceptance.');
+    for(const item of result.results){
+     if(item.state==='submitted')console.log('NEAR worker submitted a report; payout awaits buyer acceptance.');
+     else if(item.state==='start-window-expired'&&item.recorded)console.log('NEAR worker skipped an assignment whose marketplace start window had closed.');
+     else if(item.state==='not-eligible'&&item.recorded)console.log('NEAR worker skipped an assignment outside its supported research scope.');
+     else if(item.state==='error')console.error('NEAR worker assignment failed:',item.errorCode,item.status?`HTTP ${item.status}`:'');
+    }
    }catch(error){console.error('NEAR worker poll failed:',error.code||error.name||'error');}
   }while(pollAgain&&!stopping);
  })();
