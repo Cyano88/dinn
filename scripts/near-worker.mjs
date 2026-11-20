@@ -22,9 +22,11 @@ try{
 }catch(error){await store.close();throw error;}
 
 let stopping=false,activePoll=null,pollAgain=false;
+let activePollStartedAt=0,lastSlowPollWarningAt=0;
 async function poll(){
  if(stopping)return;
- if(activePoll){pollAgain=true;return activePoll;}
+ if(activePoll){pollAgain=true;if(Date.now()-activePollStartedAt>=120000&&Date.now()-lastSlowPollWarningAt>=120000){lastSlowPollWarningAt=Date.now();console.error('NEAR worker poll is still running after two minutes.');}return activePoll;}
+ activePollStartedAt=Date.now();
  activePoll=(async()=>{
   do{
    pollAgain=false;

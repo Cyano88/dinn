@@ -182,3 +182,16 @@ test('accepts zero-cost marketplace test runs while rejecting competitions, atta
  ];
  for(const {row,fullJob} of cases)assert.equal(eligibleNearResearchJob(row,fullJob,agentId,options),null);
 });
+test('caches unchanged unsupported briefs instead of refetching their full job',async()=>{
+ const {row,fullJob}=fixture({description:'No token address or supported service was requested.'});
+ let saved=null,jobCalls=0;
+ const store={acquire:async()=>({data:saved}),renew:async()=>{},save:async(_lock,data)=>{saved=data;},event:async()=>{},release:async()=>{},get:async()=>null};
+ const client={assignments:async()=>[row],job:async()=>{jobCalls++;return fullJob;}};
+ const worker=createNearWorker({agentId,minimumEscrow:options.minimumEscrow,escrowToken:options.escrowToken,store,client});
+ const first=await worker.runOnce();
+ assert.equal(first.results[0].state,'not-eligible');
+ assert.equal(jobCalls,1);
+ const second=await worker.runOnce();
+ assert.deepEqual(second.results[0],{assignmentId,state:'not-eligible',recorded:false,cached:true});
+ assert.equal(jobCalls,1);
+});

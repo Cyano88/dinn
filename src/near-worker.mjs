@@ -1,7 +1,13 @@
+import {createHash} from 'node:crypto';
 import {createNearMarketClient,uuid} from './near-market-client.mjs';
 import {agentAccessRequest} from './agent-access.mjs';
 
 const TOKEN_RE=/0x[0-9a-fA-F]{40}/g;
+function eligibilityFingerprint(row){
+ const a=row?.assignment,j=row?.job,m=row?.latestMessage;
+ const value={policy:1,assignment:{assignmentId:a?.assignmentId,jobId:a?.jobId,workerAgentId:a?.workerAgentId,status:a?.status,startedAt:a?.startedAt,slaDeadlineAt:a?.slaDeadlineAt},job:{jobId:j?.jobId,title:j?.title,description:j?.description,jobKind:j?.jobKind,attachments:j?.attachments},latestMessage:m?{senderSide:m.senderSide,origin:m.origin,truncated:m.truncated,body:m.body,attachments:m.attachments}:null};
+ return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
 
 function escrowUnits(value){if(typeof value!=='string'||!/^\d+(?:\.\d{1,12})?$/.test(value))return null;const [whole,fraction='']=value.split('.');return BigInt(whole)*10n**12n+BigInt((fraction+'0'.repeat(12)).slice(0,12));}
 function supportedResearchJobSurface(brief,job){
@@ -71,8 +77,10 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     if(recorded){await store.save(lock,{...data,phase:'start-window-expired'});await event('start-window-expired');}
     return {assignmentId:a.assignmentId,state:'start-window-expired',recorded};
    }
+   const fingerprint=eligibilityFingerprint(row);
+   if(data.phase==='not-eligible'&&data.eligibilityFingerprint===fingerprint)return {assignmentId:a.assignmentId,state:'not-eligible',recorded:false,cached:true};
    let full=await client.job(a.jobId),input=eligibleNearResearchJob(row,full,agentId,{minimumEscrow,escrowToken});
-   if(!input){const recorded=data.phase!=='not-eligible';if(recorded){await store.save(lock,{phase:'not-eligible'});await event('not-eligible');}return {assignmentId:a.assignmentId,state:'not-eligible',recorded};}
+   if(!input){const recorded=data.phase!=='not-eligible';if(recorded||data.eligibilityFingerprint!==fingerprint){await store.save(lock,{...data,phase:'not-eligible',eligibilityFingerprint:fingerprint});if(recorded)await event('not-eligible');}return {assignmentId:a.assignmentId,state:'not-eligible',recorded};}
    if(['submitted','accepted-payout-pending','accepted-test-run'].includes(data.phase))return {assignmentId:a.assignmentId,state:data.phase,testRun:data.testRun===true,payout:data.testRun===true?'none':undefined};
    if(!data.markdown){
     assertLease();await client.start(a.assignmentId);await wait(3000);
