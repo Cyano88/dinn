@@ -33,7 +33,7 @@ function baseStockResearchMessage(data){
  const checks=data.contract?.checks||[],find=label=>checks.find(item=>item.label===label),supply=find('Total supply (TS)'),owner=find('Reported owner'),source=find('Source verification'),proxy=find('Proxy indicators');
  const ownerAddress=owner?.detail?.match(/0x[0-9a-f]{40}/i)?.[0],sourceText=source?.status==='verified'?'Sourcify runtime match verified':source?.status==='unknown'?'Sourcify match not found; other explorers not checked':'source verification unavailable',proxyText=proxy?.status==='attention'?'proxy indicator detected':proxy?.status==='observed'?'no EIP-1967 proxy slot observed; other patterns not ruled out':'proxy checks unavailable';
  const contractLine=data.contract?`Base contract snapshot at block ${data.contract.blockNumber}: supply ${supply?.value||'unavailable'}${data.contract.symbol?' '+data.contract.symbol:''}; ${ownerAddress?'owner() reports '+ownerAddress:'owner() unavailable'}; ${sourceText}; ${proxyText}; permissions are not audited.`:'Base contract snapshot unavailable; contract controls were not assessed.';
- const holder=data.holders,leaders=holder?.largestBalancesInSample||[],holderUnavailable=data.coverage?.holders?.includes('free public preview')?'Holder data is not requested for the free public preview. Signed-in Dinn chat and paid NEAR hires can include it when configured.':data.coverage?.holders?.includes('not configured')?'Holder data is unavailable; no holder-data source is configured.':'Holder data is unavailable from the configured source.';
+ const holder=data.holders,leaders=holder?.largestBalancesInSample||[],holderUnavailable=data.coverage?.holders?.includes('free public preview')?'Holder data is not requested for free public previews. Signed-in Dinn chat and paid NEAR hires can include it when configured.':data.coverage?.holders?.includes('not configured')?'Holder data is unavailable; no holder-data source is configured.':'Holder data is unavailable from the configured source.';
  const holderLine=holder?`Holders: ${holder.holderCount??'count unavailable'} total; ${holder.hasMore?`${holder.sampleSize} sampled`:'full list returned'}${holder.sampleTop10SharePercent!==null?`; largest 10 in ${holder.hasMore?'this sample':'the full list'} hold ${holder.sampleTop10SharePercent}% of supply`:''}${leaders.length?`; largest balances in sample: ${leaders.slice(0,3).map(row=>`${row.address.slice(0,6)}…${row.address.slice(-4)} ${row.percentOfSupply===null?'share unavailable':row.percentOfSupply+'%'}`).join(', ')}`:''}${holder.blockNumber?`; snapshot block ${holder.blockNumber}`:''}. ${holder.coverage}`:holderUnavailable;
  const holderActivity=holder?.holderActivity||[];
  const holderActivityLine=holderActivity.length?`Recent activity for the three largest balances in the returned holder sample: ${holderActivity.map(row=>{const address=`${row.address.slice(0,6)}…${row.address.slice(-4)}`;if(row.status==='contract')return `${address}: contract code present; wallet buy/sell activity not classified.`;if(row.accountCode==='unavailable')return `${address}: account type could not be checked; activity not classified.`;if(row.status!=='available')return `${address}: activity unavailable`;const recent=row.recentSwaps?.[0],last=recent?.at?` Last observed ${recent.side} ${recent.at.slice(0,16).replace('T',' ')} UTC${recent.transactionHash?` (https://basescan.org/tx/${recent.transactionHash})`:''}.`:'';return `${address}: no contract code observed; ${row.buys} classified buys, ${row.sells} classified sells in ${row.transactionsChecked} recent transactions.${last}`}).join(' ')} Activity covers only the latest transaction page for checked no-code addresses. Zero observed swaps does not prove no earlier activity.`:'Holder wallet activity unavailable.';
@@ -48,12 +48,12 @@ function baseStockResearchMessage(data){
  const marketDetails=[marketLine,buyabilityLine,activity,...metrics,unavailable.length?`${unavailable.join(', ')} unavailable.`:''].filter(Boolean);
  const holderDetails=[holderLine,holderActivityLine,'Wallet addresses are not identified as people or labeled as team, exchange or pool wallets.'];
  return [
-  `## Pairing\n${pairingLine}\n${launchLine}`,
-  `## Market\n${marketDetails.join('\n')}`,
-  `## Fees and vesting\n${feeLine}\n${vestingLine}`,
-  `## Holders\n${holderDetails.join('\n')}`,
-  `## Contract\n${contractLine}\nContract safety and sellability were not assessed.`,
-  `## Sources\n${sources.join(' · ')}`
+  `**Pairing**\n\n${pairingLine}\n\n${launchLine}`,
+  `**Market**\n\n${marketDetails.join('\n\n')}`,
+  `**Fees and vesting**\n\n${feeLine}\n\n${vestingLine}`,
+  `**Holders**\n\n${holderDetails.join('\n\n')}`,
+  `**Contract**\n\n${contractLine}\n\nContract safety and sellability were not assessed.`,
+  `**Sources**\n\n${sources.join(' · ')}`
  ].join('\n\n');
 }
 async function walletActionReview(args,context){

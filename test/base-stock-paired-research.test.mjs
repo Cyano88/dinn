@@ -68,8 +68,24 @@ test('coalesces concurrent reports for the same token to avoid duplicate upstrea
 
 test('free-preview mode skips GoldRush holder calls and labels that coverage gap',async()=>{
  const deps=setup();let holderReads=0;
- const result=await researchBaseStockPairedToken({address:token},{...deps,holderSnapshotEnabled:false,holderSnapshotImpl:async()=>{holderReads++;return null;}});
+ const result=await researchBaseStockPairedToken({address:token},{...deps,env:{GOLDRUSH_API_KEY:'test-only'},holderSnapshotEnabled:false,holderSnapshotImpl:async()=>{holderReads++;return null;}});
  assert.equal(holderReads,0);assert.equal(result.holders,null);assert.match(result.coverage.holders,/not requested for the free public preview/);
+});
+
+test('paid-hire mode includes the configured GoldRush holder snapshot without exposing its key',async()=>{
+ const deps=setup();let holderReads=0,authorization;
+ const fetchImpl=async(input,options={})=>{
+  if(String(input).startsWith('https://api.covalenthq.com/v1/base-mainnet/tokens/')){
+   holderReads++;authorization=options.headers?.authorization;
+   return response({data:{updated_at:'2026-11-20T12:00:00Z',chain_tip_height:16,pagination:{total_count:1,page_size:1000,has_more:false},items:[{address:other,balance:'1000000000000000000',contract_decimals:18,total_supply:'1000000000000000000',block_height:16}]}});
+  }
+  return deps.fetchImpl(input,options);
+ };
+ const providerDeps={...deps};delete providerDeps.holderSnapshotImpl;
+ const result=await researchBaseStockPairedToken({address:token},{...providerDeps,fetchImpl,env:{GOLDRUSH_API_KEY:'test-only'},holderSnapshotEnabled:true});
+ assert.equal(holderReads,1);assert.equal(authorization,'Bearer test-only');
+ assert.equal(result.holders?.source,'GoldRush Token Holders API');assert.equal(result.holders?.holderCount,1);
+ assert.equal(result.holders?.largestBalancesInSample[0]?.address,other);assert.match(result.coverage.holders,/Complete holder list returned/);
 });
 
 test('Base research uses the configured server RPC for contract and receipt reads',async()=>{

@@ -8,7 +8,7 @@ test('GoldRush holder reads are disabled for public previews and enabled for pai
  const observed=[];
  const baseStockResearch=async(_input,options)=>{
   observed.push(options.holderSnapshotEnabled);
-  return {address,classification:'insufficient-evidence',checkedAt:'2026-11-19T12:00:00Z',coverage:{holders:options.holderSnapshotEnabled?'not configured':'not requested for the free public preview'},verification:{status:'unavailable'}};
+  return {address,chainId:8453,classification:'insufficient-evidence',checkedAt:'2026-11-19T12:00:00Z',coverage:{holders:options.holderSnapshotEnabled?'not configured':'not requested for the free public preview'},verification:{status:'unavailable'}};
  };
  await agentAccessRequest({service:'base.stock-paired.research',input:{address}},{baseStockResearch});
  await agentAccessRequest({service:'base.stock-paired.research',input:{address}},{baseStockResearch,paidMarketplaceHire:true});

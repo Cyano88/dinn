@@ -1,12 +1,12 @@
 # Dinn
 
-Dinn helps people launch tokens on Pons and use wallet tools through a guided chat. Dinn Labs also gives autonomous trading agents sourced, read-only research about Pons tokens on Robinhood Chain. The paid research service is [live on NEAR AI Agent Market](https://market.near.ai/a/dinn).
+Dinn helps people launch tokens on Pons and use wallet tools through a guided chat. Dinn Labs gives autonomous trading agents sourced, read-only research about Pons tokens on Robinhood Chain and Bankr stock-paired tokens on Base. The paid research service is [live on NEAR AI Agent Market](https://market.near.ai/a/dinn).
 
 **Try the product:** [dinn-pasy.onrender.com](https://dinn-pasy.onrender.com) · **Agent API:** [guide](public/agent-guide.md) · **Marketplace integration and evidence:** [technical record](docs/NEAR-MARKETPLACE.md)
 
 ## The agent service
 
-An agent submits one Robinhood Chain token address. Dinn returns a dated report with a checked block and source links: Pons launch age and phase, bonding progress, curve trades, volume and generated fees, market references, contract controls, indexed holder balances and Pons buys/sells, sampled wallet history, and supported PinkLock lock or vesting records. The result marks missing and partial coverage. It never signs, places a trade, certifies safety, or treats a missing lock match as proof that supply is unlocked.
+An agent submits one token address. On Robinhood Chain, Dinn returns a dated report with a checked block and source links: Pons launch age and phase, bonding progress, curve trades, volume and generated fees, market references, contract controls, indexed holder balances and Pons buys/sells, sampled wallet history, and supported PinkLock lock or vesting records. On Base, Dinn checks whether a token is a Bankr stock-paired launch against its Base receipt and Coinbase's tokenized-stock registry, then reports available pool, fee, vesting, holder and contract evidence. A verified pair with an exact pool match and positive reported liquidity may produce a request for the calling agent to seek a fresh quote from its own provider. Dinn does not return that quote, select a trade, or execute it. Both reports mark missing and partial coverage. Dinn never certifies safety or treats a missing lock match as proof that supply is unlocked.
 
 The public JSON endpoint is a free, read-only preview. The separate NEAR Agent Market listing hires Dinn's self-hosted worker for **$0.10 per report**. The worker polls for funded assignments, delivers the report, and persists job recovery state in PostgreSQL. NEAR Agent Market handles the hire and payment; Pons and Robinhood Chain supply token evidence. 0G powers Dinn's conversational inference, while the on-chain report is deterministic.
 
@@ -32,7 +32,7 @@ Open `http://127.0.0.1:4317`. Provider-backed reads need the relevant RPC config
 node scripts/dinn-trading-agent-demo.mjs 0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4
 ```
 
-The [marketplace record](docs/NEAR-MARKETPLACE.md) documents a controlled $0.10 hire: Dinn delivered a report in 11 seconds, the buyer accepted it, and the marketplace recorded payment released. The buyer and seller accounts belonged to the same owner. This verifies the paid delivery path, not independent customer demand or an external-wallet withdrawal.
+The [marketplace record](docs/NEAR-MARKETPLACE.md) documents a controlled $0.10 hire: Dinn delivered a report in 11 seconds, the buyer accepted it, and the marketplace recorded payment released. The buyer and seller accounts belonged to the same owner. This verifies the paid delivery path, not independent customer demand or an external-wallet withdrawal. A separate $0 Base research check verifies the live report and quote-handoff fields; it does not place a trade.
 
 ## Human product and verified limits
 
@@ -44,7 +44,7 @@ Production runs on Render with PostgreSQL. The separate Agent Market worker runs
 
 Dinn's Pons chat, launch, wallet tooling, and earlier NEAR research existed before this hackathon iteration. The baseline is commit [`29003cd`](https://github.com/Cyano88/dinn/commit/29003cd1377e0d9c8fef95552cf04ac053f479d1). The [NEAR agent-access work](https://github.com/Cyano88/dinn/compare/29003cd1377e0d9c8fef95552cf04ac053f479d1...feat/near-agent-access) added the public agent contract, evidence-backed token research, reference consumer, self-hosted NEAR Agent Market worker, funded hire/recovery flow, and related tests. Subsequent Pons and chat improvements are product work and should not be counted as NEAR integration. The primary submission track is **Agent Economy**.
 
-The filmed Grail request is a recorded snapshot at Robinhood Chain block `112933500`, with bounded holder and lock coverage. The video uses captured CLI output and a real marketplace hire record. It does not show a trade. See [demo narration and accuracy notes](docs/DINN-DEMO-VOICEOVER.md). Older Elysium/Ascend implementation notes are preserved separately in [historical documentation](docs/README-HISTORY.md); they describe retired flows, not the live Dinn product.
+The existing filmed Grail request is a recorded snapshot at Robinhood Chain block `112933500`, with bounded holder and lock coverage. It uses captured CLI output and a real marketplace hire record; it does not show a trade. It is not the unified Base-and-NEAR product demo, which has not been published. Older Elysium/Ascend implementation notes are preserved separately in [historical documentation](docs/README-HISTORY.md); they describe retired flows, not the live Dinn product.
 
 ## License
 

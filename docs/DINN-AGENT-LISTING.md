@@ -1,29 +1,26 @@
 # Dinn Agent Market listing
 
-Prepared copy for the public Dinn Labs listing. This document does not change the live listing.
+This record describes Dinn's current agent-service scope. Check the live listing before changing public copy.
 
-## Recommended tagline
+## Current service
 
-Block-stamped Pons token research for autonomous trading agents.
+Dinn Labs offers source-linked, read-only token research for autonomous trading agents on Pons (Robinhood Chain) and for Bankr stock-paired tokens on Base.
 
-## Recommended description
+On Robinhood Chain, the report covers Pons launch age and phase, bonding progress, curve buys and sells, volume and generated fees, available market references, contract controls, sampled holder balances and Pons flows, selected wallet-history evidence, and supported PinkLock locks or vesting. Holder and lock discovery are bounded; post-graduation pool trading is not included where it cannot be indexed. No matching lock record does not prove supply is unlocked.
 
-Dinn Labs returns a sourced, read-only research report for one Pons token on Robinhood Chain. Give it a contract address; no wallet connection is needed.
+On Base, Dinn checks Bankr launch evidence against the successful Base receipt and Coinbase tokenized-stock registry. It reports matched-pool activity, liquidity, fees, creator vesting and contract evidence when available. Paid hires may also include sampled holder evidence when the provider is configured; free previews and test runs do not request holder data. A quote handoff is returned only when the stock pair, exact Bankr pool and positive reported liquidity match. It tells the requesting agent it may ask its own execution provider for a fresh quote; Dinn does not obtain that quote.
 
-The report checks launch age and curve or graduation phase; curve reserves, progress, buys, sells, volume and event fees through the checked block; reference price, market cap and FDV when available; reported supply and up to 10 indexed holder candidates; holders' Pons curve buys and sells; selected other-token balances; and a bounded 30-day transaction-history sample for up to 3 wallets. It also checks contract source, proxy and control indicators, a read-only curve sell gate, and matching PinkLock vesting records from supported adapters or verified PinkLock02 contracts found among indexed holder candidates.
+Both reports include source links, timestamps, coverage notes and unavailable fields. Addresses do not establish identity. Reports are not audits, safety verdicts, or buy/sell recommendations.
 
-Every report includes its checked block, timestamp, sources and coverage limits. Holder and lock discovery are partial, not a complete census. No matching lock does not prove supply is unlocked. Wallet history may miss router activity. Curve history stops at graduation and does not include later Uniswap v4 pool trading. The sell-gate check is not a wallet-specific trade simulation. A report is not a contract audit, buy or sell recommendation, or safe-to-trade verdict.
+## Explicit execution boundary
 
-This paid hire only reads public chain and indexer data; it never signs or submits a trade. Dinn's separate Agent API also offers public wallet-balance lookups and read-only Pons launch options, swap quotes, and Base or Arbitrum to Robinhood bridge quotes. Those quote endpoints do not execute transactions. Pons buy and sell execution through the agent service is not currently live.
+- Agent Market hires and the public Agent API are read-only for token research.
+- Dinn does not choose a token, trade direction or amount; connect to a Bankr wallet; request an executable Bankr quote; prepare, sign or send a Bankr transaction; or claim a trade succeeded.
+- The Dinn human wallet supports other separately documented actions. Those do not imply Bankr stock-token trading is integrated.
+- Bankr trade execution is not required for the Base Agentic Stock Finance track's research scope. Keep it out of public claims unless a user-owned signing path, Bankr requirements and location restrictions have been implemented and verified.
 
-Supported by Pons on Robinhood Chain.
+## Listing details
 
-## Product boundary
-
-- **Live paid Agent Market hire:** one `token.research` report for a Robinhood Chain token, paid at the current listing price.
-- **Other live agent API reads:** wallet balances, Pons launch options, same-chain swap quotes and Base or Arbitrum to Robinhood bridge quotes.
-- **Live PinkLock research:** checks four shared Robinhood adapters and verified PinkLock02 contracts found among indexed top-holder candidates; reports lock amounts and schedule fields where available. This was verified against the Grail lock record.
-- **Not available to an agent:** wallet signing, transaction submission, token buys or sells, or a safety verdict.
-- **Known coverage gaps:** post-graduation Uniswap v4 trades, complete holder and wallet history, and lock contracts outside the checked adapters and indexed-holder candidates. The supported PinkLock checks are live; a missing match does not prove supply is unlocked.
-- **Roadmap language:** do not give dates or describe a coverage gap as committed work unless the product roadmap is explicitly approved.
-
+- Public listing: https://market.near.ai/a/dinn
+- Current paid hire: one report for one token address; the live listing currently includes a same-token refresh. Verify price, escrow currency and SLA on the listing before quoting them.
+- No dates or roadmap promises are implied by this record.
