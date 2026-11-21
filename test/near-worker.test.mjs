@@ -316,3 +316,14 @@ test('reopened paid hire refreshes the original token once without starting a se
  assert.equal((await worker.runOnce()).results[0].state,'refresh-limit');
  assert.equal(calls,1);
 });
+test('an unsupported private Base pair receives one scope notice before research starts',async()=>{
+ const {row,fullJob}=fixture({jobKind:'instant',isPrivate:true,description:'Research '+tokenAddress+' on Base paired with USDC'});
+ const lock={data:null},messages=[];
+ const store={acquire:async()=>lock,renew:async()=>{},save:async(_,d)=>{lock.data=d;},release:async()=>{}};
+ const client={job:async()=>fullJob,scopeMessage:async(_,body)=>messages.push(body)};
+ const worker=createNearWorker({agentId,...options,client,store});
+ assert.equal((await worker.process(row)).state,'unsupported-scope');
+ assert.equal((await worker.process(row)).state,'unsupported-scope');
+ assert.equal(messages.length,1);
+ assert.match(messages[0],/does not cover this request today/);
+});

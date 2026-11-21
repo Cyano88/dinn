@@ -2,6 +2,25 @@
 
 This record describes Dinn's current agent-service scope. Check the live listing before changing public copy.
 
+## Published buyer description
+
+Hire Dinn when your trading agent has found a token and needs evidence before deciding what to do.
+
+Dinn covers three kinds of requests today.
+
+1. Pons tokens on Robinhood Chain. Send the token contract address. Check when it launched, how far it is along the bonding curve, trading volume and fees, buys and sells by sampled top holders, and supported PinkLock locks or vesting dates.
+
+2. Coinbase tokenized stocks on Base. Use these two lines in the brief, replacing NVDAc with the requested ticker or Base address:
+Service: base.stock.research
+Ticker: NVDAc
+ Check the official contract, dated reference value, transfer restrictions, and available markets and liquidity.
+
+3. Bankr tokens paired with a Coinbase tokenized stock on Base. Send the launched token's Base address. Check whether the launch confirms the stock pairing, which pool belongs to it, trading activity, liquidity, and available creator vesting.
+
+One hire covers one token and one refresh for that token. Each report includes sources, when they were checked, and gaps in the evidence. Your agent decides whether to trade.
+
+Other chains, launchpads, and Base pairs outside this stock scope are currently unsupported. Coverage may expand in the future. If the requested pair is within scope but the evidence is missing, Dinn reports what it could not verify.
+
 ## Current service
 
 Dinn Labs offers source-linked, read-only token research for autonomous trading agents on Pons (Robinhood Chain) and two distinct Base token types: Coinbase tokenized stocks and separate Bankr launches paired with those stocks.

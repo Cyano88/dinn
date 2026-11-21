@@ -19,6 +19,15 @@ function supportedResearchJobSurface(brief,job){
  if(job.origin===null)return job.jobKind==='standard'&&job.isPrivate===false||job.jobKind==='instant'&&job.isPrivate===true;
  return job.origin==='a2a'&&job.jobKind==='instant'&&job.isPrivate===true;
 }
+const scopeNotice='Dinn does not cover this request today. On Robinhood Chain, send a Pons token address. On Base, request a Coinbase stock token or a Bankr token paired with a Coinbase stock. Other pairs and networks may be added later. No research has started. You can cancel this job.';
+export function outsideResearchScope(text){
+ if(typeof text!=='string')return false;
+ const foreignNetwork=/^\s*chain\s*:\s*(?!8453\s*$|4663\s*$)(?:\d+|solana|arbitrum|polygon|ethereum|bsc|avalanche|near)\s*$/im;
+ const namedNetwork=/\b(?:research|check|analyze|investigate|token|pair|launch|contract)\b[^.!?\n]{0,180}\b(?:on|via)\s+(?:the\s+)?(?:solana|arbitrum|polygon|ethereum|bsc|avalanche|near)(?!\s+(?:AI\s+)?(?:agent\s+)?market(?:place)?\b)(?:\s+(?:mainnet|chain))?\b/i;
+ const base=/\b(?:on Base|Base chain|Bankr)\b|^\s*chain\s*:\s*8453\s*$/im;
+ const nonStock=/\b(?:paired with|paired against|quote asset\s*:|pair\s*:)\s*(?:W?ETH|USDC|USDT|SOL|BTC|W?BTC)\b|\b[A-Z0-9]+\s*\/\s*(?:W?ETH|USDC|USDT|W?BTC)\b/i;
+ return foreignNetwork.test(text)||namedNetwork.test(text)||(base.test(text)&&nonStock.test(text));
+}
 function requestedResearchInput(row,job){
  const brief=row?.job,sources=[brief?.description];
  if(job.origin==='a2a'&&row.latestMessage!=null){
@@ -27,6 +36,7 @@ function requestedResearchInput(row,job){
   sources.push(message.body);
  }
  const text=sources.filter(value=>typeof value==='string').join('\n');
+ if(outsideResearchScope(text))return null;
  const serviceLines=[...text.matchAll(/^\s*service\s*:\s*([a-z][a-z0-9.-]*)\s*$/gim)].map(match=>match[1].toLowerCase());
  if([...text.matchAll(/^\s*service\s*:/gim)].length!==serviceLines.length)return null;
  const services=[...new Set(serviceLines)];if(services.length>1||services.some(value=>!['token.research','token.inspect','base.stock-paired.research','base.stock.research'].includes(value)))return null;
@@ -114,6 +124,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     const savedTarget=data.tokenAddress || data.stockQuery;
     return savedTarget && target.toLowerCase()===savedTarget.toLowerCase() && candidate.service===data.service && data.testRun===job.isTestRun ? candidate : null;
    };
+   if(data.scopeNoticeSent)return {assignmentId:a.assignmentId,state:'unsupported-scope'};
    let input=resolveInput(row,full);
    if(!input && data.submittedAt)return {assignmentId:a.assignmentId,state:'refresh-not-confirmed'};
    if(returned && data.refresh===true && data.phase==='submitted')return {assignmentId:a.assignmentId,state:'refresh-limit'};
@@ -122,6 +133,19 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     if(!current || !resolveInput(current,full) || current.latestMessage?.senderSide!=='buyer')return {assignmentId:a.assignmentId,state:'refresh-not-confirmed'};
     data={...data,refresh:true,phase:'refresh-requested',markdown:null};
     await store.save(lock,data);
+   }
+   if(!input && !a.startedAt && !a.submittedAt && !a.deliverableUrl && !data.submittedAt &&
+      a.workerAgentId===agentId && a.jobId===row.job?.jobId && full.jobId===a.jobId &&
+      a.status==='in_progress' && full.status==='in_progress' && full.isPrivate===true &&
+      supportedResearchJobSurface(row.job,full)){
+    const buyerText=row.latestMessage?.senderSide==='buyer' && row.latestMessage?.origin==='direct' && row.latestMessage?.truncated===false?row.latestMessage.body:'';
+    if(outsideResearchScope(row.job.description)||outsideResearchScope(buyerText)){
+     if(!data.scopeNoticeSent){
+      assertLease();await client.scopeMessage(a.assignmentId,scopeNotice);
+      await store.save(lock,{...data,scopeNoticeSent:true,phase:'unsupported-scope'});
+     }
+     return {assignmentId:a.assignmentId,state:'unsupported-scope'};
+    }
    }
    if(!input){if(data.phase==='not-eligible'&&data.eligibilityFingerprint===fingerprint)return {assignmentId:a.assignmentId,state:'not-eligible',recorded:false,cached:true};const recorded=data.phase!=='not-eligible';if(recorded||data.eligibilityFingerprint!==fingerprint){await store.save(lock,{...data,phase:'not-eligible',eligibilityFingerprint:fingerprint});if(recorded)await event('not-eligible');}return {assignmentId:a.assignmentId,state:'not-eligible',recorded};}
    if(['submitted','accepted-payout-pending','accepted-test-run'].includes(data.phase))return {assignmentId:a.assignmentId,state:data.phase,testRun:data.testRun===true,payout:data.testRun===true?'none':undefined};
