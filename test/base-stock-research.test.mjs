@@ -60,9 +60,9 @@ test('stock research reports dated provider evidence and only offers Bankr when 
   marketSnapshotImpl:async()=>({source:'DEX Screener',status:'available',checkedAt:'2026-11-21T00:00:00Z',pairs:[{pairAddress:other,dex:'aerodrome',url:'https://dexscreener.com/base/'+other,baseToken:{symbol:'NVDAc'},quoteToken:{symbol:'USDC'},tokenIsBase:true,tokenPriceUsd:180.2,liquidityUsd:100000,volume24hUsd:200000,marketCapUsd:9000000,fdvUsd:9500000,transactions24h:{buys:10,sells:8}}]}),
   holderSnapshotImpl:async()=>{calls.push('holders');return {source:'GoldRush Token Holders API',checkedAt:'2026-11-20T23:55:00Z',blockNumber:123,holderCount:20,sampleSize:20,hasMore:false,sampleTop10SharePercent:50,largestBalancesInSample:[{address:other,balance:'200',percentOfSupply:20}],holderActivity:[{address:other,status:'contract',reason:'Contract code is present.'}],coverage:'Full returned list.'};}
  });
- assert.equal(report.identity.status,'matched');assert.equal(report.tradeHandoff.status,'open-bankr-for-current-quote');assert.equal(report.tradeHandoff.url,'https://bankr.bot');assert.equal(report.tradeHandoff.assetSymbol,'NVDAc');assert.equal(report.market.pairs[0].liquidityUsd,100000);assert.deepEqual(calls,['holders']);
+ assert.equal(report.identity.status,'matched');assert.equal(report.tradeHandoff.status,'open-bankr-for-current-quote');assert.equal(report.tradeHandoff.url,'https://bankr.bot/trade/'+address);assert.equal(report.tradeHandoff.assetSymbol,'NVDAc');assert.equal(report.market.pairs[0].liquidityUsd,100000);assert.deepEqual(calls,['holders']);
  const message=baseStockResearchMessage(report);
- assert.match(message,/Bankr must show its current executable quote and check location eligibility/);
+ assert.match(message,/Bankr checks location eligibility and shows the current executable quote/);
  for(const heading of ['Token checks','Market activity','Holder evidence','Bankr trade step'])assert.match(message,new RegExp('\\n\\n\\*\\*'+heading+'\\*\\*'));
  assert.ok(message.includes('reported market cap $9,000,000.00, reported FDV $9,500,000.00'));
  assert.match(message,/checked 2026-11-20T23:55:00Z at block 123/);

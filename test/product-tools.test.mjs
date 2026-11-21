@@ -20,7 +20,7 @@ test('a follow-up Coinbase stock buy or sell request hands off to Bankr conversa
  assert.deepEqual(directProductIntent('Research Coinbase stock NVDAc. Read only; do not trade.',{history}),{name:'research_base_stock',args:{query:'NVDAc'}});
  assert.deepEqual(directProductIntent('Do not trade NVDAc; check its latest evidence.',{history}),{name:'research_base_stock',args:{query:'NVDAc'}});
  const result=directProductIntent('Buy it', {history});
- assert.match(result.message,/https:\/\/bankr\.bot/);assert.doesNotMatch(result.message,/\/trade\//);assert.match(result.message,/NVDAc on Base/);assert.match(result.message,/location eligibility/);assert.deepEqual(result.actions,[]);
+ assert.match(result.message,new RegExp(`https:\\/\\/bankr\\.bot\\/trade\\/${baseToken}`));assert.match(result.message,/NVDAc on Base/);assert.match(result.message,/choose the side and amount/i);assert.match(result.message,/location eligibility/);assert.deepEqual(result.actions,[]);
 });
 test('normal Coinbase stock research executes directly in chat without inference',async()=>{
  const message='Research Coinbase stock NVDAc',events=[];let toolCalls=0;
