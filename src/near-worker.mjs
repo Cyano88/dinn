@@ -1,4 +1,4 @@
-import {createHash} from 'node:crypto';
+import {createHash,randomBytes} from 'node:crypto';
 import {createNearMarketClient,uuid} from './near-market-client.mjs';
 import {agentAccessRequest} from './agent-access.mjs';
 
@@ -72,7 +72,7 @@ export function eligibleNearResearchJob(row,fullJob,agentId,{minimumEscrow,escro
  return input;
 }
 
-export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=process.env.NEAR_AGENT_ID,minimumEscrow=process.env.NEAR_WORKER_MIN_ESCROW,escrowToken=process.env.NEAR_WORKER_ESCROW_TOKEN,store,client,report=agentAccessRequest,now=()=>new Date(),wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
+export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=process.env.NEAR_AGENT_ID,minimumEscrow=process.env.NEAR_WORKER_MIN_ESCROW,escrowToken=process.env.NEAR_WORKER_ESCROW_TOKEN,store,client,feedbackEnabled=false,report=agentAccessRequest,now=()=>new Date(),wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
  if(!uuid(agentId))throw Error('Configure the registered NEAR_AGENT_ID.');
  if(!store)throw Error('NEAR worker PostgreSQL storage is required.');
  if(escrowUnits(minimumEscrow)===null||escrowUnits(minimumEscrow)<=0n||!['USD','USDC'].includes(escrowToken))throw Error('Configure the owner-approved NEAR_WORKER_MIN_ESCROW and NEAR_WORKER_ESCROW_TOKEN.');
@@ -139,6 +139,12 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     const made=await report({service,requestId:'near-'+a.assignmentId+(refresh?'-refresh':''),input:reportInput},{paidMarketplaceHire:full.isTestRun===false});
     if(made.status!=='completed'||typeof made.deliverableMarkdown!=='string'||!made.deliverableMarkdown.length||made.deliverableMarkdown.length>250000||!/^\w{64}$/.test(made.evidence?.sha256||''))throw Error('Research report was incomplete or too large.');
     data={refresh,phase:'prepared',markdown:made.deliverableMarkdown,evidenceHash:made.evidence.sha256,service,tokenAddress:input.address,stockQuery:input.query,testRun:full.isTestRun===true,preparedAt:now().toISOString()};
+    if(feedbackEnabled && full.isPrivate===true){
+     const code=randomBytes(32).toString('hex');
+     data.feedbackDigest=createHash('sha256').update(code).digest('hex');
+     data.feedbackTarget=(service.startsWith('base.')?'8453':'4663')+':'+(made.result?.address||input.address||input.query);
+     data.markdown+='\n\n[Optional feedback after acceptance](https://dinn-pasy.onrender.com/research-feedback#job='+a.assignmentId+'&code='+code+')';
+    }
     await store.save(lock,data);await event('report-prepared');
    }
    // Re-check marketplace state immediately before the external delivery.

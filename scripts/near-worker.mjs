@@ -17,6 +17,7 @@ try{
   minimumEscrow:process.env.NEAR_WORKER_MIN_ESCROW,
   escrowToken:process.env.NEAR_WORKER_ESCROW_TOKEN,
   store,
+  feedbackEnabled:true,
   report:agentAccessRequest
  });
 }catch(error){await store.close();throw error;}
