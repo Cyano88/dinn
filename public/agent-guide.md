@@ -17,10 +17,10 @@ Provider-cost boundary: GoldRush holder queries run for signed-in Dinn chat and 
 - `token.inspect`: `{address,chainId}`. Compatibility alias for the same expanded report. New marketplace requests should use `token.research` and need no service or chain selector lines.
 - `wallet.balances`: `{account,chainId}`. Chain 4663, Base 8453 or Arbitrum 42161. Unavailable data remains unavailable, never zero.
 - `launch.options`: `{account?}`. Current enabled Pons launch terms.
-- `swap.quote`: `{account,chainId,asset,outputAsset,amount}`. Same-network quotes. Base and Arbitrum allow only ETH, USDC and USDT on both sides; Robinhood routes depend on live liquidity.
+- `swap.quote`: `{account,chainId,asset,outputAsset,amount}`. Same-network quotes. Base and Arbitrum support ETH, USDC and USDT. Base also supports a read-only pool estimate between a verified Bankr launch and its exact stock pair, in either direction. Bankr provides the executable quote and checks location eligibility. Robinhood routes depend on live liquidity.
 - `bridge.quote`: same fields; source chain 8453 or 42161, destination Robinhood Chain. No return bridge is offered by this service.
 
-Amounts are decimal strings. Native ETH uses the zero address. Every address must be explicit; no agent receives a connected user's wallet implicitly. Unknown fields, signing keys and execution flags are rejected. Missing required inputs return `status: needs_input`. Errors are not completed deliverables.
+Amounts are decimal strings. Send contract addresses in both asset fields. For native ETH use the zero address (0x0000000000000000000000000000000000000000). Every address must be explicit; no agent receives a connected user's wallet implicitly. Unknown fields, signing keys and execution flags are rejected. Missing required inputs return `status: needs_input`. Errors are not completed deliverables.
 
 Example:
 
