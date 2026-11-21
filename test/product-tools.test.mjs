@@ -19,9 +19,14 @@ test('a follow-up Coinbase stock buy or sell request hands off to Bankr conversa
  const history=[{role:'assistant',content:`NVIDIA Corporation (NVDAc) · Base\nCoinbase registry and onchain token identity match.\nContract: ${baseToken}\nWant to trade? [Open Bankr](https://bankr.bot) and ask for NVDAc on Base.`}];
  assert.deepEqual(directProductIntent('Research Coinbase stock NVDAc. Read only; do not trade.',{history}),{name:'research_base_stock',args:{query:'NVDAc'}});
  assert.deepEqual(directProductIntent('Do not trade NVDAc; check its latest evidence.',{history}),{name:'research_base_stock',args:{query:'NVDAc'}});
- const result=directProductIntent('Buy it', {history});
+ assert.deepEqual(directProductIntent('Buy it',{history}),{name:'research_base_stock',args:{query:baseToken}});
+ const result=directProductIntent('Buy it',{history:[{role:'assistant',content:history[0].content+' [Trade](https://bankr.bot/trade/'+baseToken+')'}]});
  assert.match(result.message,new RegExp(`https:\\/\\/bankr\\.bot\\/trade\\/${baseToken}`));assert.match(result.message,/NVDAc on Base/);assert.match(result.message,/choose whether to buy or sell and the amount/i);assert.match(result.message,/checks if trading is available where you are/i);assert.deepEqual(result.actions,[]);
- const updatedReport=`## NVIDIA Corporation (NVDAc) on Base\n\n**Identity**\n\nThe ticker, name, and token-unit settings in Coinbase’s stock list match what Base reports for this token.\n\n**Token details**\n\n- Token address: ${baseToken}`;
+ const updatedReport=`## NVIDIA Corporation (NVDAc) on Base\n\n**Identity**\n\nThe ticker, name, and token-unit settings in Coinbase’s stock list match what Base reports for this token.\n\n**Token details**\n\n- Token address: ${baseToken}\n[Open on Bankr](https://bankr.bot/trade/${baseToken})`;
+ const paired='**Pairing**\n\nNTA (NTA) is confirmed as paired with ANTc on Base. Token address: '+account;
+ const stock={role:'assistant',content:updatedReport},launch={role:'assistant',content:paired};
+ assert.deepEqual(directProductIntent('Can I trade this?',{history:[stock,launch]}),{name:'base_stock_trade',args:{kind:'availability',address:account}});
+ assert.match(directProductIntent('Can I trade this?',{history:[launch,stock]}).message,/NVDAc/);
  const updated=directProductIntent('Buy it',{history:[{role:'assistant',content:updatedReport}]});
  assert.match(updated.message,new RegExp(`https:\\/\\/bankr\\.bot\\/trade\\/${baseToken}`));assert.match(updated.message,/Bankr checks if trading is available where you are/);
 });
