@@ -18,3 +18,31 @@ test('market feedback only opens for the accepted private assignment capability'
  assert.equal((await run()).status,409);assert.equal(writes,0);
  phase='accepted-test-run';assert.equal((await run()).body.saved,true);assert.equal(writes,2);
 });
+import {PGlite} from '@electric-sql/pglite';
+import {feedbackSchema,feedbackFeed} from '../src/research-feedback.mjs';
+test('public replies require the shown byline, preserve private history and stay withdrawn on retry',async()=>{
+ const pg=new PGlite();
+ try{
+  await pg.exec(feedbackSchema);
+  const database=async()=>({query:async(sql,args)=>{
+   const result=await pg.query(sql,args);
+   return {...result,rowCount:result.affectedRows};
+  }});
+  const send=(actor,data)=>feedbackRequest({headers:{authorization:'Bearer '+actor}},'/api/feedback/chat',data,{
+   database,verifyChatUser:async value=>value,chatProfile:async()=>({linked_accounts:[{type:'twitter_oauth',username:'Example'}]})
+  });
+  const offer={id,target,chainId:8453,publicFeed:true};
+  await send('old',{id,target,chainId:8453,reply:'Private'});
+  assert.equal((await send('old',offer)).body.byline,null);
+  const submission={...offer,byline:'@Example',reply:'Unlock updates please'};
+  assert.equal((await send('old',submission)).status,409);
+  assert.equal((await send('alice',offer)).body.byline,'@Example');
+  assert.equal((await send('alice',{...submission,byline:'@Fake'})).status,409);
+  assert.equal((await send('alice',submission)).body.published,true);
+  assert.deepEqual((await feedbackFeed(database)).entries,[{reply:submission.reply,byline:'@Example',source:'chat'}]);
+  assert.equal((await send('bob',{action:'removeLatest'})).body.removed,false);
+  assert.equal((await send('alice',{action:'removeLatest'})).body.removed,true);
+  assert.equal((await send('alice',submission)).body.published,false);
+  assert.deepEqual((await feedbackFeed(database)).entries,[]);
+ }finally{await pg.close();}
+});

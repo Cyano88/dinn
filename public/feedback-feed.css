@@ -1,0 +1,8 @@
+#feed-slide{max-width:44rem;margin:clamp(2rem,8vh,6rem) 0 2rem}
+#feed-slide blockquote{font:inherit;font-size:clamp(1.4rem,3vw,2.4rem);letter-spacing:-.035em;line-height:1.3;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+#feed-slide figcaption{margin-top:1.25rem;font-size:.9rem}
+#feed-controls button{font:inherit;color:inherit;background:transparent;border:1px solid currentColor;border-radius:2rem;padding:.3rem .8rem;min-height:38px;cursor:pointer}
+
+#feed-slide figcaption,.feedback-source{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem}
+.feedback-source{border-inline-start:1px solid #9997;padding-inline-start:.65rem}
+.feedback-source img{object-fit:contain;flex:none}

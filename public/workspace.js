@@ -1,3 +1,4 @@
+import {showFeedbackFeed} from '/feedback-feed.js';
 import {hasLaunchProgress,launchReturnChoice} from './launch-resume.js';
 import {createDraftSync} from './draft-sync.js';
 import {usdTotal} from './purchase-usd.js';
@@ -80,7 +81,7 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 
 async function api(path,data,signal){const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data),signal});const v=await r.json();if(!r.ok)throw Error(v.error||'Could not complete the request.');return v;}
 
-function view(name){if(name==='tools'&&activeToolNetwork){activeToolNetwork=null;renderToolDirectory(toolCapabilities);}for(const n of ['assistant','launches','tools','agent-access','drafts','wallet'])$(n+'-view').hidden=n!==name;document.querySelectorAll('[data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===name);if(b.dataset.view===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$('view-name').textContent=name==='tools'?'Dinn tools':name==='agent-access'?'Agent access':name[0].toUpperCase()+name.slice(1);if(name==='wallet')void walletUI?.refresh();if(name==='launches'){launchesView?.activate();void registerSavedLaunch();}else launchesView?.deactivate();}
+function view(name){showFeedbackFeed(name==='feedback-feed');if(name==='tools'&&activeToolNetwork){activeToolNetwork=null;renderToolDirectory(toolCapabilities);}for(const n of ['assistant','launches','tools','agent-access','feedback-feed','drafts','wallet'])$(n+'-view').hidden=n!==name;document.querySelectorAll('[data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===name);if(b.dataset.view===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$('view-name').textContent=name==='feedback-feed'?'Feedback':name==='tools'?'Dinn tools':name==='agent-access'?'Agent access':name[0].toUpperCase()+name.slice(1);if(name==='wallet')void walletUI?.refresh();if(name==='launches'){launchesView?.activate();void registerSavedLaunch();}else launchesView?.deactivate();}
 
 function scrollChat(){requestAnimationFrame(()=>$('chat-thread').scrollTop=$('chat-thread').scrollHeight);}
 
@@ -133,10 +134,13 @@ function pauseLaunchConversation(){showLaunchStage(null,false);logoCreator.reset
 
 function restoreLaunchConversation(onResume=()=>{}){let saved;try{saved=JSON.parse(read('launch-conversation'));}catch{}if(!saved||saved.name!==brief.name||saved.symbol!==brief.symbol||!['profile','links','wallet','purchase','review'].includes(saved.step))return false;onResume();if(saved.step==='profile')void openLaunchProfile();else if(saved.step==='links')openLaunchLinks(Number.isInteger(saved.linkIndex)?saved.linkIndex:0);else if(saved.step==='wallet')openLaunchWallet();else if(saved.step==='purchase')openLaunchPurchase();else if(saved.step==='review')void openLaunchReview();return true;}
 
-const watchFeedbackPrompt='Would you want updates on this token? To tell the Dinn team what matters, reply "Feedback:" followed by your suggestion.';
+const oldFeedbackPrompt='Would you want updates on this token? To tell the Dinn team what matters, reply "Feedback:" followed by your suggestion.';
+function publicFeedbackPrompt(offer){
+ return offer.test?'Internal test feedback. Reply "Feedback:" followed by your suggestion.':'Would you want updates on this token? Reply "Feedback:" followed by your suggestion to post publicly as '+offer.byline+'.';
+}
 async function feedbackChat(body,token){
  const response=await fetch('/api/feedback/chat',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify(body),signal:AbortSignal.timeout(4000)});
- if(!response.ok)throw Error('Feedback unavailable.');
+ if(!response.ok)throw Error('Feedback unavailable.');return response.json();
 }
 function recordSetupReply(text,reply){const state=appendChatState(history,chatResults,text,reply,{});history=state.messages;chatResults=state.results;save('chat',state);message('user',text);return message('assistant',reply);}
 
@@ -233,12 +237,17 @@ function startFreshTokenSetup(){
 function savedSetupWasLaunched(){try{const record=JSON.parse(localStorage.getItem(launchKey())||'null');return record?.phase==='verified'&&record.result?.state==='verified'&&record.configuration?.name===brief.name&&record.configuration?.symbol===brief.symbol;}catch{return false;}}
 $('chat').onsubmit=async e=>{
  e.preventDefault();if(!user)return;const text=$('prompt').value.trim();if(!text)return;if(chatApprovalBusy||claimBusy){say('Dinn is still checking or processing the current wallet action. Please wait before starting another one.');$('prompt').value='';return;}
+ if(/^remove my latest feedback[.!]?$/i.test(text)){
+  const owner=user,session=epoch;
+  try{const {getAccessToken}=await import('/auth/entry.js');const result=await feedbackChat({action:'removeLatest'},await getAccessToken());if(owner===user && session===epoch){$('prompt').value='';recordSetupReply(text,result.removed?'Removed your latest public feedback.':'You have no public feedback to remove.');}}
+  catch{if(session===epoch)say('Could not remove your feedback. Please try again.');}return;
+ }
  if(/^feedback\s*:/i.test(text)){
   const feedback=JSON.parse(read('research-feedback')||'null'),reply=text.replace(/^feedback\s*:/i,'').trim();
   if(!feedback || feedback.done){say('There is no open research feedback request in this chat.');return;}
   if(!reply || reply.length>600){say('Please keep your feedback between 1 and 600 characters.');return;}
   const feedbackOwner=user,feedbackEpoch=epoch;
-  try{const {getAccessToken}=await import('/auth/entry.js');await feedbackChat({...feedback,reply},await getAccessToken());if(epoch!==feedbackEpoch||user!==feedbackOwner)return;localStorage.setItem(key('research-feedback'),JSON.stringify({...feedback,done:true}));$('prompt').value='';recordSetupReply(text,'Feedback saved for the Dinn team. Thank you.');}
+  try{const {getAccessToken}=await import('/auth/entry.js');const result=await feedbackChat({...feedback,reply},await getAccessToken());if(epoch!==feedbackEpoch||user!==feedbackOwner)return;localStorage.setItem(key('research-feedback'),JSON.stringify({...feedback,done:true}));$('prompt').value='';recordSetupReply(text,result.published?'Published to Feedback. To remove it, say ?remove my latest feedback?.':'Feedback saved for the Dinn team. Thank you.');}
   catch{if(epoch===feedbackEpoch)say('Your feedback could not be saved. Your reply is ready to retry.');}return;
  }
  let requestText=text;const command=workspaceCommand(text);
@@ -270,13 +279,13 @@ $('chat').onsubmit=async e=>{
   const walletAction=result.actions?.find(action=>action.id==='wallet_approve');if(walletAction)result.message+='\n\nWould you like me to continue with these exact terms? Reply “yes” or “approve” to send, or “cancel” to stop. Nothing has been sent yet.';
   const researchTarget=result.inspection?.address||result.data?.address;
   const baseResearch=result.toolsUsed?.some(name=>['research_base_stock','research_base_stock_paired_token'].includes(name));
-  if(accessToken && (baseResearch||result.inspection) && /^0x[a-f0-9]{40}$/i.test(researchTarget) && !read('research-feedback')){
-   const offer={id:crypto.randomUUID(),target:researchTarget,chainId:baseResearch?8453:4663};
+  if(accessToken && (baseResearch||result.inspection) && /^0x[a-f0-9]{40}$/i.test(researchTarget) && !JSON.parse(read('research-feedback')||'null')?.publicFeed){
+   const offer={publicFeed:true,id:crypto.randomUUID(),target:researchTarget,chainId:baseResearch?8453:4663};
    try{
-    await feedbackChat(offer,accessToken);
+    Object.assign(offer,await feedbackChat(offer,accessToken));
     if(epoch!==generation)return;
     localStorage.setItem(key('research-feedback'),JSON.stringify(offer));
-    result.message+='\n\n'+watchFeedbackPrompt;
+    result.feedbackPrompt=publicFeedbackPrompt(offer);result.message+='\n\n'+result.feedbackPrompt;
    }catch{/* Keep the research available when optional feedback is offline. */}
   }
   if(epoch!==generation)return;
@@ -588,7 +597,7 @@ function researchSummary(report){
 }
 function renderToolResult(body,result){
 
- renderAssistantText(body,result.inspection?researchSummary(result.inspection)+(result.message?.endsWith(watchFeedbackPrompt)?'\n\n'+watchFeedbackPrompt:''):result.message);
+ renderAssistantText(body,result.inspection?researchSummary(result.inspection)+(result.feedbackPrompt?'\n\n'+result.feedbackPrompt:result.message?.endsWith(oldFeedbackPrompt)?'\n\n'+oldFeedbackPrompt:''):result.message);
 
  if(result.tokenState){const extra=document.createElement('p');extra.className='research-transcript';extra.textContent=['Token: '+result.tokenState.address,'Fee recipient: '+result.tokenState.feeRecipient,'Fees shown for: '+result.tokenState.viewerAccount,'Checked at block '+result.tokenState.blockNumber+' · '+result.tokenState.checkedAt,result.tokenState.claimScope].filter(Boolean).join('\n');body.append(extra);}
  if(result.tokenAddress&&/^0x[0-9a-f]{40}$/i.test(result.tokenAddress))selectedToken=result.tokenAddress;
