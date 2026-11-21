@@ -41,6 +41,11 @@ export async function baseStockLookup(input,{fetchImpl=fetch,signal}={}){
  if(address&&!validAddress(address))throw new Error('Enter a valid Base contract address.');
  if(query.length>40||/[^a-z0-9 ._-]/i.test(query))throw new Error('Enter a stock symbol or name.');
  const data=await baseStockOptions({fetchImpl,signal});
- const matches=data.stocks.filter(stock=>address?stock.address===address:stock.symbol.toLowerCase()===query||stock.name.toLowerCase().includes(query));
+ // Stock research targets the full Coinbase registry. `stocks` above remains
+ // the narrower Bankr quote-token list for existing launch-pair consumers.
+ const bankrByAddress=new Map(data.stocks.map(stock=>[stock.address,stock]));
+ let matches=data.coinbaseRegistry.filter(stock=>address?stock.address===address:stock.symbol.toLowerCase()===query||stock.name.toLowerCase()===query);
+ if(!matches.length&&!address)matches=data.coinbaseRegistry.filter(stock=>stock.symbol.toLowerCase().startsWith(query)||stock.name.toLowerCase().includes(query));
+ matches=matches.map(stock=>{const bankr=bankrByAddress.get(stock.address);return {...stock,bankrPairSupported:!!bankr,liquidityAdvisory:bankr?.liquidityAdvisory||null};});
  return {...data,stocks:matches};
 }

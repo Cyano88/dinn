@@ -63,6 +63,14 @@ test('routes explicit Base stock-paired research to the Base service',()=>{
   assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'base.stock-paired.research',address:tokenAddress});
  }
 });
+test('routes normal Coinbase stock research by ticker or exact token address',()=>{
+ for(const target of ['NVDAc',tokenAddress]){
+  const {row,fullJob}=fixture({description:`Service: base.stock.research\nChain: 8453\nTicker: ${target}`});
+  assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'base.stock.research',query:target});
+ }
+ const {row,fullJob}=fixture({description:`Service: base.stock.research\nTicker: NVDAc\nTicker: TSLA`});
+ assert.equal(eligibleNearResearchJob(row,fullJob,agentId,options),null);
+});
 
 test('routes clearly requested Base research without requiring a service selector',()=>{
  for(const description of [
@@ -88,6 +96,17 @@ test('delivers an explicit Base marketplace hire through the Base research servi
  assert.equal(lock.data.service,'base.stock-paired.research');
  assert.equal(lock.data.markdown,'# Base stock-paired research');
  assert.ok(events.includes('submitted'));
+});
+test('delivers a Coinbase stock research hire to the separate stock service',async()=>{
+ const {row,fullJob}=fixture({description:'Service: base.stock.research\nChain: 8453\nTicker: NVDAc'});
+ const calls=[],lock={data:null};
+ const store={acquire:async()=>lock,renew:async()=>{},save:async(_lock,data)=>{lock.data=data;},event:async()=>{},release:async()=>{},get:async()=>null};
+ const client={assignments:async()=>[row],job:async()=>fullJob,start:async()=>{},assignment:async()=>row,submit:async(_id,markdown)=>{calls.push(markdown);return {assignmentId,status:'submitted'};}};
+ const worker=createNearWorker({agentId,minimumEscrow:options.minimumEscrow,escrowToken:options.escrowToken,store,client,wait:async()=>{},report:async(request)=>{calls.push(request);return {status:'completed',deliverableMarkdown:'# Coinbase stock report',evidence:{sha256:'c'.repeat(64)}};}});
+ const result=await worker.runOnce();
+ assert.equal(result.results[0].state,'submitted',JSON.stringify(result.results[0]));
+ assert.deepEqual(calls[0],{service:'base.stock.research',requestId:'near-'+assignmentId,input:{query:'NVDAc'}});
+ assert.equal(calls[1],'# Coinbase stock report');assert.equal(lock.data.service,'base.stock.research');
 });
 
 test('delivers a zero-cost Base stock research test run without paid-hire accounting',async()=>{

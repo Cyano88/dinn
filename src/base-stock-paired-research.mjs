@@ -34,7 +34,7 @@ async function baseAccountCode(address,fetchImpl,signal,rpc){
  if(!response.ok)throw new Error('Base account code is unavailable.');const payload=await response.json(),code=payload?.result;
  if(typeof code!=='string'||!/^0x[0-9a-f]*$/i.test(code))throw new Error('Base account code is unavailable.');return code==='0x'?'not-observed':'present';
 }
-async function baseHolderSnapshot(token,fetchImpl,signal,rpc,env=process.env){
+export async function baseHolderSnapshot(token,fetchImpl,signal,rpc,env=process.env){
  const apiKey=typeof env.GOLDRUSH_API_KEY==='string'?env.GOLDRUSH_API_KEY.trim():'';
  if(!apiKey)return null;
  const cached=holderSnapshotCache.get(token);if(cached&&cached.expiresAt>Date.now())return cached.value;

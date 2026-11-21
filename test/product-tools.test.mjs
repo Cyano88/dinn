@@ -8,6 +8,26 @@ test('explicit stock-paired research language routes to Base without redirecting
  for(const message of [`Research this Bankr token paired with NVDA ${baseToken}`,`Check the tokenized stock pair ${baseToken}`,`Look up this stock-paired token ${baseToken}`])assert.deepEqual(directProductIntent(message),{name:'research_base_stock_paired_token',args:{address:baseToken}},message);
  assert.equal(directProductIntent(`Buy 0.1 ETH of ${baseToken}`).name,'pons_trade');
 });
+test('normal Coinbase stock tickers route to the separate Base stock research tool',()=>{
+ for(const message of ['Research NVDAc','Research Coinbase stock NVDAc','Check Base stock token NVDAc',`Research this Coinbase stock token ${baseToken}`])assert.equal(directProductIntent(message).name,'research_base_stock',message);
+ assert.deepEqual(directProductIntent('Research NVDAc'),{name:'research_base_stock',args:{query:'NVDAc'}});
+ assert.equal(directProductIntent(`Research Bankr token paired with NVDA ${baseToken}`).name,'research_base_stock_paired_token');
+});
+test('a follow-up Coinbase stock buy or sell request hands off to Bankr conversationally',()=>{
+ const history=[{role:'assistant',content:`NVIDIA Corporation (NVDAc) · Base\nCoinbase registry and onchain token identity match.\nContract: ${baseToken}\nWant to trade? [Open Bankr](https://bankr.bot) and ask for NVDAc on Base.`}];
+ const result=directProductIntent('Buy it', {history});
+ assert.match(result.message,/https:\/\/bankr\.bot/);assert.doesNotMatch(result.message,/\/trade\//);assert.match(result.message,/NVDAc on Base/);assert.match(result.message,/location eligibility/);assert.deepEqual(result.actions,[]);
+});
+test('normal Coinbase stock research executes directly in chat without inference',async()=>{
+ const message='Research Coinbase stock NVDAc',events=[];let toolCalls=0;
+ for await(const event of streamProductChat({message,history:[{role:'user',content:message}]},[],{env:{OG_API_KEY:'test',OG_MODEL:'test'},fetchImpl:async()=>{throw Error('Inference is not required for direct stock research.');},execute:async(name,args)=>{toolCalls++;assert.equal(name,'research_base_stock');assert.deepEqual(args,{query:'NVDAc'});return {message:'NVDAc identity and market report.',data:{identity:{status:'matched'}},actions:[]};}}))events.push(event);
+ assert.equal(toolCalls,1);assert.equal(events.at(-1).result.toolsUsed[0],'research_base_stock');assert.equal(events.filter(event=>event.type==='delta')[0].text,'NVDAc identity and market report.');
+});
+test('normal stock report tool exposes the exact provider report and enables configured holder evidence',async()=>{
+ const data={address:baseToken,chainId:8453,classification:'coinbase-registry-match',identity:{status:'matched',name:'NVIDIA Corporation',symbol:'NVDAc'},stock:{referenceNav:'100',referenceNavUpdatedAt:'2026-11-20T00:00:00Z',firstMintAt:'2026-10-01T00:00:00Z',ageDaysSinceFirstMint:50},contract:{blockNumber:'123',name:'NVIDIA Corporation',symbol:'NVDAc',decimals:8,totalSupply:'1000',multiplier:'1',pausedFeatures:[],transferPolicies:[{scope:'TRANSFER_SENDER_POLICY',id:0},{scope:'TRANSFER_RECEIVER_POLICY',id:0},{scope:'TRANSFER_EXECUTOR_POLICY',id:0}]},market:{status:'no-matching-pairs',checkedAt:'2026-11-20T00:00:00Z',pairs:[]},holders:null,coverage:{holders:'Not requested.'},tradeHandoff:{status:'not-listed',url:null}};let holdersEnabled;
+ const result=await executeProductTool('research_base_stock',{query:'NVDAc'},{env:{GOLDRUSH_API_KEY:'configured'}},{baseStockAssetResearch:async(input,options)=>{assert.deepEqual(input,{query:'NVDAc'});holdersEnabled=options.holderSnapshotEnabled;return data;}});
+ assert.equal(holdersEnabled,true);assert.equal(result.data,data);assert.deepEqual(result.actions,[]);
+});
 test('Base stock-paired research runs directly in human chat and returns the checked answer unchanged',async()=>{
  const message=`Research this Bankr token paired with NVDA ${baseToken}`,events=[];let inferenceCalls=0,toolCalls=0;
  for await(const event of streamProductChat({message,history:[{role:'user',content:message}]},[],{env:{OG_API_KEY:'test',OG_MODEL:'test'},fetchImpl:async()=>{inferenceCalls++;throw Error('Inference must not be called for direct research.');},execute:async(name,args)=>{toolCalls++;assert.equal(name,'research_base_stock_paired_token');assert.deepEqual(args,{address:baseToken});return {message:'Verified stock-paired research. Sources: Bankr · Coinbase.',data:{classification:'verified-bankr-stock-paired-token'},actions:[]};}}))events.push(event);

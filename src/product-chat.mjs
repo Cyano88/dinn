@@ -25,7 +25,7 @@ export async function* streamProductChat(context,messages,{env=process.env,fetch
  let direct=directProductIntent(context.message,context);
  if(direct?.message){yield {type:'delta',text:direct.message};yield {type:'done',result:{message:direct.message,actions:direct.actions||[],toolsUsed,mode:'tool'}};return;}
  if(['pons_token_state','review_pons_claim'].includes(direct?.name)){const r=await run(direct.name,direct.args);yield {type:'delta',text:r.message};yield {type:'done',result:{...r,toolsUsed,mode:'live-pons'}};return;}
- if(['wallet_balance','wallet_portfolio','transaction_status','launch_options','product_capabilities','dex_service_status','research_base_stock_paired_token','base_stock_trade'].includes(direct?.name)){const r=await run(direct.name,direct.args);yield {type:'delta',text:r.message};yield {type:'done',result:{...r,toolsUsed,mode:direct.name==='base_stock_trade'?'chat-wallet-action':'tool'}};return;}
+ if(['wallet_balance','wallet_portfolio','transaction_status','launch_options','product_capabilities','dex_service_status','research_base_stock_paired_token','research_base_stock','base_stock_trade'].includes(direct?.name)){const r=await run(direct.name,direct.args);yield {type:'delta',text:r.message};yield {type:'done',result:{...r,toolsUsed,mode:direct.name==='base_stock_trade'?'chat-wallet-action':'tool'}};return;}
  const launchCommand=workspaceCommand(context.message),control=/^(resume|pause|cancel|stop)(?: setup)?[.!]?$/i.exec(String(context.message||'').trim());
  if(direct?.name==='manage_launch_draft'&&(launchCommand==='start-launch'||control)){
   const operation=launchCommand==='start-launch'?'start':control[1].toLowerCase()==='resume'?'resume':'pause';
