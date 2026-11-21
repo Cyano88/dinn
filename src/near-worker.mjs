@@ -1,3 +1,4 @@
+import {researchTarget,researchQuestion,followResearch} from './research-guide.mjs';
 import {createHash,randomBytes} from 'node:crypto';
 import {createNearMarketClient,uuid} from './near-market-client.mjs';
 import {agentAccessRequest} from './agent-access.mjs';
@@ -118,13 +119,43 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     const sameReturn=refresh && current?.assignment?.assignmentId===a.assignmentId &&
      current.assignment.startedAt && current.latestMessage?.senderSide==='buyer';
     const checked=sameReturn?{...current,assignment:{...current.assignment,submittedAt:null,deliverableUrl:null}}:current;
-    const candidate=eligibleNearResearchJob(checked,job,agentId,{minimumEscrow,escrowToken});
+    let researchRow=checked;
+    if(data.guidedInput){
+     const g=data.guidedInput;
+     const description='Service: '+g.service+'\nToken: '+(g.query||g.address);
+     researchRow={...checked,job:{...checked.job,description},latestMessage:null};
+    }
+    const candidate=eligibleNearResearchJob(researchRow,job,agentId,{minimumEscrow,escrowToken});
     if(!refresh || !candidate)return candidate;
     const target=candidate.address || candidate.query;
     const savedTarget=data.tokenAddress || data.stockQuery;
     return savedTarget && target.toLowerCase()===savedTarget.toLowerCase() && candidate.service===data.service && data.testRun===job.isTestRun ? candidate : null;
    };
    if(data.scopeNoticeSent)return {assignmentId:a.assignmentId,state:'unsupported-scope'};
+   if(!data.guidedInput && !data.submittedAt && !a.startedAt && !a.deliverableUrl &&
+      full.isPrivate===true && a.workerAgentId===agentId && a.jobId===row.job?.jobId && full.jobId===a.jobId &&
+      a.status==='in_progress' && full.status==='in_progress' && !row.job.attachments?.length && supportedResearchJobSurface(row.job,full)){
+    const m=row.latestMessage;
+    const reply=m?.senderSide==='buyer' && m.origin==='direct' && m.truncated===false && !m.attachments?.length?m.body:null;
+    const target=data.guideTarget || researchTarget(row.job.description||'') || (full.origin==='a2a' && reply && researchTarget(reply));
+    if(target){
+     const stage=data.guideStage||'chain';
+     const next=reply && followResearch(stage,target,reply);
+     if(next?.service){
+      data={...data,guidedInput:next};await store.save(lock,data);
+     }else{
+      const pending=next?.stage||stage;
+      if(data.guideStage!==pending || next?.unsupported){
+       data={...data,guideTarget:target,guideStage:pending};
+       if(next?.unsupported)data.scopeNoticeSent=true;
+       assertLease();
+       await client.scopeMessage(a.assignmentId,next?.unsupported?scopeNotice:researchQuestion(pending,target),'guide-'+(next?.unsupported?'unsupported':pending));
+       await store.save(lock,data);
+      }
+      return {assignmentId:a.assignmentId,state:next?.unsupported?'unsupported-scope':'awaiting-research-details'};
+     }
+    }
+   }
    let input=resolveInput(row,full);
    if(!input && data.submittedAt)return {assignmentId:a.assignmentId,state:'refresh-not-confirmed'};
    if(returned && data.refresh===true && data.phase==='submitted')return {assignmentId:a.assignmentId,state:'refresh-limit'};
@@ -162,7 +193,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     const {service,...reportInput}=input;
     const made=await report({service,requestId:'near-'+a.assignmentId+(refresh?'-refresh':''),input:reportInput},{paidMarketplaceHire:full.isTestRun===false});
     if(made.status!=='completed'||typeof made.deliverableMarkdown!=='string'||!made.deliverableMarkdown.length||made.deliverableMarkdown.length>250000||!/^\w{64}$/.test(made.evidence?.sha256||''))throw Error('Research report was incomplete or too large.');
-    data={refresh,phase:'prepared',markdown:made.deliverableMarkdown,evidenceHash:made.evidence.sha256,service,tokenAddress:input.address,stockQuery:input.query,testRun:full.isTestRun===true,preparedAt:now().toISOString()};
+    data={...(data.guidedInput?{guidedInput:data.guidedInput}:{}),refresh,phase:'prepared',markdown:made.deliverableMarkdown,evidenceHash:made.evidence.sha256,service,tokenAddress:input.address,stockQuery:input.query,testRun:full.isTestRun===true,preparedAt:now().toISOString()};
     if(feedbackEnabled && full.isPrivate===true){
      const code=randomBytes(32).toString('hex');
      data.feedbackDigest=createHash('sha256').update(code).digest('hex');

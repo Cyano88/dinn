@@ -9,8 +9,8 @@ test('explicit stock-paired research language routes to Base without redirecting
  assert.equal(directProductIntent(`Buy 0.1 ETH of ${baseToken}`).name,'pons_trade');
 });
 test('normal Coinbase stock tickers route to the separate Base stock research tool',()=>{
- for(const message of ['Research NVDAc','Research Coinbase stock NVDAc','Check Base stock token NVDAc',`Research this Coinbase stock token ${baseToken}`])assert.equal(directProductIntent(message).name,'research_base_stock',message);
- assert.deepEqual(directProductIntent('Research NVDAc'),{name:'research_base_stock',args:{query:'NVDAc'}});
+ for(const message of ['Research Coinbase stock NVDAc','Check Base stock token NVDAc',`Research this Coinbase stock token ${baseToken}`])assert.equal(directProductIntent(message).name,'research_base_stock',message);
+ assert.match(directProductIntent('Research NVDAc').message,/Which chain/);
  assert.deepEqual(directProductIntent('Research Coinbase stock NVDAc. Read only; do not trade.'),{name:'research_base_stock',args:{query:'NVDAc'}});
  assert.deepEqual(directProductIntent('Do not prepare a transaction. Research NVDAc.'),{name:'research_base_stock',args:{query:'NVDAc'}});
  assert.equal(directProductIntent(`Research Bankr token paired with NVDA ${baseToken}`).name,'research_base_stock_paired_token');
@@ -135,7 +135,7 @@ test('holder portfolio requests stay token research even when wallet balance is 
 
 test('fresh inspection synthesis excludes old assistant claims and retains holder evidence',async()=>{
  const stale='Source verification is unknown (no Sourcify match).';let round=0;const inspection={checks:[{label:'Source verification',status:'verified',detail:'Blockscout runtime matches'}],holders:{status:'partial',rows:[{address:account,sharePercent:'95'}]}};
- for await(const e of streamProductChat({message:'check token '+account},[{role:'user',content:'i want to pay for dex'},{role:'assistant',content:stale},{role:'user',content:'check token '+account}],{env:{OG_API_KEY:'test',OG_MODEL:'test'},execute:async()=>({data:inspection,inspection,actions:[]}),fetchImpl:async(u,o)=>{const req=JSON.parse(o.body);if(++round===1)return stream([{choices:[{delta:{tool_calls:[{index:0,id:'check',function:{name:'inspect_token',arguments:'{}'}}]},finish_reason:'tool_calls'}]}]);assert.ok(!req.messages.some(m=>m.role==='assistant'&&m.content===stale));assert.ok(!req.messages.some(m=>m.role==='user'&&m.content==='i want to pay for dex'));assert.ok(!req.messages.some(m=>m.role==='user'&&m.content==='i want to pay for dex'));assert.ok(req.messages.some(m=>m.role==='system'&&m.content.includes('same snapshot')));assert.ok(req.messages.some(m=>m.role==='tool'&&JSON.parse(m.content).data.holders.rows.length===1));return stream([{choices:[{delta:{content:'Source now matches. Holder coverage is partial.'},finish_reason:'stop'}]}]);}})){if(e.type==='done')assert.equal(e.result.inspection,inspection);}
+ for await(const e of streamProductChat({message:'check Robinhood token '+account},[{role:'user',content:'i want to pay for dex'},{role:'assistant',content:stale},{role:'user',content:'check Robinhood token '+account}],{env:{OG_API_KEY:'test',OG_MODEL:'test'},execute:async()=>({data:inspection,inspection,actions:[]}),fetchImpl:async(u,o)=>{const req=JSON.parse(o.body);if(++round===1)return stream([{choices:[{delta:{tool_calls:[{index:0,id:'check',function:{name:'inspect_token',arguments:'{}'}}]},finish_reason:'tool_calls'}]}]);assert.ok(!req.messages.some(m=>m.role==='assistant'&&m.content===stale));assert.ok(!req.messages.some(m=>m.role==='user'&&m.content==='i want to pay for dex'));assert.ok(!req.messages.some(m=>m.role==='user'&&m.content==='i want to pay for dex'));assert.ok(req.messages.some(m=>m.role==='system'&&m.content.includes('same snapshot')));assert.ok(req.messages.some(m=>m.role==='tool'&&JSON.parse(m.content).data.holders.rows.length===1));return stream([{choices:[{delta:{content:'Source now matches. Holder coverage is partial.'},finish_reason:'stop'}]}]);}})){if(e.type==='done')assert.equal(e.result.inspection,inspection);}
 });
 
 test('inspection retries unrelated checkout offers before publishing any text',async()=>{
@@ -145,3 +145,12 @@ test('inspection retries unrelated checkout offers before publishing any text',a
 });
 
 test('inference connection retries once before tools execute and hides provider errors',async()=>{let attempts=0;const events=[];for await(const e of streamProductChat({message:'Hello'},[],{env:{OG_API_KEY:'test',OG_MODEL:'test'},fetchImpl:async()=>{if(++attempts===1)throw Error('https://private.example/key');return stream([{choices:[{delta:{content:'Hello.'},finish_reason:'stop'}]}]);}}))events.push(e);assert.equal(attempts,2);assert.equal(events.at(-1).result.message,'Hello.');await assert.rejects(async()=>{for await(const e of streamProductChat({message:'Hello'},[],{env:{OG_API_KEY:'test',OG_MODEL:'test'},fetchImpl:async()=>{throw Error('https://private.example/key');}})){}},/inference provider/);});
+test('guided research carries a ticker across chain and asset questions',()=>{
+ const ask=(text,previous='')=>directProductIntent(text,{history:[{role:'assistant',content:previous}]});
+ const first=ask('NVDAc');assert.match(first.message,/Which chain/);
+ const second=ask('Base',first.message);assert.match(second.message,/Coinbase stock token or a Bankr/);
+ assert.deepEqual(ask('Coinbase',second.message),{name:'research_base_stock',args:{query:'NVDAc'}});
+ const ca=ask('Robinhood',first.message);assert.match(ca.message,/Pons contract address/);
+ assert.equal(ask(baseToken,ca.message).args.address,baseToken);
+ assert.match(ask('Solana',first.message).message,/currently researches/);
+});

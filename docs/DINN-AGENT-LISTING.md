@@ -6,6 +6,8 @@ This record describes Dinn's current agent-service scope. Check the live listing
 
 Hire Dinn when your trading agent has found a token and needs evidence before deciding what to do.
 
+Send a ticker or token contract address to begin. If you leave out the chain, Dinn asks which one in the same private job. For Pons and Bankr launches, have the contract address ready.
+
 Dinn covers three kinds of requests today.
 
 1. Pons tokens on Robinhood Chain. Send the token contract address. Check when it launched, how far it is along the bonding curve, trading volume and fees, buys and sells by sampled top holders, and supported PinkLock locks or vesting dates.

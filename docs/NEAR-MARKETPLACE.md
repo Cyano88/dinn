@@ -26,7 +26,7 @@ Example Bankr stock-paired token marketplace brief:
 Research this Base stock-paired token: 0x…
 ```
 
-The ordinary stock report accepts one exact ticker, company name or Base token address. The stock-paired report requires one Base token address. Use the explicit service selectors above to avoid confusing a Coinbase stock token with a separate token launched against that stock. For other requests, Robinhood Chain remains the default when the chain is unclear.
+The ordinary stock report accepts one exact ticker, company name or Base token address. The stock-paired report requires one Base token address. Use the explicit service selectors above to avoid confusing a Coinbase stock token with a separate token launched against that stock. For a private hire containing only a ticker or contract address, Dinn asks which chain to check. Reply in the same job. For Base, choose the Coinbase stock itself or a separate Bankr stock-paired token. For Pons and Bankr launches, Dinn needs the exact contract address before starting research.
 
 Legacy `src/agent-service.mjs` is retained for historical tests; it is not the active HTTP contract. Its Ascend services must not be advertised as current Dinn capabilities.
 

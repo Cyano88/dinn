@@ -1,3 +1,4 @@
+import {researchTarget,researchQuestion,chatResearchGuide} from './research-guide.mjs';
 import {robinhoodBalances,prepareRobinhoodSend,walletAssetBalance} from './robinhood-wallet.mjs';
 import {prepareRobinhoodRoute,robinhoodRouteQuote} from './robinhood-routes.mjs';
 import {assets,networks,address as walletAddress,same} from './robinhood-wallet-call.mjs';
@@ -201,6 +202,10 @@ const conversationalQuestion=text=>/^(?:what|why|how|who|which|where|when|whethe
 export function directProductIntent(text,context={}){
  const lastAssistant=[...(context.history||[])].reverse().find(m=>m.role==='assistant')?.content||'';
  const t=text.trim(),addresses=t.match(/0x[0-9a-f]{40}(?![0-9a-f])/gi)||[],hash=t.match(/0x[0-9a-f]{64}(?![0-9a-f])/i)?.[0];
+ const guided=chatResearchGuide(t,lastAssistant);
+ if(guided)return guided;
+ const initialTarget=researchTarget(t);
+ if(initialTarget && (/^(?:please )?(?:research|inspect|check|look up) /i.test(t) || (!context.awaitingField && !context.ponsSetup?.active && !/(?:send|enter|provide|which|what)[^.!?]{0,100}(?:address|ticker|symbol|wallet|recipient)|(?:what|which)[^.!?]{0,80}stock token/i.test(lastAssistant.slice(-240)))))return {message:researchQuestion('chain',initialTarget),actions:[]};
  if(addresses.length===1&&/Base token contract address/i.test(lastAssistant))return {name:'research_base_stock_paired_token',args:{address:addresses[0]}};
  const pairedStockRequest=/\b(?:stock[\s-]*paired|paired stock|stock pair|paired with .{0,40}\bstock|bankr.{0,40}(?:launch|paired)|bankr token launch)\b/i.test(t);
  if(pairedStockRequest&&/\b(?:research|check|inspect|analy[sz]e|look up|buy|sell|trade)\b/i.test(t))return addresses.length===1?{name:'research_base_stock_paired_token',args:{address:addresses[0]}}:{message:'Send the Base token address. I will verify whether the Bankr launch is paired with a tokenized stock.',actions:[]};

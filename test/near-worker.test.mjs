@@ -327,3 +327,17 @@ test('an unsupported private Base pair receives one scope notice before research
  assert.equal(messages.length,1);
  assert.match(messages[0],/does not cover this request today/);
 });
+test('private ticker hire waits for chain and stock type and resumes once in the same assignment',async()=>{
+ const {row,fullJob}=fixture({jobKind:'instant',isPrivate:true,description:'NVDAc'});
+ const calls=[],prompts=[],requests=[],lock={data:null};
+ const store={acquire:async()=>lock,renew:async()=>{},save:async(_,d)=>{lock.data=d;},event:async()=>{},release:async()=>{}};
+ const client={job:async()=>fullJob,assignment:async()=>row,scopeMessage:async(_,body)=>prompts.push(body),start:async()=>calls.push('start'),submit:async()=>({assignmentId,status:'submitted'})};
+ const worker=createNearWorker({agentId,...options,store,client,wait:async()=>{},report:async request=>{requests.push(request);return {status:'completed',deliverableMarkdown:'Checked.',evidence:{sha256:'a'.repeat(64)}};}});
+ assert.equal((await worker.process(row)).state,'awaiting-research-details');
+ await worker.process(row);assert.equal(prompts.length,1);
+ row.latestMessage={senderSide:'buyer',origin:'direct',truncated:false,body:'Base'};
+ await worker.process(row);assert.match(prompts[1],/Bankr/);assert.deepEqual(calls,[]);
+ row.latestMessage.body='Coinbase stock token';
+ assert.equal((await worker.process(row)).state,'submitted');
+ assert.deepEqual(requests[0].input,{query:'NVDAc'});assert.equal(requests[0].service,'base.stock.research');
+});
