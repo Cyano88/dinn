@@ -20,7 +20,10 @@ test('a follow-up Coinbase stock buy or sell request hands off to Bankr conversa
  assert.deepEqual(directProductIntent('Research Coinbase stock NVDAc. Read only; do not trade.',{history}),{name:'research_base_stock',args:{query:'NVDAc'}});
  assert.deepEqual(directProductIntent('Do not trade NVDAc; check its latest evidence.',{history}),{name:'research_base_stock',args:{query:'NVDAc'}});
  const result=directProductIntent('Buy it', {history});
- assert.match(result.message,new RegExp(`https:\\/\\/bankr\\.bot\\/trade\\/${baseToken}`));assert.match(result.message,/NVDAc on Base/);assert.match(result.message,/choose the side and amount/i);assert.match(result.message,/location eligibility/);assert.deepEqual(result.actions,[]);
+ assert.match(result.message,new RegExp(`https:\\/\\/bankr\\.bot\\/trade\\/${baseToken}`));assert.match(result.message,/NVDAc on Base/);assert.match(result.message,/choose whether to buy or sell and the amount/i);assert.match(result.message,/checks if trading is available where you are/i);assert.deepEqual(result.actions,[]);
+ const updatedReport=`## NVIDIA Corporation (NVDAc) on Base\n\n**Identity**\n\nThe ticker, name, and token-unit settings in Coinbase’s stock list match what Base reports for this token.\n\n**Token details**\n\n- Token address: ${baseToken}`;
+ const updated=directProductIntent('Buy it',{history:[{role:'assistant',content:updatedReport}]});
+ assert.match(updated.message,new RegExp(`https:\\/\\/bankr\\.bot\\/trade\\/${baseToken}`));assert.match(updated.message,/Bankr checks if trading is available where you are/);
 });
 test('normal Coinbase stock research executes directly in chat without inference',async()=>{
  const message='Research Coinbase stock NVDAc',events=[];let toolCalls=0;
@@ -38,7 +41,7 @@ test('Base stock-paired research runs directly in human chat and returns the che
  assert.equal(inferenceCalls,0);assert.equal(toolCalls,1);assert.deepEqual(events.filter(event=>event.type==='delta').map(event=>event.text),['Verified stock-paired research. Sources: Bankr · Coinbase.']);assert.deepEqual(events.at(-1).result.actions,[]);assert.deepEqual(events.at(-1).result.toolsUsed,['research_base_stock_paired_token']);
 });
 test('Base stock-pair trade requests return a read-only estimate and hand execution to Bankr',async()=>{
- const token=baseToken,stock='0x'+'9'.repeat(40),reportMessage=`**Pairing**\n\nExample (EX) is verified as paired with NVDA on Base. Token contract: \`${token}\`.`,report={address:token,classification:'verified-bankr-stock-paired-token',verification:{status:'verified'},market:{matchesBankrPool:true},launch:{symbol:'EX',poolId:'0x'+'c'.repeat(64),pairedStock:{address:stock,symbol:'NVDA'}},stock:{address:stock,symbol:'NVDA'}};
+ const token=baseToken,stock='0x'+'9'.repeat(40),reportMessage=`**Pairing**\n\nExample (EX) is confirmed as paired with NVDA on Base.\n\nToken address: ${token}.`,report={address:token,classification:'verified-bankr-stock-paired-token',verification:{status:'verified'},market:{matchesBankrPool:true},launch:{symbol:'EX',poolId:'0x'+'c'.repeat(64),pairedStock:{address:stock,symbol:'NVDA'}},stock:{address:stock,symbol:'NVDA'}};
  let quoted=0,researchOptions;
  const dependencies={baseStockResearch:async(_input,options)=>{researchOptions=options;return report;},quoteRoute:async(input,options)=>{quoted++;assert.deepEqual(input,{kind:'swap',chainId:8453,account,amount:'10',asset:stock,outputAsset:token});assert.equal(options.baseResearchResult,report);return {amount:'10',asset:{symbol:'NVDA'},outputAsset:{symbol:'EX'},expectedAmount:'500',minimumAmount:'495',provider:'Uniswap V4 pool reference'};}};
  const context={walletAccount:account,message:'Buy 10 NVDA',history:[{role:'assistant',content:reportMessage}]};
@@ -62,8 +65,8 @@ test('Base research answer separates evidence by topic and keeps coverage limits
  const result=await executeProductTool('research_base_stock_paired_token',{address:baseToken},{},{baseStockResearch:async()=>data});
  for(const heading of ['**Pairing**\n\n','**Market**\n\n','**Fees and vesting**\n\n','**Holders**\n\n','**Contract**\n\n','**Sources**\n\n'])assert.ok(result.message.includes(heading),heading);
  assert.ok(result.message.includes('Bankr reports no eligible vesting schedule. This does not prove the supply is unlocked.'));
- assert.ok(result.message.includes('Contract safety and sellability were not assessed.'));
- assert.ok(result.message.includes('1h unavailable')||result.message.includes('7d/30d unavailable'));
+ assert.ok(result.message.includes('This is not a full safety check and does not confirm that a token can be sold.'));
+ assert.ok(result.message.includes('last hour volume not available')||result.message.includes('7-day and 30-day volume are not available'));
  let holderSnapshotEnabled;
  await executeProductTool('research_base_stock_paired_token',{address:baseToken},{},{baseStockResearch:async(_input,options)=>{holderSnapshotEnabled=options.holderSnapshotEnabled;return data;}});
  assert.equal(holderSnapshotEnabled,true);

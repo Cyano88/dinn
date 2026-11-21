@@ -121,29 +121,40 @@ export async function researchBaseStock(input,{fetchImpl=fetch,env=process.env,h
 }
 
 export function baseStockResearchMessage(report){
- const money=value=>value===null||value===undefined?'unavailable':'$'+Number(value).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
- const items=[report.market?.pairs?.[0]],market=items[0];
- const lines=[`${report.identity.name} (${report.identity.symbol}) · Base`,report.identity.status==='matched'?'Coinbase registry and onchain token identity match.':'The registry and onchain token fields do not fully match; treat identity as unresolved.',`Registry: [Coinbase tokenized stocks](${report.identity.sourceUrl}) · [BaseScan contract](https://basescan.org/address/${report.address})`,`Contract: ${report.address}`,`Reference NAV: ${report.stock.referenceNav===null?'unavailable':money(report.stock.referenceNav)}${report.stock.referenceNavUpdatedAt?' · updated '+report.stock.referenceNavUpdatedAt:''}. First mint: ${report.stock.firstMintAt||'unavailable'}${Number.isInteger(report.stock.ageDaysSinceFirstMint)?` (${report.stock.ageDaysSinceFirstMint} days ago)`:''}.`,
-  `Onchain B20 check · Base block ${report.contract.blockNumber}: ${report.contract.name} (${report.contract.symbol}), ${report.contract.decimals} decimals, supply ${report.contract.totalSupply}; multiplier ${report.contract.multiplier}.`,
-  `Transfer state: ${report.contract.pausedFeatures.includes('TRANSFER')?'paused':'not reported paused'}. Policy IDs — sender ${report.contract.transferPolicies.find(row=>row.scope==='TRANSFER_SENDER_POLICY')?.id??'unavailable'}, receiver ${report.contract.transferPolicies.find(row=>row.scope==='TRANSFER_RECEIVER_POLICY')?.id??'unavailable'}, executor ${report.contract.transferPolicies.find(row=>row.scope==='TRANSFER_EXECUTOR_POLICY')?.id??'unavailable'}. A nonzero policy can restrict transfers; wallet eligibility was not checked.`];
- if(market)lines.push(`Market · DEX Screener, checked ${report.market.checkedAt}: ${market.dex||'DEX pair'} ${market.baseToken.symbol}/${market.quoteToken.symbol}; liquidity ${money(market.liquidityUsd)}, 24h volume ${money(market.volume24hUsd)}, buys/sells ${market.transactions24h?`${market.transactions24h.buys}/${market.transactions24h.sells}`:'unavailable'}, token price ${money(market.tokenPriceUsd)}${market.tokenIsBase?'':' (not reported for the quote side)'}, reported market cap ${money(market.marketCapUsd)}, reported FDV ${money(market.fdvUsd)}. [Open pair](${market.url})`);
- else lines.push(`Market data: ${report.market.status==='no-matching-pairs'?'no matching Base pairs were returned':'temporarily unavailable'}; no market values are inferred.`);
- if(report.holders){const share=report.holders.sampleTop10SharePercent,balances=report.holders.largestBalancesInSample||[];lines.push(`Holders · ${report.holders.source||'Provider'} snapshot${report.holders.checkedAt?`, checked ${report.holders.checkedAt}`:''}${report.holders.blockNumber?` at block ${report.holders.blockNumber}`:''}: ${report.holders.holderCount??'unavailable'} reported holders; largest 10 in ${report.holders.hasMore?'the returned sample':'the returned list'} hold ${share===null?'an unavailable share':Number(share).toFixed(2)+'%'} of supply. ${report.holders.coverage}`);for(const [index,row] of (report.holders.holderActivity||[]).slice(0,3).entries()){const balance=balances.find(candidate=>candidate.address.toLowerCase()===row.address.toLowerCase()),amount=balance?`${balance.balance} ${report.identity.symbol}${balance.percentOfSupply===null?'':` (${balance.percentOfSupply}% of supply)`}`:'balance unavailable';const role=row.marketPairMatch?`Address matches the DEX Screener ${row.marketPairMatch.dex||''} pair contract; it is a pool contract, not a wallet.`:row.status==='contract'?'Contract code found; address is not classified as a wallet.':'';const activity=row.status==='available'?`${row.buys} classified buys and ${row.sells} sells across ${row.transactionsChecked} recent transactions${row.oldestTransactionAt&&row.latestTransactionAt?`, from ${row.oldestTransactionAt} through ${row.latestTransactionAt}`:''}.`:row.status==='contract'?'':row.reason||'Recent flow unavailable.';lines.push(`Largest sampled holder ${index+1} ${row.address}: ${amount}. ${role} ${activity}`);}}
- else lines.push(`Holder evidence: unavailable (${report.coverage.holders}).`);
- const holderSourceUrl=report.holders?.sourceUrl||report.holders?.url;
- if(holderSourceUrl)lines.push(`[${report.holders.source==='GoldRush Token Holders API'?'GoldRush holder API documentation':'Open holder source'}](${holderSourceUrl})`);
- if(report.tradeHandoff.url)lines.push(`Want to trade? [Open ${report.tradeHandoff.assetSymbol} on Bankr](${report.tradeHandoff.url}). Bankr checks location eligibility and shows the current executable quote; choose the side and amount there. Dinn did not prepare or send a transaction.`);
- else lines.push('This ticker is not in the current Bankr stock-pair list, so Dinn cannot offer a Bankr trade handoff.');
- lines.push('This is a sourced snapshot, not a contract audit, eligibility decision or safe-to-trade verdict.');
- return lines.map((line,index)=>{
-  if(index===2)return line;
-  if(line.startsWith('Onchain B20 check'))return '**Token checks**\n\n'+line.replace(/^Onchain B20 check\s*[·-]\s*/, '');
-  if(line.startsWith('Market ·'))return '**Market activity**\n\n'+line.replace(/^Market\s*[·-]\s*/, '');
-  if(line.startsWith('Market data:'))return '**Market activity**\n\n'+line;
-  if(line.startsWith('Holders ·'))return '**Holder evidence**\n\n'+line.replace(/^Holders\s*[·-]\s*/, '');
-  if(line.startsWith('Holder evidence:'))return '**Holder evidence**\n\n'+line;
-  if(line.startsWith('Want to trade?'))return '**Bankr trade step**\n\n'+line.replace(/^Want to trade\?\s*/, '');
-  if(line.startsWith('This ticker is not in the current Bankr stock-pair list'))return '**Bankr trade step**\n\n'+line;
-  return line;
- }).join('\n\n');
+ const money=value=>value==null?'not available':'$'+Number(value).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+ const date=value=>{const time=Date.parse(value||'');return Number.isFinite(time)?new Date(time).toISOString().slice(0,16).replace('T',' ')+' UTC':'date unavailable';};
+ const short=value=>value.slice(0,6)+'…'+value.slice(-4);
+ const market=report.market?.pairs?.[0],lines=['**'+report.identity.name+' ('+report.identity.symbol+') on Base**'];
+ lines.push('**Identity**\n\n'+(report.identity.status==='matched'?'The ticker, name, and token-unit settings in Coinbase’s stock list match what Base reports for this token.':'The token details do not fully match Coinbase’s list, so its identity is not confirmed.')+'\n\n[Coinbase stock list]('+report.identity.sourceUrl+') · [View token on BaseScan](https://basescan.org/address/'+report.address+')');
+ const reference=report.stock.referenceNav==null?'not available':money(report.stock.referenceNav);
+ const created=report.stock.firstMintAt?date(report.stock.firstMintAt)+(Number.isInteger(report.stock.ageDaysSinceFirstMint)?' (about '+report.stock.ageDaysSinceFirstMint+' days ago)':''):'not available';
+ const policySet=report.contract.transferPolicies?.some(row=>Number(row.id)!==0);
+ lines.push('**Token details**\n\n- Token address: '+report.address+'\n- Supply: '+report.contract.totalSupply+' '+report.identity.symbol+'\n- First created: '+created+'\n- Coinbase reference value: '+reference+(report.stock.referenceNavUpdatedAt?', updated '+date(report.stock.referenceNavUpdatedAt):'')+'. This is a reference value, not a live trade price.\n- Transfer check: '+(report.contract.pausedFeatures.includes('TRANSFER')?'transfers are paused in the contract.':'the contract does not report transfers as paused.')+' '+(policySet?'Transfer rules are also set; they may limit who can send or receive. We did not check whether a specific wallet can transfer.':'No transfer rules were reported.'));
+ if(market)lines.push('**Market activity**\n\n- Market: '+(market.dex||'DEX')+' · '+market.baseToken.symbol+'/'+market.quoteToken.symbol+'\n- Money in the pool: '+money(market.liquidityUsd)+'\n- Traded in the last 24 hours: '+money(market.volume24hUsd)+' ('+(market.transactions24h?market.transactions24h.buys+' buys and '+market.transactions24h.sells+' sells':'trade count not available')+')\n- Token price: '+money(market.tokenPriceUsd)+(market.tokenIsBase?'':' (not reported for this side of the pair)')+'\n- Reported market cap: '+money(market.marketCapUsd)+'\n- Estimated value of all tokens at this price: '+money(market.fdvUsd)+'\n- Data checked: '+date(report.market.checkedAt)+' · [Open this market]('+market.url+')');
+ else lines.push('**Market activity**\n\n'+(report.market.status==='no-matching-pairs'?'No matching Base market was found.':'Market data could not be loaded just now.')+' No missing values have been filled in.');
+ if(report.holders){
+  const holder=report.holders,share=holder.sampleTop10SharePercent,balances=holder.largestBalancesInSample||[];
+  const coverage=holder.hasMore?'The provider returned '+(holder.sampleSize||'a partial set')+' of '+(holder.holderCount??'an unknown number of')+' holders, so this is a sample, not a full ranking.':'The provider returned the full holder list.';
+  const rows=['- Holders reported: '+(holder.holderCount??'not available'),'- Largest 10 in '+(holder.hasMore?'the returned sample':'the list')+' hold '+(share==null?'an unreported share':Number(share).toFixed(2)+'%')+' of supply','- '+coverage,'- Checked: '+date(holder.checkedAt)+(holder.blockNumber?' · block '+holder.blockNumber:'')];
+  for(const [index,row] of (holder.holderActivity||[]).slice(0,3).entries()){
+   const balance=balances.find(candidate=>candidate.address.toLowerCase()===row.address.toLowerCase());
+   const amount=balance?balance.balance+' '+report.identity.symbol+(balance.percentOfSupply==null?'':' ('+balance.percentOfSupply+'% of supply)'):'balance not available';
+   const addressLink='['+short(row.address)+'](https://basescan.org/address/'+row.address+')';
+   let detail='Recent buy/sell activity was not checked for this address.';
+   if(row.marketPairMatch)detail='This is the '+(row.marketPairMatch.dex||'DEX')+' market contract, not an individual wallet.';
+   else if(row.status==='contract')detail='Code is published at this address, so it is not labeled as an individual wallet.';
+   else if(row.status==='available')detail=row.buys+' buys and '+row.sells+' sells found among '+row.transactionsChecked+' recent transactions checked.';
+   else if(row.status!=='contract'&&row.reason)detail='Recent activity was unavailable: '+row.reason;
+   rows.push('- Large holder '+(index+1)+': '+addressLink+' · '+amount+'. '+detail);
+  }
+  if(holder.source==='GoldRush Token Holders API')rows.push('- Recent activity only covers transactions returned by the provider. No recent activity does not prove there were no earlier trades.');
+  rows.push('- Addresses are not identified as people or labeled as team wallets.');
+  const holderSourceUrl=holder.sourceUrl||holder.url;
+  const holderSourceLabel=holder.source==='GoldRush Token Holders API'?'GoldRush holder data':holder.url?'Blockscout holder list':'Holder data source';
+  lines.push('**Who holds it**\n\n'+rows.join('\n')+(holderSourceUrl?'\n\n['+holderSourceLabel+']('+holderSourceUrl+')':''));
+ }else lines.push('**Who holds it**\n\nHolder data is not available: '+report.coverage.holders+'.');
+ if(report.tradeHandoff.url)lines.push('**If you want to trade**\n\n[Open '+report.tradeHandoff.assetSymbol+' on Bankr]('+report.tradeHandoff.url+'). Bankr checks your location and shows its current executable quote. You choose whether to buy or sell there. Dinn has not prepared or sent a trade.');
+ else lines.push('**If you want to trade**\n\nThis stock is not on Bankr’s current trade list, so Dinn cannot open a trade for it.');
+ lines.push('This is evidence from the linked sources, not a contract safety check or a promise that a trade will work.');
+ return lines.join('\n\n');
 }

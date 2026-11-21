@@ -8,7 +8,7 @@ select{font:inherit;border:1px solid #dce3dd;border-radius:8px;padding:12px;back
 
 .dex-dialog{width:min(640px,94vw);max-height:90vh;overflow:auto;border:1px solid #dce3dd;border-radius:18px;padding:24px}.dex-dialog::backdrop{background:#15251e66}.dex-dialog .brief-form{max-width:none}.dex-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.6}.dex-dialog #dex-close{float:right}.dex-dialog a.primary{display:inline-block;text-decoration:none;margin-top:12px}.dex-dialog input,.dex-dialog textarea{width:100%;box-sizing:border-box}
 
-.assistant .message-body>p{margin:0 0 .8em;white-space:normal}.assistant .message-body>p:last-child{margin-bottom:0}.assistant .message-body ul,.assistant .message-body ol{margin:.4em 0 .9em;padding-left:1.4em;white-space:normal}.assistant .message-body a{text-decoration:underline;overflow-wrap:anywhere}.assistant .message-body pre{white-space:pre-wrap;overflow-wrap:anywhere}.assistant .message-body .tool-action{display:block;margin-top:1rem}
+.assistant .message-body>p{margin:0 0 .55em;white-space:normal}.assistant .message-body>p:last-child{margin-bottom:0}.assistant .message-body ul,.assistant .message-body ol{margin:.2em 0 .55em;padding-left:1.25em;white-space:normal}.assistant .message-body li{line-height:1.6;margin:.12em 0}.assistant .message-body a{text-decoration:underline;overflow-wrap:anywhere}.assistant .message-body pre{white-space:pre-wrap;overflow-wrap:anywhere}.assistant .message-body .tool-action{display:block;margin-top:1rem}
 
 .dex-logo-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0}.dex-logo-row[hidden]{display:none}.dex-logo-row button{display:inline-flex;align-items:center;gap:8px}
 

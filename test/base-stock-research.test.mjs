@@ -48,7 +48,7 @@ test('Base holder snapshot falls back to configured Blockscout balances without 
  assert.equal(requests.length,1);assert.match(requests[0].url,/api\.blockscout\.com\/8453\/api\/v2\/tokens\/0xb20000000000000000000078ee7ce2fe4908108c\/holders/);assert.equal(new URL(requests[0].url).searchParams.get('items_count'),'100');assert.equal(new URL(requests[0].url).searchParams.get('apikey'),'fixture-secret');
  assert.equal(snapshot.source,'Blockscout token holder API');assert.equal(snapshot.url,`https://base.blockscout.com/token/${address}?tab=holders`);assert.equal(snapshot.holderCount,2);assert.equal(snapshot.sampleTop10SharePercent,100);assert.deepEqual(snapshot.largestBalancesInSample.map(row=>row.address),[holderA,holderB]);assert.ok(snapshot.holderActivity.every(row=>row.status==='unavailable'));assert.match(snapshot.activityCoverage,/buys and sells were not classified/);assert.match(snapshot.coverage,/Contract addresses may be included/);assert.doesNotMatch(JSON.stringify(snapshot),/fixture-secret/);
  const message=baseStockResearchMessage({identity:{name:'NVIDIA Corporation',symbol:'NVDAc',status:'matched',sourceUrl:'https://api.coinbase.com/v1/tokenized-stocks'},address,stock:{referenceNav:null},contract:{blockNumber:'123',name:'NVIDIA Corporation',symbol:'NVDAc',decimals:8,totalSupply:'0.00001',multiplier:'1',pausedFeatures:[],transferPolicies:[]},market:{status:'unavailable',checkedAt:'2026-11-21T00:00:00Z',pairs:[]},holders:snapshot,tradeHandoff:{url:null},coverage:{holders:snapshot.coverage}});
- assert.match(message,/\[Open holder source\]\(https:\/\/base\.blockscout\.com\/token\//);assert.match(message,/does not classify buys or sells/);
+ assert.match(message,/\[Blockscout holder list\]\(https:\/\/base\.blockscout\.com\/token\//);assert.match(message,/does not classify buys or sells/);
 });
 
 test('stock research reports dated provider evidence and only offers Bankr when currently listed',async()=>{
@@ -62,16 +62,18 @@ test('stock research reports dated provider evidence and only offers Bankr when 
  });
  assert.equal(report.identity.status,'matched');assert.equal(report.tradeHandoff.status,'open-bankr-for-current-quote');assert.equal(report.tradeHandoff.url,'https://bankr.bot/trade/'+address);assert.equal(report.tradeHandoff.assetSymbol,'NVDAc');assert.equal(report.market.pairs[0].liquidityUsd,100000);assert.deepEqual(calls,['holders']);
  const message=baseStockResearchMessage(report);
- assert.match(message,/Bankr checks location eligibility and shows the current executable quote/);
- for(const heading of ['Token checks','Market activity','Holder evidence','Bankr trade step'])assert.match(message,new RegExp('\\n\\n\\*\\*'+heading+'\\*\\*'));
- assert.ok(message.includes('reported market cap $9,000,000.00, reported FDV $9,500,000.00'));
- assert.match(message,/checked 2026-11-20T23:55:00Z at block 123/);
- assert.ok(message.includes('Largest sampled holder 1 0x1111111111111111111111111111111111111111: 200 NVDAc (20% of supply). Address matches the DEX Screener aerodrome pair contract; it is a pool contract, not a wallet.'));
- assert.match(message,/GoldRush holder API documentation/);
+ assert.match(message,/Bankr checks your location and shows its current executable quote/);
+ for(const heading of ['Identity','Token details','Market activity','Who holds it','If you want to trade'])assert.ok(message.includes('**'+heading+'**'),heading);
+ assert.ok(message.includes('Reported market cap: $9,000,000.00'));
+ assert.ok(message.includes('Estimated value of all tokens at this price: $9,500,000.00'));
+ assert.match(message,/Checked: 2026-11-20 23:55 UTC · block 123/);
+ assert.ok(message.includes('[0x1111…1111](https://basescan.org/address/0x1111111111111111111111111111111111111111) · 200 NVDAc (20% of supply). This is the aerodrome market contract, not an individual wallet.'));
+ assert.match(message,/GoldRush holder data/);
  assert.equal(report.holders.holderActivity[0].marketPairMatch.address,other);
  assert.ok(report.sources.some(source=>source.label==='GoldRush Token Holders API documentation'));
- assert.match(message,/NVIDIA Corporation \(NVDAc\) · Base\n\nCoinbase registry and onchain token identity match\./);
- assert.match(message,/\*\*Token checks\*\*\n\n/);
+ assert.match(message,/\*\*NVIDIA Corporation \(NVDAc\) on Base\*\*/);
+ assert.match(message,/The ticker, name, and token-unit settings in Coinbase’s stock list match what Base reports/);
+ assert.match(message,/\*\*Token details\*\*\n\n/);
 });
 
 test('free stock preview omits holder lookups and no Bankr link is invented',async()=>{
