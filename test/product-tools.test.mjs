@@ -17,6 +17,8 @@ test('normal Coinbase stock tickers route to the separate Base stock research to
 });
 test('a follow-up Coinbase stock buy or sell request hands off to Bankr conversationally',()=>{
  const history=[{role:'assistant',content:`NVIDIA Corporation (NVDAc) · Base\nCoinbase registry and onchain token identity match.\nContract: ${baseToken}\nWant to trade? [Open Bankr](https://bankr.bot) and ask for NVDAc on Base.`}];
+ assert.deepEqual(directProductIntent('Research Coinbase stock NVDAc. Read only; do not trade.',{history}),{name:'research_base_stock',args:{query:'NVDAc'}});
+ assert.deepEqual(directProductIntent('Do not trade NVDAc; check its latest evidence.',{history}),{name:'research_base_stock',args:{query:'NVDAc'}});
  const result=directProductIntent('Buy it', {history});
  assert.match(result.message,/https:\/\/bankr\.bot/);assert.doesNotMatch(result.message,/\/trade\//);assert.match(result.message,/NVDAc on Base/);assert.match(result.message,/location eligibility/);assert.deepEqual(result.actions,[]);
 });

@@ -57,13 +57,21 @@ test('stock research reports dated provider evidence and only offers Bankr when 
   env:{GOLDRUSH_API_KEY:'not-used-by-stub'},
   baseStockLookupImpl:async()=>({stocks:[{...row,bankrPairSupported:true,liquidityAdvisory:{illiquid:false,source:'Bankr quote-token API'}}]}),
   b20SnapshotImpl:async(token)=>({address:token,blockNumber:'123',blockHash:'0x'+'b'.repeat(64),blockTimestamp:'2026-11-21T00:00:00Z',name:row.name,symbol:row.symbol,decimals:row.decimals,totalSupply:row.totalSupply,multiplier:'1000000000000000000',pausedFeatures:[],transferPolicies:[{scope:'TRANSFER_SENDER_POLICY',id:5},{scope:'TRANSFER_RECEIVER_POLICY',id:5},{scope:'TRANSFER_EXECUTOR_POLICY',id:5},{scope:'MINT_RECEIVER_POLICY',id:5}],identityStatus:'matched',registryComparison:{name:true,symbol:true,decimals:true}}),
-  marketSnapshotImpl:async()=>({source:'DEX Screener',status:'available',checkedAt:'2026-11-21T00:00:00Z',pairs:[{pairAddress:other,dex:'aerodrome',url:'https://dexscreener.com/base/'+other,baseToken:{symbol:'NVDAc'},quoteToken:{symbol:'USDC'},tokenIsBase:true,tokenPriceUsd:180.2,liquidityUsd:100000,volume24hUsd:200000,transactions24h:{buys:10,sells:8}}]}),
-  holderSnapshotImpl:async()=>{calls.push('holders');return {source:'GoldRush',blockNumber:123,holderCount:20,sampleSize:20,hasMore:false,sampleTop10SharePercent:50,largestBalancesInSample:[],holderActivity:[],coverage:'Full returned list.'};}
+  marketSnapshotImpl:async()=>({source:'DEX Screener',status:'available',checkedAt:'2026-11-21T00:00:00Z',pairs:[{pairAddress:other,dex:'aerodrome',url:'https://dexscreener.com/base/'+other,baseToken:{symbol:'NVDAc'},quoteToken:{symbol:'USDC'},tokenIsBase:true,tokenPriceUsd:180.2,liquidityUsd:100000,volume24hUsd:200000,marketCapUsd:9000000,fdvUsd:9500000,transactions24h:{buys:10,sells:8}}]}),
+  holderSnapshotImpl:async()=>{calls.push('holders');return {source:'GoldRush Token Holders API',checkedAt:'2026-11-20T23:55:00Z',blockNumber:123,holderCount:20,sampleSize:20,hasMore:false,sampleTop10SharePercent:50,largestBalancesInSample:[{address:other,balance:'200',percentOfSupply:20}],holderActivity:[{address:other,status:'contract',reason:'Contract code is present.'}],coverage:'Full returned list.'};}
  });
  assert.equal(report.identity.status,'matched');assert.equal(report.tradeHandoff.status,'open-bankr-for-current-quote');assert.equal(report.tradeHandoff.url,'https://bankr.bot');assert.equal(report.tradeHandoff.assetSymbol,'NVDAc');assert.equal(report.market.pairs[0].liquidityUsd,100000);assert.deepEqual(calls,['holders']);
  const message=baseStockResearchMessage(report);
  assert.match(message,/Bankr must show its current executable quote and check location eligibility/);
  for(const heading of ['Token checks','Market activity','Holder evidence','Bankr trade step'])assert.match(message,new RegExp('\\n\\n\\*\\*'+heading+'\\*\\*'));
+ assert.ok(message.includes('reported market cap $9,000,000.00, reported FDV $9,500,000.00'));
+ assert.match(message,/checked 2026-11-20T23:55:00Z at block 123/);
+ assert.ok(message.includes('Largest sampled holder 1 0x1111111111111111111111111111111111111111: 200 NVDAc (20% of supply). Address matches the DEX Screener aerodrome pair contract.'));
+ assert.match(message,/GoldRush holder API documentation/);
+ assert.equal(report.holders.holderActivity[0].marketPairMatch.address,other);
+ assert.ok(report.sources.some(source=>source.label==='GoldRush Token Holders API documentation'));
+ assert.match(message,/NVIDIA Corporation \(NVDAc\) · Base\n\nCoinbase registry and onchain token identity match\./);
+ assert.match(message,/\*\*Token checks\*\*\n\n/);
 });
 
 test('free stock preview omits holder lookups and no Bankr link is invented',async()=>{
