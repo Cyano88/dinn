@@ -123,13 +123,14 @@ export async function researchBaseStock(input,{fetchImpl=fetch,env=process.env,h
 export function baseStockResearchMessage(report){
  const money=value=>value==null?'not available':'$'+Number(value).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
  const date=value=>{const time=Date.parse(value||'');return Number.isFinite(time)?new Date(time).toISOString().slice(0,16).replace('T',' ')+' UTC':'date unavailable';};
+ const amount=value=>{const raw=String(value??'not available'),match=raw.match(/^(-?)(\d+)(?:\.(\d+))?$/);if(!match)return raw;const integer=match[2].replace(/\B(?=(\d{3})+(?!\d))/g,','),fraction=(match[3]||'').replace(/0+$/,'');return match[1]+integer+(fraction?'.'+fraction:'');};
  const short=value=>value.slice(0,6)+'…'+value.slice(-4);
  const market=report.market?.pairs?.[0],lines=['**'+report.identity.name+' ('+report.identity.symbol+') on Base**'];
  lines.push('**Identity**\n\n'+(report.identity.status==='matched'?'The ticker, name, and token-unit settings in Coinbase’s stock list match what Base reports for this token.':'The token details do not fully match Coinbase’s list, so its identity is not confirmed.')+'\n\n[Coinbase stock list]('+report.identity.sourceUrl+') · [View token on BaseScan](https://basescan.org/address/'+report.address+')');
  const reference=report.stock.referenceNav==null?'not available':money(report.stock.referenceNav);
  const created=report.stock.firstMintAt?date(report.stock.firstMintAt)+(Number.isInteger(report.stock.ageDaysSinceFirstMint)?' (about '+report.stock.ageDaysSinceFirstMint+' days ago)':''):'not available';
  const policySet=report.contract.transferPolicies?.some(row=>Number(row.id)!==0);
- lines.push('**Token details**\n\n- Token address: '+report.address+'\n- Supply: '+report.contract.totalSupply+' '+report.identity.symbol+'\n- First created: '+created+'\n- Coinbase reference value: '+reference+(report.stock.referenceNavUpdatedAt?', updated '+date(report.stock.referenceNavUpdatedAt):'')+'. This is a reference value, not a live trade price.\n- Transfer check: '+(report.contract.pausedFeatures.includes('TRANSFER')?'transfers are paused in the contract.':'the contract does not report transfers as paused.')+' '+(policySet?'Transfer rules are also set; they may limit who can send or receive. We did not check whether a specific wallet can transfer.':'No transfer rules were reported.'));
+ lines.push('**Token details**\n\n- Token address: '+report.address+'\n- Supply: '+amount(report.contract.totalSupply)+' '+report.identity.symbol+'\n- First created: '+created+'\n- Coinbase reference value: '+reference+(report.stock.referenceNavUpdatedAt?', updated '+date(report.stock.referenceNavUpdatedAt):'')+'. This is a reference value, not a live trade price.\n- Transfer check: '+(report.contract.pausedFeatures.includes('TRANSFER')?'transfers are paused in the contract.':'the contract does not report transfers as paused.')+' '+(policySet?'Transfer rules are also set; they may limit who can send or receive. We did not check whether a specific wallet can transfer.':'No transfer rules were reported.'));
  if(market)lines.push('**Market activity**\n\n- Market: '+(market.dex||'DEX')+' · '+market.baseToken.symbol+'/'+market.quoteToken.symbol+'\n- Money in the pool: '+money(market.liquidityUsd)+'\n- Traded in the last 24 hours: '+money(market.volume24hUsd)+' ('+(market.transactions24h?market.transactions24h.buys+' buys and '+market.transactions24h.sells+' sells':'trade count not available')+')\n- Token price: '+money(market.tokenPriceUsd)+(market.tokenIsBase?'':' (not reported for this side of the pair)')+'\n- Reported market cap: '+money(market.marketCapUsd)+'\n- Estimated value of all tokens at this price: '+money(market.fdvUsd)+'\n- Data checked: '+date(report.market.checkedAt)+' · [Open this market]('+market.url+')');
  else lines.push('**Market activity**\n\n'+(report.market.status==='no-matching-pairs'?'No matching Base market was found.':'Market data could not be loaded just now.')+' No missing values have been filled in.');
  if(report.holders){
@@ -138,14 +139,14 @@ export function baseStockResearchMessage(report){
   const rows=['- Holders reported: '+(holder.holderCount??'not available'),'- Largest 10 in '+(holder.hasMore?'the returned sample':'the list')+' hold '+(share==null?'an unreported share':Number(share).toFixed(2)+'%')+' of supply','- '+coverage,'- Checked: '+date(holder.checkedAt)+(holder.blockNumber?' · block '+holder.blockNumber:'')];
   for(const [index,row] of (holder.holderActivity||[]).slice(0,3).entries()){
    const balance=balances.find(candidate=>candidate.address.toLowerCase()===row.address.toLowerCase());
-   const amount=balance?balance.balance+' '+report.identity.symbol+(balance.percentOfSupply==null?'':' ('+balance.percentOfSupply+'% of supply)'):'balance not available';
+   const quantity=balance?amount(balance.balance)+' '+report.identity.symbol+(balance.percentOfSupply==null?'':' ('+amount(balance.percentOfSupply)+'% of supply)'):'balance not available';
    const addressLink='['+short(row.address)+'](https://basescan.org/address/'+row.address+')';
    let detail='Recent buy/sell activity was not checked for this address.';
    if(row.marketPairMatch)detail='This is the '+(row.marketPairMatch.dex||'DEX')+' market contract, not an individual wallet.';
    else if(row.status==='contract')detail='Code is published at this address, so it is not labeled as an individual wallet.';
    else if(row.status==='available')detail=row.buys+' buys and '+row.sells+' sells found among '+row.transactionsChecked+' recent transactions checked.';
    else if(row.status!=='contract'&&row.reason)detail='Recent activity was unavailable: '+row.reason;
-   rows.push('- Large holder '+(index+1)+': '+addressLink+' · '+amount+'. '+detail);
+   rows.push('- Large holder '+(index+1)+': '+addressLink+' · '+quantity+'. '+detail);
   }
   if(holder.source==='GoldRush Token Holders API')rows.push('- Recent activity only covers transactions returned by the provider. No recent activity does not prove there were no earlier trades.');
   rows.push('- Addresses are not identified as people or labeled as team wallets.');
