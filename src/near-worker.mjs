@@ -104,7 +104,11 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
    const returned=Boolean(data.submittedAt && a.startedAt && row.latestMessage?.senderSide==='buyer');
    const refresh=returned || data.refresh===true;
    const resolveInput=(current,job)=>{
-    const candidate=eligibleNearResearchJob(current,job,agentId,{minimumEscrow,escrowToken});
+    // Marketplace retains the previous submission URL and time on rework.
+    const sameReturn=refresh && current?.assignment?.assignmentId===a.assignmentId &&
+     current.assignment.startedAt && current.latestMessage?.senderSide==='buyer';
+    const checked=sameReturn?{...current,assignment:{...current.assignment,submittedAt:null,deliverableUrl:null}}:current;
+    const candidate=eligibleNearResearchJob(checked,job,agentId,{minimumEscrow,escrowToken});
     if(!refresh || !candidate)return candidate;
     const target=candidate.address || candidate.query;
     const savedTarget=data.tokenAddress || data.stockQuery;
@@ -125,7 +129,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     assertLease();if(!refresh){await client.start(a.assignmentId);await wait(3000);}
     await store.save(lock,{...data,phase:'started',startedAt:now().toISOString()});await event('started');
     const current=await client.assignment(a.assignmentId);
-    if(!current||current.assignment?.workerAgentId!==agentId||current.assignment?.status!=='in_progress'||current.assignment?.deliverableUrl||current.assignment?.submittedAt){
+    if(!current||current.assignment?.workerAgentId!==agentId||current.assignment?.status!=='in_progress'||(!refresh && (current.assignment?.deliverableUrl||current.assignment?.submittedAt))){
      await store.save(lock,{...lock.data,phase:'stopped-before-research'});await event('stopped-before-research');return {assignmentId:a.assignmentId,state:'stopped-before-research'};
     }
     full=await client.job(a.jobId);input=resolveInput(current,full);
@@ -139,9 +143,10 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
    }
    // Re-check marketplace state immediately before the external delivery.
    const current=await client.assignment(a.assignmentId);
-   if(!current||current.assignment?.workerAgentId!==agentId||current.assignment?.status!=='in_progress'||current.assignment?.deliverableUrl||current.assignment?.submittedAt){
+   if(!current||current.assignment?.workerAgentId!==agentId||current.assignment?.status!=='in_progress'||(!refresh && (current.assignment?.deliverableUrl||current.assignment?.submittedAt))){
     await store.save(lock,{...data,phase:'not-delivered',lastObservedStatus:current?.assignment?.status||'missing'});await event('not-delivered');return {assignmentId:a.assignmentId,state:'not-delivered'};
    }
+   if(refresh && (!current.assignment.startedAt || current.latestMessage?.senderSide!=='buyer' || !resolveInput(current,await client.job(a.jobId))))return {assignmentId:a.assignmentId,state:'refresh-not-confirmed'};
    await store.renew(lock);assertLease();
    await store.save(lock,{...data,phase:'submitting',submissionAttemptedAt:now().toISOString()});await event('submission-attempted');
    const submitted=await client.submit(a.assignmentId,data.markdown);

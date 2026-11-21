@@ -299,6 +299,8 @@ test('rechecks a cached test run when escrow details arrive after the brief',asy
 test('reopened paid hire refreshes the original token once without starting a second hire',async()=>{
  const {row,fullJob}=fixture({description:'Research this Bankr launch '+tokenAddress,latestMessage:{senderSide:'buyer',body:'Refresh holders',attachments:[]}});
  row.assignment.startedAt='2026-11-20T10:00:00Z';
+ row.assignment.submittedAt='2026-11-20T10:01:00Z';
+ row.assignment.deliverableUrl='https://market.near.ai/previous-version';
  const lock={data:{phase:'submitted',submittedAt:'2026-11-20T10:01:00Z',service:'base.stock-paired.research',tokenAddress,testRun:false,markdown:'old'}};
  const store={acquire:async()=>lock,renew:async()=>{},save:async(_,d)=>{lock.data=d;},event:async()=>{},release:async()=>{}};
  const client={assignments:async()=>[row],assignment:async()=>row,job:async()=>fullJob,submit:async()=>({assignmentId,status:'submitted'})};
