@@ -7,9 +7,9 @@ export function submittedReportStatusMessage(result){
  if(result?.state!=='submitted')return null;
  return result.testRun===true?'NEAR worker submitted an authorized zero-cost test-run report; no payout is due.':'NEAR worker submitted a report; payout awaits buyer acceptance.';
 }
-function eligibilityFingerprint(row){
+function eligibilityFingerprint(row,fullJob){
  const a=row?.assignment,j=row?.job,m=row?.latestMessage;
- const value={policy:1,assignment:{assignmentId:a?.assignmentId,jobId:a?.jobId,workerAgentId:a?.workerAgentId,status:a?.status,startedAt:a?.startedAt,slaDeadlineAt:a?.slaDeadlineAt},job:{jobId:j?.jobId,title:j?.title,description:j?.description,jobKind:j?.jobKind,attachments:j?.attachments},latestMessage:m?{senderSide:m.senderSide,origin:m.origin,truncated:m.truncated,body:m.body,attachments:m.attachments}:null};
+ const value={policy:2,assignment:{assignmentId:a?.assignmentId,jobId:a?.jobId,workerAgentId:a?.workerAgentId,status:a?.status,startedAt:a?.startedAt,slaDeadlineAt:a?.slaDeadlineAt},job:{jobId:j?.jobId,title:j?.title,description:j?.description,jobKind:j?.jobKind,attachments:j?.attachments},eligibility:{jobId:fullJob?.jobId,status:fullJob?.status,title:fullJob?.title,description:fullJob?.description,jobKind:fullJob?.jobKind,hasOrigin:Object.hasOwn(fullJob||{},'origin'),origin:fullJob?.origin,isPrivate:fullJob?.isPrivate,isTestRun:fullJob?.isTestRun},latestMessage:m?{senderSide:m.senderSide,origin:m.origin,truncated:m.truncated,body:m.body,attachments:m.attachments}:null};
  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
@@ -95,9 +95,9 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     if(recorded){await store.save(lock,{...data,phase:'start-window-expired'});await event('start-window-expired');}
     return {assignmentId:a.assignmentId,state:'start-window-expired',recorded};
    }
-   const fingerprint=eligibilityFingerprint(row);
+   let full=await client.job(a.jobId);const fingerprint=eligibilityFingerprint(row,full);
    if(data.phase==='not-eligible'&&data.eligibilityFingerprint===fingerprint)return {assignmentId:a.assignmentId,state:'not-eligible',recorded:false,cached:true};
-   let full=await client.job(a.jobId),input=eligibleNearResearchJob(row,full,agentId,{minimumEscrow,escrowToken});
+   let input=eligibleNearResearchJob(row,full,agentId,{minimumEscrow,escrowToken});
    if(!input){const recorded=data.phase!=='not-eligible';if(recorded||data.eligibilityFingerprint!==fingerprint){await store.save(lock,{...data,phase:'not-eligible',eligibilityFingerprint:fingerprint});if(recorded)await event('not-eligible');}return {assignmentId:a.assignmentId,state:'not-eligible',recorded};}
    if(['submitted','accepted-payout-pending','accepted-test-run'].includes(data.phase))return {assignmentId:a.assignmentId,state:data.phase,testRun:data.testRun===true,payout:data.testRun===true?'none':undefined};
    if(!data.markdown){
