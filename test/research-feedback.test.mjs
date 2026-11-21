@@ -34,15 +34,25 @@ test('public replies require the shown byline, preserve private history and stay
   const offer={id,target,chainId:8453,publicFeed:true};
   await send('old',{id,target,chainId:8453,reply:'Private'});
   assert.equal((await send('old',offer)).body.byline,null);
-  const submission={...offer,byline:'@Example',reply:'Unlock updates please'};
+  const submission={...offer,byline:'@Exa\u2026le',reply:'Unlock updates please'};
   assert.equal((await send('old',submission)).status,409);
-  assert.equal((await send('alice',offer)).body.byline,'@Example');
+  assert.equal((await send('alice',offer)).body.byline,'@Exa\u2026le');
   assert.equal((await send('alice',{...submission,byline:'@Fake'})).status,409);
   assert.equal((await send('alice',submission)).body.published,true);
-  assert.deepEqual((await feedbackFeed(database)).entries,[{reply:submission.reply,byline:'@Example',source:'chat'}]);
+  assert.deepEqual((await feedbackFeed(database)).entries,[{reply:submission.reply,byline:'@Exa\u2026le',source:'chat'}]);
   assert.equal((await send('bob',{action:'removeLatest'})).body.removed,false);
   assert.equal((await send('alice',{action:'removeLatest'})).body.removed,true);
   assert.equal((await send('alice',submission)).body.published,false);
   assert.deepEqual((await feedbackFeed(database)).entries,[]);
  }finally{await pg.close();}
+});
+
+test('public chat attribution masks short handles and email providers without leaking a private domain',async()=>{
+ const {publicChatByline,publicAgentByline}=await import('../public/feedback-byline.js');
+ assert.equal(publicAgentByline('Atlas'),'Atlas');
+ assert.equal(publicAgentByline('hdbdd12345@gmail.com'),'hdbdd\u2026@gmail');
+ for(const [raw,masked] of [['@egf01234yhth','@egf\u2026yhth'],['hdbdd12345@gmail.com','hdbdd\u2026@gmail'],['ab@personal.org','a\u2026@email'],['@x','@\u2026'],['Legacy Name','Dinn member']]){
+  assert.equal(publicChatByline(raw),masked);
+  assert.equal(publicChatByline(masked),masked);
+ }
 });

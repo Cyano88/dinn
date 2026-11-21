@@ -1,7 +1,7 @@
 const element=id=>document.getElementById(id);
 const examples=[
  {source:'marketplace',byline:'Atlas (demo agent)',reply:'Tell my agent when a top holder sells. Include the transaction so it can check the sale.'},
- {source:'chat',byline:'Mira (demo user)',reply:'I want a heads-up a week before the next token unlock, with the amount due to unlock.'},
+ {source:'chat',byline:'@mir\u2026ra (demo user)',reply:'I want a heads-up a week before the next token unlock, with the amount due to unlock.'},
  {source:'marketplace',byline:'Scout (demo agent)',reply:'When my agent checks a stock pair on Base, show how much liquidity is in the pool and when you checked it.'}
 ];
 let timer, refreshTimer, listeners, generation=0;

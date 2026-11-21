@@ -1,3 +1,4 @@
+import {publicAgentByline,publicChatByline} from '../public/feedback-byline.js';
 import {createHash} from 'node:crypto';
 import {PrivyClient} from '@privy-io/node';
 import {Pool} from 'pg';
@@ -21,7 +22,7 @@ export async function feedbackFeed(database=feedbackDb){
  const db=await database();
  const {rows}=await db.query(`SELECT reply,public_byline AS byline,source FROM dinn_research_feedback
    WHERE published AND audience <> 'test' ORDER BY replied_at DESC,id LIMIT 30`);
- return {entries:rows};
+ return {entries:rows.map(row=>({...row,byline:row.source==='chat'?publicChatByline(row.byline):publicAgentByline(row.byline)}))};
 }
 export async function feedbackRequest(req,path,data,{database=feedbackDb,verifyChatUser,chatProfile=uid=>privy.users()._get(uid)}={}){
  const error=(status,message)=>({status,body:{error:message}});
@@ -51,8 +52,9 @@ export async function feedbackRequest(req,path,data,{database=feedbackDb,verifyC
   if(data.publicFeed===true && !hasReply){
    const profile=await chatProfile(uid);
    const handle=profile.linked_accounts.find(account=>account.type==='twitter_oauth')?.username;
-   const name=profile.linked_accounts.find(account=>account.type==='google_oauth')?.name?.trim();
-   byline=/^[a-z0-9_]{1,15}$/i.test(handle||'')?'@'+handle:(name && !name.includes('@')?name:'Dinn member');
+   const email=profile.linked_accounts.find(account=>account.type==='google_oauth')?.email
+    ||profile.linked_accounts.find(account=>account.type==='email')?.address;
+   byline=publicChatByline(handle?'@'+handle:email);
   }
   if(!/^0x[a-f0-9]{40}$/i.test(data.target)||![4663,8453].includes(data.chainId))return error(400,'Invalid research target.');
   source='chat';target=data.chainId+':'+data.target.toLowerCase();
@@ -65,7 +67,7 @@ export async function feedbackRequest(req,path,data,{database=feedbackDb,verifyC
  }
  if(data.publicFeed===true){
   // Capture the displayed attribution before publication. Earlier private replies stay private.
-  if(!hasReply)await db.query('UPDATE dinn_research_feedback SET public_byline=COALESCE(public_byline,$2) WHERE id=$1 AND reply IS NULL',[id,byline]);
+  if(!hasReply)await db.query("UPDATE dinn_research_feedback SET public_byline=CASE WHEN source='chat' THEN $2 ELSE COALESCE(public_byline,$2) END WHERE id=$1 AND reply IS NULL",[id,byline]);
   if(hasReply){
    const agentName=isMarket && typeof data.agentName==='string'?data.agentName.trim():'';
    if(agentName && (agentName.length>60 || /[\p{C}]/u.test(agentName)))return error(400,'Use a single-line agent name of up to 60 characters.');
@@ -74,7 +76,7 @@ export async function feedbackRequest(req,path,data,{database=feedbackDb,verifyC
     published=CASE WHEN reply IS NULL THEN audience <> 'test' ELSE published END,
     reply=$2,replied_at=COALESCE(replied_at,now())
     WHERE id=$1 AND target=$3 AND public_byline IS NOT NULL AND (public_byline=$4 OR (reply=$2 AND public_byline=$5)) AND (reply IS NULL OR (reply=$2 AND public_byline=COALESCE($5,$4)))
-    RETURNING published`,[id,data.reply.trim(),target,data.byline,agentName||null]);
+    RETURNING published`,[id,data.reply.trim(),target,data.byline,publicAgentByline(agentName)||null]);
    if(!result.rowCount)return error(409,'Reopen the public feedback prompt before submitting.');
    return {status:200,body:{saved:true,published:result.rows[0].published}};
   }
