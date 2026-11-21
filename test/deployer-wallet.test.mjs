@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
-import {walletKey,selectDeployer,connectDeployer} from '../src/deployer-wallet.mjs';
+import {walletKey,selectDeployer,connectDeployer,walletConnectionFailureText} from '../src/deployer-wallet.mjs';
 const address='0x1111111111111111111111111111111111111111';
 function fixture(){
  const provider=new EventEmitter();let chain=4663,accounts=[address];
@@ -15,6 +15,10 @@ test('default is Dinn; saved external preference never falls back silently',()=>
  assert.equal(selectDeployer([external,embedded],walletKey(external)),external);
  assert.equal(selectDeployer([embedded],walletKey(external)),undefined);
  assert.notEqual(walletKey(external),walletKey(embedded));
+});
+test('wallet connection errors name the network and give a useful recovery action',()=>{
+ assert.match(walletConnectionFailureText('external','Robinhood Chain'),/external wallet could not connect to Robinhood Chain.*supports this network.*Dinn wallet/i);
+ assert.match(walletConnectionFailureText('embedded','Base'),/Dinn wallet could not connect to Base.*account menu/i);
 });
 test('connect validates network and active address without requesting signatures',async()=>{
  const f=fixture();f.setChain(1);const connection=await connectDeployer(f.wallet,4663,()=>{});

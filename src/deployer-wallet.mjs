@@ -6,6 +6,11 @@ export function walletKey(wallet){
 export function selectDeployer(wallets,preference){
  return preference ? wallets.find(wallet=>walletKey(wallet)===preference) : wallets.find(wallet=>wallet.walletClientType==='privy');
 }
+export function walletConnectionFailureText(source,networkName='the selected network'){
+ return source==='embedded'
+  ? `Dinn wallet could not connect to ${networkName}. Retry from the account menu.`
+  : `This external wallet could not connect to ${networkName}. Choose a wallet that supports this network, or use Dinn wallet.`;
+}
 function withTimeout(promise,timeoutMs){let timer;return Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Wallet connection timed out. Retry connecting.')),timeoutMs);})]).finally(()=>clearTimeout(timer));}
 // Listen before asynchronous checks so a change during validation also invalidates it.
 export async function connectDeployer(wallet,chainId,onInvalidated,{timeoutMs=8000}={}){

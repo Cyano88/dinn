@@ -2,7 +2,7 @@ import {ensureEmbeddedWallet,accountEmbeddedWallet} from '../src/embedded-wallet
 import PonsConnect from './pons-connect.jsx';
 export {getAccessToken} from '@privy-io/react-auth';
 import {base,arbitrum,optimism} from 'viem/chains';
-import {walletKey,selectDeployer,connectDeployer} from '../src/deployer-wallet.mjs';
+import {walletKey,selectDeployer,connectDeployer,walletConnectionFailureText} from '../src/deployer-wallet.mjs';
 import {checkWalletSigning} from '../src/signing-probe.mjs';
 ﻿import React,{useEffect,useState,useRef,Component} from 'react';
 import {createRoot} from 'react-dom/client';
@@ -95,7 +95,7 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
    dispose=connection.dispose;setWalletStatus('');setWalletError('');
    connectionRetries.current={key:selectedKey,count:0};emit({state:'connected',authenticated:true,userId:user?.id,provider:connection.provider,address:selected.address,source:selected.walletClientType==='privy'?'embedded':'external',sendTransaction:selected.walletClientType==='privy'?sendTransactionRef.current:null});
    if(launchChoice.current?.user===user?.id&&launchChoice.current?.key===selectedKey){launchChoice.current=null;window.dispatchEvent(new CustomEvent('dinn:launch-wallet-selected',{detail:{userId:user.id,address:selected.address,label:selected.walletClientType==='privy'?'Dinn wallet':selected.meta?.name||'External wallet'}}));}
-  }).catch(()=>{if(current()){if(selected.walletClientType==='privy'){if(connectionRetries.current.key!==selectedKey)connectionRetries.current={key:selectedKey,count:0};if(connectionRetries.current.count<2){const attempt=++connectionRetries.current.count;retryTimer=setTimeout(()=>{if(current())setRetry(value=>value+1);},attempt*1000);return;}}const message='Your wallet could not finish connecting. Retry connecting.';setWalletStatus(message);emit({state:'wallet-needed',authenticated:true,userId:user?.id,address:selected.address,source:selected.walletClientType==='privy'?'embedded':'external',walletStatus:message,canUseEmbedded:!!embedded});}});
+  }).catch(()=>{if(current()){if(selected.walletClientType==='privy'){if(connectionRetries.current.key!==selectedKey)connectionRetries.current={key:selectedKey,count:0};if(connectionRetries.current.count<2){const attempt=++connectionRetries.current.count;retryTimer=setTimeout(()=>{if(current())setRetry(value=>value+1);},attempt*1000);return;}}const source=selected.walletClientType==='privy'?'embedded':'external',message=walletConnectionFailureText(source,networkName);setWalletStatus(message);emit({state:'wallet-needed',authenticated:true,userId:user?.id,address:selected.address,source,walletStatus:message,canUseEmbedded:!!embedded});}});
   return()=>{cancelled=true;clearTimeout(retryTimer);dispose?.();};
  },[ready,authPending,initTimedOut,walletsReady,authenticated,selectedKey,user?.id,privyError,networkId,retry,walletBootstrap.error,walletReadyTimeout]);
  async function run(fn){setError('');setWorking(true);try{await fn();}catch{setError('That action could not complete. Please try again.');}finally{setWorking(false);}}
