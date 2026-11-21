@@ -49,6 +49,12 @@ test('Base stock-pair trade requests return a read-only estimate and hand execut
  const token=baseToken,stock='0x'+'9'.repeat(40),reportMessage=`**Pairing**\n\nExample (EX) is confirmed as paired with NVDA on Base.\n\nToken address: ${token}.`,report={address:token,classification:'verified-bankr-stock-paired-token',verification:{status:'verified'},market:{matchesBankrPool:true},launch:{symbol:'EX',poolId:'0x'+'c'.repeat(64),pairedStock:{address:stock,symbol:'NVDA'}},stock:{address:stock,symbol:'NVDA'}};
  let quoted=0,researchOptions;
  const dependencies={baseStockResearch:async(_input,options)=>{researchOptions=options;return report;},quoteRoute:async(input,options)=>{quoted++;assert.deepEqual(input,{kind:'swap',chainId:8453,account,amount:'10',asset:stock,outputAsset:token});assert.equal(options.baseResearchResult,report);return {amount:'10',asset:{symbol:'NVDA'},outputAsset:{symbol:'EX'},expectedAmount:'500',minimumAmount:'495',provider:'Uniswap V4 pool reference'};}};
+ const availabilityEvents=[];
+ for await(const event of streamProductChat({message:'Can I trade this?',history:[{role:'assistant',content:reportMessage}]},[],{env:{},execute:async(name,args)=>{
+  assert.equal(name,'base_stock_trade');assert.equal(args.kind,'availability');
+  return {message:'Check the NTA quote on Bankr.',actions:[]};
+ }}))availabilityEvents.push(event);
+ assert.match(availabilityEvents.filter(event=>event.type==='delta').map(event=>event.text).join(''),/quote on Bankr/);
  const context={walletAccount:account,message:'Buy 10 NVDA',history:[{role:'assistant',content:reportMessage}]};
  const quote=await executeProductTool('base_stock_trade',{kind:'buy',address:token},context,dependencies);
  assert.match(quote.message,/Estimated output: 500 EX/);assert.match(quote.message,/not Bankr's execution quote/);assert.match(quote.message,new RegExp('https://bankr\\.bot/trade/'+token));assert.match(quote.message,/Bankr must provide its executable quote and perform the required location check/);assert.match(quote.message,/No wallet permission or transaction was prepared/);assert.deepEqual(quote.actions,[]);assert.equal(quoted,1);assert.equal(researchOptions.holderSnapshotEnabled,false);
