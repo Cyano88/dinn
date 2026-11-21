@@ -19,7 +19,13 @@ export async function showFeedbackFeed(visible){
    clearTimeout(timer);
    const entry=entries[index];
    slide.querySelector('blockquote').textContent=entry.reply;
-   slide.querySelector('figcaption').textContent=entry.byline+' · '+(entry.source==='chat'?'Dinn chat':'NEAR Marketplace');
+   const chat=entry.source==='chat';
+   const icon=document.createElement('img');
+   icon.alt='';icon.width=16;icon.height=16;
+   icon.src=chat?'/brand/dinn-mark-dark.svg':'/brand/near.png';
+   const source=document.createElement('span');
+   source.className='feedback-source';source.append(icon,chat?'Dinn chat':'NEAR Marketplace');
+   slide.querySelector('figcaption').replaceChildren(document.createTextNode(entry.byline),source);
    slide.hidden=false;
    controls.hidden=entries.length<2;
    if(!matchMedia('(prefers-reduced-motion: reduce)').matches)slide.animate([{opacity:0,transform:'translateX(-12px)'},{opacity:1,transform:'none'}],{duration:320,easing:'ease-out'});

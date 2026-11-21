@@ -247,7 +247,7 @@ $('chat').onsubmit=async e=>{
   if(!feedback || feedback.done){say('There is no open research feedback request in this chat.');return;}
   if(!reply || reply.length>600){say('Please keep your feedback between 1 and 600 characters.');return;}
   const feedbackOwner=user,feedbackEpoch=epoch;
-  try{const {getAccessToken}=await import('/auth/entry.js');const result=await feedbackChat({...feedback,reply},await getAccessToken());if(epoch!==feedbackEpoch||user!==feedbackOwner)return;localStorage.setItem(key('research-feedback'),JSON.stringify({...feedback,done:true}));$('prompt').value='';recordSetupReply(text,result.published?'Published to Feedback. To remove it, say ?remove my latest feedback?.':'Feedback saved for the Dinn team. Thank you.');}
+  try{const {getAccessToken}=await import('/auth/entry.js');const result=await feedbackChat({...feedback,reply},await getAccessToken());if(epoch!==feedbackEpoch||user!==feedbackOwner)return;localStorage.setItem(key('research-feedback'),JSON.stringify({...feedback,done:true}));$('prompt').value='';recordSetupReply(text,result.published?'Published to Feedback. To remove it, say "remove my latest feedback".':'Feedback saved for the Dinn team. Thank you.');}
   catch{if(epoch===feedbackEpoch)say('Your feedback could not be saved. Your reply is ready to retry.');}return;
  }
  let requestText=text;const command=workspaceCommand(text);
