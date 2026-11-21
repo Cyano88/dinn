@@ -15,9 +15,9 @@ The existing Grail recording is a dated research snapshot. It is not the unified
 
 ## Base Stocks Maxxing Season
 
-The official campaign page lists **Agentic Stock Finance** for agents that research, earn, or trade around tokenized stocks. Dinn's Base scope is evidence-backed research for Bankr stock-paired tokens. Dinn does not execute Bankr trades. See the [official track page](https://www.base.org/stocksmaxxing) and [official rules](https://www.base.org/stocksmaxxing/rules) for current requirements and restrictions.
+The official campaign page lists **Agentic Stock Finance** for agents that research, earn, or trade around tokenized stocks. Dinn's Base scope has two research paths: evidence-backed checks for Coinbase tokenized stocks, and verification of separate Bankr launches paired with those stocks. When relevant, Dinn hands the user to Bankr for a current quote and location check. Dinn does not execute Bankr trades. See the [official track page](https://www.base.org/stocksmaxxing) and [official rules](https://www.base.org/stocksmaxxing/rules) for current requirements and restrictions.
 
-The campaign page requires a public X video demo tagging `@buildonbase` and a submitted form by 5 December 2026, 23:59 UTC. A future unified demo must show working product behavior and match the shipped code; captured data must be labeled with its query time and coverage. The project lead must review the final public post and form before submission.
+The campaign page requires a public X video demo tagging `@buildonbase` and a submitted form by 5 December 2026, 23:59 UTC. A future unified demo must show working product behavior and match the shipped code; captured data must be labeled with its query time and coverage. The project lead must review the final public post and form before submission. See the [Base research flows and evidence limits](NEAR-MARKETPLACE.md#agent-market-listing).
 
 ## Evidence limits
 

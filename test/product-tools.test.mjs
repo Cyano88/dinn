@@ -11,6 +11,8 @@ test('explicit stock-paired research language routes to Base without redirecting
 test('normal Coinbase stock tickers route to the separate Base stock research tool',()=>{
  for(const message of ['Research NVDAc','Research Coinbase stock NVDAc','Check Base stock token NVDAc',`Research this Coinbase stock token ${baseToken}`])assert.equal(directProductIntent(message).name,'research_base_stock',message);
  assert.deepEqual(directProductIntent('Research NVDAc'),{name:'research_base_stock',args:{query:'NVDAc'}});
+ assert.deepEqual(directProductIntent('Research Coinbase stock NVDAc. Read only; do not trade.'),{name:'research_base_stock',args:{query:'NVDAc'}});
+ assert.deepEqual(directProductIntent('Do not prepare a transaction. Research NVDAc.'),{name:'research_base_stock',args:{query:'NVDAc'}});
  assert.equal(directProductIntent(`Research Bankr token paired with NVDA ${baseToken}`).name,'research_base_stock_paired_token');
 });
 test('a follow-up Coinbase stock buy or sell request hands off to Bankr conversationally',()=>{

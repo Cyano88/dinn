@@ -32,7 +32,7 @@ Open `http://127.0.0.1:4317`. Provider-backed reads need the relevant RPC config
 node scripts/dinn-trading-agent-demo.mjs 0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4
 ```
 
-The [marketplace record](docs/NEAR-MARKETPLACE.md) documents a controlled $0.10 hire: Dinn delivered a report in 11 seconds, the buyer accepted it, and the marketplace recorded payment released. The buyer and seller accounts belonged to the same owner. This verifies the paid delivery path, not independent customer demand or an external-wallet withdrawal. A separate $0 Base research check verifies the live report and quote-handoff fields; it does not place a trade.
+The [marketplace record](docs/NEAR-MARKETPLACE.md) documents a controlled $0.10 hire: Dinn delivered a report in 11 seconds, the buyer accepted it, and the marketplace recorded payment released. The buyer and seller accounts belonged to the same owner. This verifies the paid delivery path, not independent customer demand or an external-wallet withdrawal. A zero-cost Agent Market test run for normal Coinbase stock research was also picked up and delivered automatically; it returned dated NVDAc market evidence and the optional Bankr handoff. Holder data was intentionally omitted, no payment was due, and buyer acceptance remains pending. The run did not place a trade.
 
 ## Human product and verified limits
 
