@@ -51,7 +51,8 @@ export async function feedbackRequest(req,path,data,{database=feedbackDb,verifyC
   if(data.publicFeed===true && !hasReply){
    const profile=await chatProfile(uid);
    const handle=profile.linked_accounts.find(account=>account.type==='twitter_oauth')?.username;
-   byline=/^[a-z0-9_]{1,15}$/i.test(handle||'')?'@'+handle:'Dinn member';
+   const name=profile.linked_accounts.find(account=>account.type==='google_oauth')?.name?.trim();
+   byline=/^[a-z0-9_]{1,15}$/i.test(handle||'')?'@'+handle:(name && !name.includes('@')?name:'Dinn member');
   }
   if(!/^0x[a-f0-9]{40}$/i.test(data.target)||![4663,8453].includes(data.chainId))return error(400,'Invalid research target.');
   source='chat';target=data.chainId+':'+data.target.toLowerCase();
@@ -66,11 +67,14 @@ export async function feedbackRequest(req,path,data,{database=feedbackDb,verifyC
   // Capture the displayed attribution before publication. Earlier private replies stay private.
   if(!hasReply)await db.query('UPDATE dinn_research_feedback SET public_byline=COALESCE(public_byline,$2) WHERE id=$1 AND reply IS NULL',[id,byline]);
   if(hasReply){
+   const agentName=isMarket && typeof data.agentName==='string'?data.agentName.trim():'';
+   if(agentName && (agentName.length>60 || /[\p{C}]/u.test(agentName)))return error(400,'Use a single-line agent name of up to 60 characters.');
    const result=await db.query(`UPDATE dinn_research_feedback SET
+    public_byline=COALESCE($5,public_byline),
     published=CASE WHEN reply IS NULL THEN audience <> 'test' ELSE published END,
     reply=$2,replied_at=COALESCE(replied_at,now())
-    WHERE id=$1 AND target=$3 AND public_byline=$4 AND (reply IS NULL OR reply=$2)
-    RETURNING published`,[id,data.reply.trim(),target,data.byline]);
+    WHERE id=$1 AND target=$3 AND public_byline IS NOT NULL AND (public_byline=$4 OR (reply=$2 AND public_byline=$5)) AND (reply IS NULL OR (reply=$2 AND public_byline=COALESCE($5,$4)))
+    RETURNING published`,[id,data.reply.trim(),target,data.byline,agentName||null]);
    if(!result.rowCount)return error(409,'Reopen the public feedback prompt before submitting.');
    return {status:200,body:{saved:true,published:result.rows[0].published}};
   }

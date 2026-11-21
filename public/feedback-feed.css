@@ -8,12 +8,11 @@
 .feedback-source img{object-fit:contain;flex:none}
 #feed-skeleton,#feed-slide{max-width:44rem;margin:clamp(2rem,8vh,6rem) 0 2rem}
 #feed-slide{min-height:10rem}
-#feed-example{display:block;margin-bottom:1rem;font-size:.78rem;font-weight:600;color:#506253}
-#feed-example[hidden],#feed-skeleton[hidden]{display:none}
+#feed-skeleton[hidden]{display:none}
 #feed-skeleton i{display:block;height:1.5rem;margin:0 0 .65rem;border-radius:.4rem;background:linear-gradient(90deg,#edf1ee 25%,#f7f9f7 45%,#edf1ee 65%);background-size:220% 100%;animation:feedback-shimmer 1.4s ease-in-out infinite}
 #feed-skeleton i:nth-child(2){width:74%}
 #feed-skeleton i:last-child{width:9rem;height:.9rem;margin-top:1.4rem}
 @keyframes feedback-shimmer{to{background-position-x:-220%}}
 @media(prefers-reduced-motion:reduce){#feed-skeleton i{animation:none}}
 .feed-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-#feed-slide .feedback-source:only-child{padding-inline-start:0;border:0}
+#feed-slide figcaption strong{font-weight:600;overflow-wrap:anywhere}

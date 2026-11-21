@@ -1,13 +1,13 @@
 const element=id=>document.getElementById(id);
 const examples=[
- {source:'marketplace',reply:'Tell my agent when a top holder sells. Include the transaction so it can check the sale.'},
- {source:'chat',reply:'I want a heads-up a week before the next token unlock, with the amount due to unlock.'},
- {source:'marketplace',reply:'When my agent checks a stock pair on Base, show how much liquidity is in the pool and when you checked it.'}
+ {source:'marketplace',byline:'Atlas (demo agent)',reply:'Tell my agent when a top holder sells. Include the transaction so it can check the sale.'},
+ {source:'chat',byline:'Mira (demo user)',reply:'I want a heads-up a week before the next token unlock, with the amount due to unlock.'},
+ {source:'marketplace',byline:'Scout (demo agent)',reply:'When my agent checks a stock pair on Base, show how much liquidity is in the pool and when you checked it.'}
 ];
-let timer, refreshTimer, generation=0;
+let timer, refreshTimer, listeners, generation=0;
 export async function showFeedbackFeed(visible){
  const current=++generation;
- clearTimeout(timer);clearTimeout(refreshTimer);
+ clearTimeout(timer);clearTimeout(refreshTimer);listeners?.abort();
  if(!visible)return;
  const slide=element('feed-slide'), controls=element('feed-controls'), status=element('feed-status');
  slide.hidden=controls.hidden=true;
@@ -22,13 +22,19 @@ export async function showFeedbackFeed(visible){
   if(!Array.isArray(result.entries))throw Error();
   let preview=result.entries.length===0,entries=preview?examples:result.entries;
   skeleton.hidden=true;status.textContent='';
-  let index=0,paused=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const motion=matchMedia('(prefers-reduced-motion: reduce)');
+  listeners=new AbortController();
+  const options={signal:listeners.signal};
+  let index=0,hovered=false,held=null;
+  function schedule(){
+   clearTimeout(timer);
+   if(entries.length>1 && !motion.matches && !hovered && held===null && !slide.matches(':focus-visible') && !controls.querySelector(':focus-visible')){
+    timer=setTimeout(()=>move(1),Math.max(8500,entries[index].reply.length*65));
+   }
+  }
   const render=()=>{
    clearTimeout(timer);
    const entry=entries[index];
-   const label=element('feed-example');
-   label.hidden=!preview;
-   if(preview)label.textContent='Example '+(index+1)+' of '+examples.length;
    slide.querySelector('blockquote').textContent=entry.reply;
    const chat=entry.source==='chat';
    const icon=document.createElement('img');
@@ -36,18 +42,28 @@ export async function showFeedbackFeed(visible){
    icon.src=chat?'/brand/dinn-mark-dark.svg':'/brand/near.png';
    const source=document.createElement('span');
    source.className='feedback-source';source.append(icon,chat?'Dinn chat':'NEAR Marketplace');
-   slide.querySelector('figcaption').replaceChildren(...(preview?[source]:[document.createTextNode(entry.byline),source]));
+   const author=document.createElement('strong');author.textContent=entry.byline;
+   slide.querySelector('figcaption').replaceChildren(author,source);
    slide.hidden=false;
    controls.hidden=entries.length<2;
    if(!matchMedia('(prefers-reduced-motion: reduce)').matches)slide.animate([{opacity:0,transform:'translateX(-12px)'},{opacity:1,transform:'none'}],{duration:320,easing:'ease-out'});
-   element('feed-pause').textContent=paused?'Play':'Pause';
-   if(!paused && entries.length>1)timer=setTimeout(()=>move(1),Math.max(8500,entry.reply.length*65));
+   schedule();
   };
   const move=offset=>{index=(index+offset+entries.length)%entries.length;render();};
-  element('feed-prev').onclick=()=>{paused=true;move(-1);};
-  element('feed-next').onclick=()=>{paused=true;move(1);};
-  element('feed-pause').onclick=()=>{paused=!paused;render();};
+  element('feed-prev').onclick=()=>move(-1);
+  element('feed-next').onclick=()=>move(1);
+  slide.addEventListener('pointerenter',event=>{if(event.pointerType==='mouse'){hovered=true;schedule();}},options);
+  slide.addEventListener('pointerleave',event=>{if(event.pointerType==='mouse'){hovered=false;schedule();}},options);
+  slide.addEventListener('pointerdown',event=>{if(event.isPrimary && event.pointerType!=='mouse'){held=event.pointerId;schedule();}},options);
+  const release=event=>{if(event.pointerId===held){held=null;schedule();}};
+  window.addEventListener('pointerup',release,options);
+  window.addEventListener('pointercancel',release,options);
+  const region=element('feedback-feed-view');
+  region.addEventListener('focusin',schedule,options);
+  region.addEventListener('focusout',()=>queueMicrotask(()=>{if(current===generation)schedule();}),options);
+  motion.addEventListener('change',schedule,options);
   render();
+  hovered=matchMedia('(hover: hover)').matches && slide.matches(':hover');schedule();
   async function checkForFirstReply(){
    if(current!==generation)return;
    try{

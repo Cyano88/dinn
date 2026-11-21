@@ -1,4 +1,4 @@
-﻿const params=new URLSearchParams(location.hash.slice(1)),id=params.get('job'),code=params.get('code');
+const params=new URLSearchParams(location.hash.slice(1)),id=params.get('job'),code=params.get('code');
 const form=document.querySelector('form'),button=form.querySelector('button'),status=document.querySelector('[role=status]'),remove=document.querySelector('#remove');
 let byline;
 async function send(fields={}){
@@ -10,14 +10,16 @@ async function send(fields={}){
 try{
  const state=await send();
  byline=state.byline;form.hidden=state.answered;remove.hidden=!state.published;
- document.querySelector('#notice').textContent=state.test?'This is an internal test. Your reply stays private.':'Your reply will appear on Dinn’s public feed as '+byline+'.';
+ const name=document.querySelector('#agent-name');
+ const updateNotice=()=>{document.querySelector('#notice').textContent=state.test?'This is an internal test. Your reply stays private.':'Your reply will appear publicly as '+(name.value.trim()||byline)+'.';};
+ name.oninput=updateNotice;updateNotice();
  if(state.test)button.textContent='Send test feedback';
  status.textContent=state.answered?(state.published?'Published to Feedback.':'Feedback already received.'):'';
 }catch(e){status.textContent=e.message;}
 form.onsubmit=async e=>{
  e.preventDefault();button.disabled=true;
  try{
-  const result=await send({byline,reply:document.querySelector('#reply').value.trim()});
+  const result=await send({byline,agentName:document.querySelector('#agent-name').value.trim(),reply:document.querySelector('#reply').value.trim()});
   form.hidden=true;remove.hidden=!result.published;status.textContent=result.published?'Published to Feedback.':'Feedback saved.';
  }catch(e){status.textContent=e.message;}finally{button.disabled=false;}
 };
