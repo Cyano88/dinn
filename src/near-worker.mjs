@@ -99,23 +99,42 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
    // Re-evaluate eligibility before using the cached negative result. Some
    // marketplace fields (for example zero-cost test-run escrow details) can
    // become available without changing the brief or full-job fingerprint.
-   let input=eligibleNearResearchJob(row,full,agentId,{minimumEscrow,escrowToken});
+   // A buyer return reopens the same assignment. Keep its original target and
+   // escrow checks, and require current buyer feedback before spending quota.
+   const returned=Boolean(data.submittedAt && a.startedAt && row.latestMessage?.senderSide==='buyer');
+   const refresh=returned || data.refresh===true;
+   const resolveInput=(current,job)=>{
+    const candidate=eligibleNearResearchJob(current,job,agentId,{minimumEscrow,escrowToken});
+    if(!refresh || !candidate)return candidate;
+    const target=candidate.address || candidate.query;
+    const savedTarget=data.tokenAddress || data.stockQuery;
+    return savedTarget && target.toLowerCase()===savedTarget.toLowerCase() && candidate.service===data.service && data.testRun===job.isTestRun ? candidate : null;
+   };
+   let input=resolveInput(row,full);
+   if(!input && data.submittedAt)return {assignmentId:a.assignmentId,state:'refresh-not-confirmed'};
+   if(returned && data.refresh===true && data.phase==='submitted')return {assignmentId:a.assignmentId,state:'refresh-limit'};
+   if(returned && !data.refresh && input){
+    const current=await client.assignment(a.assignmentId);
+    if(!current || !resolveInput(current,full) || current.latestMessage?.senderSide!=='buyer')return {assignmentId:a.assignmentId,state:'refresh-not-confirmed'};
+    data={...data,refresh:true,phase:'refresh-requested',markdown:null};
+    await store.save(lock,data);
+   }
    if(!input){if(data.phase==='not-eligible'&&data.eligibilityFingerprint===fingerprint)return {assignmentId:a.assignmentId,state:'not-eligible',recorded:false,cached:true};const recorded=data.phase!=='not-eligible';if(recorded||data.eligibilityFingerprint!==fingerprint){await store.save(lock,{...data,phase:'not-eligible',eligibilityFingerprint:fingerprint});if(recorded)await event('not-eligible');}return {assignmentId:a.assignmentId,state:'not-eligible',recorded};}
    if(['submitted','accepted-payout-pending','accepted-test-run'].includes(data.phase))return {assignmentId:a.assignmentId,state:data.phase,testRun:data.testRun===true,payout:data.testRun===true?'none':undefined};
    if(!data.markdown){
-    assertLease();await client.start(a.assignmentId);await wait(3000);
+    assertLease();if(!refresh){await client.start(a.assignmentId);await wait(3000);}
     await store.save(lock,{...data,phase:'started',startedAt:now().toISOString()});await event('started');
     const current=await client.assignment(a.assignmentId);
     if(!current||current.assignment?.workerAgentId!==agentId||current.assignment?.status!=='in_progress'||current.assignment?.deliverableUrl||current.assignment?.submittedAt){
      await store.save(lock,{...lock.data,phase:'stopped-before-research'});await event('stopped-before-research');return {assignmentId:a.assignmentId,state:'stopped-before-research'};
     }
-    full=await client.job(a.jobId);input=eligibleNearResearchJob(current,full,agentId,{minimumEscrow,escrowToken});
+    full=await client.job(a.jobId);input=resolveInput(current,full);
     if(!input){await store.save(lock,{...lock.data,phase:'stopped-before-research'});await event('stopped-before-research');return {assignmentId:a.assignmentId,state:'stopped-before-research'};}
     assertLease();
     const {service,...reportInput}=input;
-    const made=await report({service,requestId:'near-'+a.assignmentId,input:reportInput},{paidMarketplaceHire:full.isTestRun===false});
+    const made=await report({service,requestId:'near-'+a.assignmentId+(refresh?'-refresh':''),input:reportInput},{paidMarketplaceHire:full.isTestRun===false});
     if(made.status!=='completed'||typeof made.deliverableMarkdown!=='string'||!made.deliverableMarkdown.length||made.deliverableMarkdown.length>250000||!/^\w{64}$/.test(made.evidence?.sha256||''))throw Error('Research report was incomplete or too large.');
-    data={phase:'prepared',markdown:made.deliverableMarkdown,evidenceHash:made.evidence.sha256,service,tokenAddress:input.address,testRun:full.isTestRun===true,preparedAt:now().toISOString()};
+    data={refresh,phase:'prepared',markdown:made.deliverableMarkdown,evidenceHash:made.evidence.sha256,service,tokenAddress:input.address,stockQuery:input.query,testRun:full.isTestRun===true,preparedAt:now().toISOString()};
     await store.save(lock,data);await event('report-prepared');
    }
    // Re-check marketplace state immediately before the external delivery.

@@ -295,3 +295,22 @@ test('rechecks a cached test run when escrow details arrive after the brief',asy
  assert.deepEqual(events,['not-eligible','started','report-prepared','submission-attempted','submitted']);
  assert.equal(lock.data.phase,'submitted');
 });
+
+test('reopened paid hire refreshes the original token once without starting a second hire',async()=>{
+ const {row,fullJob}=fixture({description:'Research this Bankr launch '+tokenAddress,latestMessage:{senderSide:'buyer',body:'Refresh holders',attachments:[]}});
+ row.assignment.startedAt='2026-11-20T10:00:00Z';
+ const lock={data:{phase:'submitted',submittedAt:'2026-11-20T10:01:00Z',service:'base.stock-paired.research',tokenAddress,testRun:false,markdown:'old'}};
+ const store={acquire:async()=>lock,renew:async()=>{},save:async(_,d)=>{lock.data=d;},event:async()=>{},release:async()=>{}};
+ const client={assignments:async()=>[row],assignment:async()=>row,job:async()=>fullJob,submit:async()=>({assignmentId,status:'submitted'})};
+ let calls=0;
+ const worker=createNearWorker({agentId,...options,store,client,report:async(req,ctx)=>{
+  assert.equal(req.input.address,tokenAddress);
+  assert.equal(req.requestId,'near-'+assignmentId+'-refresh');
+  assert.equal(ctx.paidMarketplaceHire,true);
+  calls++;
+  return {status:'completed',deliverableMarkdown:'new',evidence:{sha256:'a'.repeat(64)}};
+ }});
+ assert.equal((await worker.runOnce()).results[0].state,'submitted');
+ assert.equal((await worker.runOnce()).results[0].state,'refresh-limit');
+ assert.equal(calls,1);
+});
