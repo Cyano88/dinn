@@ -50,7 +50,9 @@ test('stock research reports dated provider evidence and only offers Bankr when 
   holderSnapshotImpl:async()=>{calls.push('holders');return {source:'GoldRush',blockNumber:123,holderCount:20,sampleSize:20,hasMore:false,sampleTop10SharePercent:50,largestBalancesInSample:[],holderActivity:[],coverage:'Full returned list.'};}
  });
  assert.equal(report.identity.status,'matched');assert.equal(report.tradeHandoff.status,'open-bankr-for-current-quote');assert.equal(report.tradeHandoff.url,'https://bankr.bot');assert.equal(report.tradeHandoff.assetSymbol,'NVDAc');assert.equal(report.market.pairs[0].liquidityUsd,100000);assert.deepEqual(calls,['holders']);
- assert.match(baseStockResearchMessage(report),/Bankr must show its current executable quote and check location eligibility/);
+ const message=baseStockResearchMessage(report);
+ assert.match(message,/Bankr must show its current executable quote and check location eligibility/);
+ for(const heading of ['Token checks','Market activity','Holder evidence','Bankr trade step'])assert.match(message,new RegExp('\\n\\n\\*\\*'+heading+'\\*\\*'));
 });
 
 test('free stock preview omits holder lookups and no Bankr link is invented',async()=>{

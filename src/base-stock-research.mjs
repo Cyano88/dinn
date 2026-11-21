@@ -129,5 +129,16 @@ export function baseStockResearchMessage(report){
  if(report.tradeHandoff.url)lines.push(`Want to trade? [Open Bankr](${report.tradeHandoff.url}) and ask for ${report.tradeHandoff.assetSymbol} on Base. Bankr must show its current executable quote and check location eligibility; Dinn did not choose a side or amount and did not prepare a transaction.`);
  else lines.push('This ticker is not in the current Bankr stock-pair list, so Dinn cannot offer a Bankr trade handoff.');
  lines.push('This is a sourced snapshot, not a contract audit, eligibility decision or safe-to-trade verdict.');
- return lines.join('\n');
+ return lines.map((line,index)=>{
+  if(index===2)return '\n'+line;
+  if(line.startsWith('Onchain B20 check'))return '\n**Token checks**\n'+line.replace(/^Onchain B20 check\s*[·-]\s*/, '');
+  if(line.startsWith('Market ·'))return '\n**Market activity**\n'+line.replace(/^Market\s*[·-]\s*/, '');
+  if(line.startsWith('Market data:'))return '\n**Market activity**\n'+line;
+  if(line.startsWith('Holders ·'))return '\n**Holder evidence**\n'+line.replace(/^Holders\s*[·-]\s*/, '');
+  if(line.startsWith('Holder evidence:'))return '\n**Holder evidence**\n'+line;
+  if(line.startsWith('Want to trade?'))return '\n**Bankr trade step**\n'+line.replace(/^Want to trade\?\s*/, '');
+  if(line.startsWith('This ticker is not in the current Bankr stock-pair list'))return '\n**Bankr trade step**\n'+line;
+  if(line.startsWith('This is a sourced snapshot'))return '\n'+line;
+  return line;
+ }).join('\n');
 }
