@@ -267,3 +267,31 @@ test('retries a cached test run when the full job becomes eligible',async()=>{
  assert.deepEqual(events,['not-eligible','started','report-prepared','submission-attempted','submitted']);
  assert.equal(lock.data.phase,'submitted');
 });
+
+test('rechecks a cached test run when escrow details arrive after the brief',async()=>{
+ const {row,fullJob}=fixture({
+  jobKind:'instant',isPrivate:true,
+  description:'Service: base.stock.research\nChain: 8453\nTicker: NVDAc',
+  assignment:{escrowAmount:undefined,escrowToken:undefined},
+  fullJob:{isPrivate:true,isTestRun:true}
+ });
+ const calls=[],events=[],lock={data:null};let jobCalls=0;
+ const store={acquire:async()=>lock,renew:async()=>{},save:async(_lock,data)=>{lock.data=data;},event:async(_lock,name)=>events.push(name),release:async()=>{},get:async()=>null};
+ const client={
+  assignments:async()=>[row],
+  job:async()=>{jobCalls++;return fullJob;},
+  start:async()=>calls.push('start'),
+  assignment:async()=>row,
+  submit:async(id)=>({assignmentId:id,status:'submitted'})
+ };
+ const worker=createNearWorker({agentId,minimumEscrow:options.minimumEscrow,escrowToken:options.escrowToken,store,client,wait:async()=>{},report:async request=>{calls.push(request);return {status:'completed',deliverableMarkdown:'# Coinbase stock report',evidence:{sha256:'e'.repeat(64)}};}});
+ const first=await worker.runOnce();
+ assert.equal(first.results[0].state,'not-eligible');
+ row.assignment.escrowAmount='0';row.assignment.escrowToken='USD';
+ const second=await worker.runOnce();
+ assert.deepEqual(second.results[0],{assignmentId,state:'submitted',testRun:true,payout:'none'});
+ assert.equal(jobCalls,3);
+ assert.deepEqual(calls,['start',{service:'base.stock.research',requestId:'near-'+assignmentId,input:{query:'NVDAc'}}]);
+ assert.deepEqual(events,['not-eligible','started','report-prepared','submission-attempted','submitted']);
+ assert.equal(lock.data.phase,'submitted');
+});

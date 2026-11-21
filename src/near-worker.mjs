@@ -96,9 +96,11 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     return {assignmentId:a.assignmentId,state:'start-window-expired',recorded};
    }
    let full=await client.job(a.jobId);const fingerprint=eligibilityFingerprint(row,full);
-   if(data.phase==='not-eligible'&&data.eligibilityFingerprint===fingerprint)return {assignmentId:a.assignmentId,state:'not-eligible',recorded:false,cached:true};
+   // Re-evaluate eligibility before using the cached negative result. Some
+   // marketplace fields (for example zero-cost test-run escrow details) can
+   // become available without changing the brief or full-job fingerprint.
    let input=eligibleNearResearchJob(row,full,agentId,{minimumEscrow,escrowToken});
-   if(!input){const recorded=data.phase!=='not-eligible';if(recorded||data.eligibilityFingerprint!==fingerprint){await store.save(lock,{...data,phase:'not-eligible',eligibilityFingerprint:fingerprint});if(recorded)await event('not-eligible');}return {assignmentId:a.assignmentId,state:'not-eligible',recorded};}
+   if(!input){if(data.phase==='not-eligible'&&data.eligibilityFingerprint===fingerprint)return {assignmentId:a.assignmentId,state:'not-eligible',recorded:false,cached:true};const recorded=data.phase!=='not-eligible';if(recorded||data.eligibilityFingerprint!==fingerprint){await store.save(lock,{...data,phase:'not-eligible',eligibilityFingerprint:fingerprint});if(recorded)await event('not-eligible');}return {assignmentId:a.assignmentId,state:'not-eligible',recorded};}
    if(['submitted','accepted-payout-pending','accepted-test-run'].includes(data.phase))return {assignmentId:a.assignmentId,state:data.phase,testRun:data.testRun===true,payout:data.testRun===true?'none':undefined};
    if(!data.markdown){
     assertLease();await client.start(a.assignmentId);await wait(3000);
