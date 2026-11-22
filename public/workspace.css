@@ -187,3 +187,11 @@ select{font:inherit;border:1px solid #dce3dd;border-radius:8px;padding:12px;back
 #copy-address .wallet-copy-check,#copy-address[data-copied] svg:first-child{display:none}
 #copy-address[data-copied] .wallet-copy-check{display:block}
 #copy-address[data-copied]{color:#17633a;background:#eaf4ec;border-color:#9ec3a7}
+
+#wallet-back{display:none}
+#wallet-view:has(#wallet-operation:not([hidden])) > :is(.wallet-summary-head,#wallet-address,.wallet-actions,#wallet-assets,#wallet-recover,#wallet-other-assets,#wallet-use-dinn,#pons-wallet-panel,#wallet-status,.wallet-network-label,#wallet-network-picker){display:none}
+#wallet-view:has(#wallet-operation:not([hidden])) #wallet-back{display:inline-flex;align-items:center;gap:.4rem;margin:0 0 1.25rem}
+#wallet-view:has(#wallet-operation:not([hidden]) .wallet-action-form):has(#wallet-operation:not([data-kind="bridge"])) > #wallet-network-picker{display:block}
+#wallet-view .wallet-action-title,#wallet-operation h2{font-size:1.35rem;line-height:1.35;margin:.5rem 0 1.25rem}
+#wallet-operation .wallet-action-form{max-width:30rem}
+#wallet-view [hidden]{display:none!important}
