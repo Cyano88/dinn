@@ -55,6 +55,19 @@ function requestedResearchInput(row,job){
   if(addresses.length&&(!/^0x[0-9a-f]{40}$/i.test(query)||addresses.length!==1||addresses[0]!==query.toLowerCase()))return null;
   return {service:'base.stock.research',query};
  }
+ if(!services.length&&!chainLines.length&&!addresses.length){
+  const title=brief?.title;
+  const natural=[...new Set([...sources,title].filter(x=>typeof x==='string').map(x=>x.trim()))];
+  const ticker=/^(?:please\s+)?(?:research|check|inspect|look up)\s+\$?([a-z][a-z0-9._-]{0,14})\s+on\s+base(?:\s+chain)?[.!?]?$/i;
+  const matches=[...new Set(natural.map(x=>ticker.exec(x)?.[1]?.toUpperCase()).filter(Boolean))];
+  if(matches.length===1&&!/\b(?:robinhood|pons|bankr|solana|arbitrum|ethereum)\b/i.test(text)){
+   return {service:'base.stock.research',query:natural.map(x=>ticker.exec(x)?.[1]).find(Boolean)};
+  }
+  if(job.isPrivate && (job.origin==='a2a'||job.isTestRun===false)){
+   const candidate=natural.find(x=>discoveryStep(x)?.metric);
+   if(candidate && !outsideResearchScope(text))return {service:'base.stock-paired.discover',metric:discoveryStep(candidate).metric};
+  }
+ }
  if(addresses.length!==1)return null;
  const namesBase=/\b(?:on|for|via)\s+(?:the\s+)?base(?:\s+chain)?\b|\bbase[- ]stock[- ]paired\b|\bbankr\b|\bchain\s*:\s*8453\b/i.test(text);
  const namesRobinhood=/\brobinhood(?:\s+chain)?\b|\bpons\b|\bchain\s*:\s*4663\b/i.test(text);
@@ -81,7 +94,10 @@ function eligibleAssignment(row,fullJob,agentId,{minimumEscrow,escrowToken}={}){
  const testRun=fullJob.isTestRun===true;
  if(amount===null)return null;
  if(testRun){if(amount!==0n||(a.escrowToken!=null&&!['USD','USDC'].includes(a.escrowToken)))return null;}
- else if(minimum===null||minimum<=0n||amount<minimum||a.escrowToken!==escrowToken)return null;
+ else {
+  const marketplaceX402=fullJob.origin==='a2a' && fullJob.isPrivate===true && j.jobKind==='instant' && a.escrowToken==='X402';
+  if(minimum===null||minimum<=0n||amount<minimum||(!marketplaceX402&&a.escrowToken!==escrowToken))return null;
+ }
  return true;
 }
 export function eligibleNearResearchJob(row,fullJob,agentId,options){
@@ -136,8 +152,19 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     const savedTarget=data.tokenAddress || data.stockQuery;
     return savedTarget && target.toLowerCase()===savedTarget.toLowerCase() && candidate.service===data.service && data.testRun===job.isTestRun ? candidate : null;
    };
-   if(data.scopeNoticeSent)return {assignmentId:a.assignmentId,state:'unsupported-scope'};
-   const canGuide=eligibleAssignment(row,full,agentId,{minimumEscrow,escrowToken}) && full.isPrivate===true;
+   const oneShot=full.isPrivate===true && (full.origin==='a2a'||full.isTestRun===false);
+   const decline=async(reason,detail)=>{
+    assertLease();
+    const result=await client.decline(a.assignmentId,reason,detail);
+    if(result?.assignmentId!==a.assignmentId||result.status!=='cancelled')throw Error('Marketplace did not confirm the decline.');
+    await store.save(lock,{...data,phase:'declined'});await event('declined');
+    return {assignmentId:a.assignmentId,state:'declined'};
+   };
+   if(data.phase==='declined')return {assignmentId:a.assignmentId,state:'declined'};
+   if(oneShot && !data.submittedAt && !a.startedAt && eligibleAssignment(row,full,agentId,{minimumEscrow,escrowToken}) && !resolveInput(row,full))
+    return decline('rejected','Dinn needs one supported research brief per hire. Example: Research NVDAc on Base. For a Pons or Bankr launch, include its chain and contract address.');
+   if(!oneShot && data.scopeNoticeSent)return {assignmentId:a.assignmentId,state:'unsupported-scope'};
+   const canGuide=!oneShot && eligibleAssignment(row,full,agentId,{minimumEscrow,escrowToken}) && full.isPrivate===true;
    if(canGuide && !data.guidedInput && !data.submittedAt && !a.startedAt && !a.deliverableUrl &&
       full.isPrivate===true && a.workerAgentId===agentId && a.jobId===row.job?.jobId && full.jobId===a.jobId &&
       a.status==='in_progress' && full.status==='in_progress' && !row.job.attachments?.length && supportedResearchJobSurface(row.job,full)){
@@ -205,7 +232,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     data={...data,refresh:true,phase:'refresh-requested',markdown:null};
     await store.save(lock,data);
    }
-   if(!input && !a.startedAt && !a.submittedAt && !a.deliverableUrl && !data.submittedAt &&
+   if(!oneShot && !input && !a.startedAt && !a.submittedAt && !a.deliverableUrl && !data.submittedAt &&
       a.workerAgentId===agentId && a.jobId===row.job?.jobId && full.jobId===a.jobId &&
       a.status==='in_progress' && full.status==='in_progress' && full.isPrivate===true &&
       supportedResearchJobSurface(row.job,full)){
@@ -228,7 +255,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
    if(!input){if(data.phase==='not-eligible'&&data.eligibilityFingerprint===fingerprint)return {assignmentId:a.assignmentId,state:'not-eligible',recorded:false,cached:true};const recorded=data.phase!=='not-eligible';if(recorded||data.eligibilityFingerprint!==fingerprint){await store.save(lock,{...data,phase:'not-eligible',eligibilityFingerprint:fingerprint});if(recorded)await event('not-eligible');}return {assignmentId:a.assignmentId,state:'not-eligible',recorded};}
    if(['submitted','accepted-payout-pending','accepted-test-run'].includes(data.phase))return {assignmentId:a.assignmentId,state:data.phase,testRun:data.testRun===true,payout:data.testRun===true?'none':undefined};
    if(!data.markdown){
-    assertLease();if(!refresh){await client.start(a.assignmentId);await wait(3000);}
+    assertLease();if(!refresh&&!a.startedAt){await client.start(a.assignmentId);await wait(3000);}
     await store.save(lock,{...data,phase:'started',startedAt:now().toISOString()});await event('started');
     const current=await client.assignment(a.assignmentId);
     if(!current||current.assignment?.workerAgentId!==agentId||current.assignment?.status!=='in_progress'||(!refresh && (current.assignment?.deliverableUrl||current.assignment?.submittedAt))){
@@ -238,10 +265,20 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     if(!input){await store.save(lock,{...lock.data,phase:'stopped-before-research'});await event('stopped-before-research');return {assignmentId:a.assignmentId,state:'stopped-before-research'};}
     assertLease();
     const {service,...reportInput}=input;
-    const made=await report({service,requestId:'near-'+a.assignmentId+(refresh?'-refresh':''),input:reportInput},{paidMarketplaceHire:full.isTestRun===false});
+    let made;
+    try{
+     if(service==='base.stock-paired.discover'){
+      const shortlist=await discover(input.metric);
+      const markdown=discoveryMessage(shortlist).replace('Choose a result by number for its full report.','For a full report, use the listed contract and Base in a separate hire.');
+      made={status:'completed',deliverableMarkdown:markdown,evidence:{sha256:createHash('sha256').update(markdown).digest('hex')}};
+     }else made=await report({service,requestId:'near-'+a.assignmentId+(refresh?'-refresh':''),input:reportInput},{paidMarketplaceHire:full.isTestRun===false});
     if(made.status!=='completed'||typeof made.deliverableMarkdown!=='string'||!made.deliverableMarkdown.length||made.deliverableMarkdown.length>250000||!/^\w{64}$/.test(made.evidence?.sha256||''))throw Error('Research report was incomplete or too large.');
+    }catch(error){
+     if(!oneShot||refresh)throw error;
+     return decline('failed','Dinn could not verify this report from its sources. No completed report is available.');
+    }
     data={...(data.guidedInput?{guidedInput:data.guidedInput}:{}),refresh,phase:'prepared',markdown:made.deliverableMarkdown,evidenceHash:made.evidence.sha256,service,tokenAddress:input.address,stockQuery:input.query,testRun:full.isTestRun===true,preparedAt:now().toISOString()};
-    if(feedbackEnabled && full.isPrivate===true){
+    if(feedbackEnabled && full.isPrivate===true && service!=='base.stock-paired.discover'){
      const code=randomBytes(32).toString('hex');
      data.feedbackDigest=createHash('sha256').update(code).digest('hex');
      data.feedbackTarget=(service.startsWith('base.')?'8453':'4663')+':'+(made.result?.address||input.address||input.query);

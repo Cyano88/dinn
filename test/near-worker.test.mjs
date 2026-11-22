@@ -317,7 +317,7 @@ test('reopened paid hire refreshes the original token once without starting a se
  assert.equal(calls,1);
 });
 test('an unsupported private Base pair receives one scope notice before research starts',async()=>{
- const {row,fullJob}=fixture({jobKind:'instant',isPrivate:true,description:'Research '+tokenAddress+' on Base paired with USDC'});
+ const {row,fullJob}=fixture({jobKind:'instant',isPrivate:true,assignment:{escrowAmount:'0'},fullJob:{isTestRun:true},description:'Research '+tokenAddress+' on Base paired with USDC'});
  const lock={data:null},messages=[];
  const store={acquire:async()=>lock,renew:async()=>{},save:async(_,d)=>{lock.data=d;},release:async()=>{}};
  const client={job:async()=>fullJob,scopeMessage:async(_,body)=>messages.push(body)};
@@ -328,7 +328,7 @@ test('an unsupported private Base pair receives one scope notice before research
  assert.match(messages[0],/does not cover this request today/);
 });
 test('private ticker hire waits for chain and stock type and resumes once in the same assignment',async()=>{
- const {row,fullJob}=fixture({jobKind:'instant',isPrivate:true,description:'NVDAc'});
+ const {row,fullJob}=fixture({jobKind:'instant',isPrivate:true,assignment:{escrowAmount:'0'},fullJob:{isTestRun:true},description:'NVDAc'});
  const calls=[],prompts=[],requests=[],lock={data:null};
  const store={acquire:async()=>lock,renew:async()=>{},save:async(_,d)=>{lock.data=d;},event:async()=>{},release:async()=>{}};
  const client={job:async()=>fullJob,assignment:async()=>row,scopeMessage:async(_,body)=>prompts.push(body),start:async()=>calls.push('start'),submit:async()=>({assignmentId,status:'submitted'})};
@@ -342,7 +342,7 @@ test('private ticker hire waits for chain and stock type and resumes once in the
  assert.deepEqual(requests[0].input,{query:'NVDAc'});assert.equal(requests[0].service,'base.stock.research');
 });
 test('missing-target hire gets one prompt and can choose a ranked contract in the same job',async()=>{
- const {row,fullJob}=fixture({jobKind:'instant',isPrivate:true,description:'My trading agent uses research to decide whether to trade or skip.'});
+ const {row,fullJob}=fixture({jobKind:'instant',isPrivate:true,assignment:{escrowAmount:'0'},fullJob:{isTestRun:true},description:'My trading agent uses research to decide whether to trade or skip.'});
  const lock={data:null},messages=[],requests=[],calls=[];
  const store={acquire:async()=>lock,renew:async()=>{},save:async(_,d)=>{lock.data=d;},event:async()=>{},release:async()=>{}};
  const client={job:async()=>fullJob,assignment:async()=>row,scopeMessage:async(_,body)=>messages.push(body),start:async()=>calls.push('start'),submit:async()=>({assignmentId,status:'submitted'})};
@@ -355,4 +355,30 @@ test('missing-target hire gets one prompt and can choose a ranked contract in th
  await answer('liquidity');assert.match(messages.at(-1),/stock-pair shortlist/);assert.equal(calls.length,0);
  assert.equal((await answer('research the second one')).state,'submitted');
  assert.deepEqual(requests[0].input,{address:tokenAddress});
+});
+
+test('one paid A2A call delivers a plain English stock brief or reaches a confirmed decline',async()=>{
+ for(const description of ['Research NVDAc on Base','NVDAc','Research aMissingTicker on Base']){
+  const {row,fullJob}=fixture({jobKind:'instant',origin:'a2a',isPrivate:true,title:description,description,assignment:{escrowToken:'X402',escrowAmount:'0.1000'},
+   latestMessage:{senderSide:'buyer',origin:'direct',body:description,truncated:false,attachments:[]}});
+  const calls=[],lock={data:null};
+  const store={acquire:async()=>lock,renew:async()=>{},save:async(_,v)=>{lock.data=v;},event:async()=>{},release:async()=>{}};
+  const client={job:async()=>fullJob,assignment:async()=>row,start:async()=>calls.push('start'),
+   submit:async()=>{calls.push('submit');return {assignmentId,status:'submitted'};},
+   decline:async(_,reason)=>{calls.push(reason);return {assignmentId,status:'cancelled'};}};
+  const worker=createNearWorker({agentId,...options,minimumEscrow:'0.1000',store,client,wait:async()=>{},report:async req=>{
+   assert.equal(req.service,'base.stock.research');
+   if(req.input.query!=='NVDAc')throw Error('unknown stock');
+   return {status:'completed',deliverableMarkdown:'Verified stock evidence',evidence:{sha256:'d'.repeat(64)}};
+  }});
+  await worker.process(row);
+  assert.deepEqual(calls,description==='NVDAc'?['rejected']:description.includes('aMissing')?['start','failed']:['start','submit']);
+ }
+});
+
+test('X402 is accepted only for funded private A2A hires meeting the configured minimum',()=>{
+ for(const [origin,amount,expected] of [['a2a','0.1000',true],['a2a','0.0999',false],[null,'0.1000',false]]){
+  const {row,fullJob}=fixture({origin,isPrivate:true,jobKind:'instant',description:'Research NVDAc on Base',assignment:{escrowToken:'X402',escrowAmount:amount}});
+  assert.equal(Boolean(eligibleNearResearchJob(row,fullJob,agentId,{...options,minimumEscrow:'0.1000'})),expected);
+ }
 });
