@@ -285,7 +285,7 @@ $('chat').onsubmit=async e=>{
    const stockReport=result.toolsUsed?.some(name=>['research_pons_stock','research_pons_stock_pair'].includes(name));
    if(stockReport)result.message=[...result.message.split('\n\n').slice(0,2),overview].join('\n\n');
    else{
-    const takeaway=result.mode==='0g-tools'&&result.message?.trim();
+    const takeaway=result.mode==='0g-tools'&&result.message?.split('\n').filter(line=>! /\b(?:pink\s*lock|titan(?: locker)?|hoodlock|uncx)\b/i.test(line)).join('\n').trim();
     result.message=takeaway&&takeaway.length+overview.length<5400?overview+'\n\n'+takeaway:overview;
    }
   }

@@ -52,7 +52,7 @@ export function firstLockPreview(r){
   const date=row.nextScheduleDate||row.tgeOrUnlockDate||row.unlockDate||row.cliff||row.scheduleEnd||row.end;
   const link=lockDestination(name,source,row);
   const info=[];
-  if(amount!=null)info.push(amount+' '+(r.symbol||'tokens')+(row.soft?' on a soft vesting schedule':row.scheduledUnvested!=null?' still to vest':' remaining'));
+  if(amount!=null)info.push(new Intl.NumberFormat('en-US',{maximumSignificantDigits:10}).format(amount)+' '+(r.symbol||'tokens')+(row.soft?' on a soft vesting schedule':row.scheduledUnvested!=null?' still to vest':' remaining'));
   if(date&&Number.isFinite(Date.parse(date)))info.push('Release date: '+new Date(date).toISOString().slice(0,10)+' UTC');
   if(link)info.push('['+link.label+']('+link.url+')');
   if(info.length)return info.join(' ? ');
