@@ -1,3 +1,4 @@
+import {hoodLines} from './hoodlock-robinhood.mjs';
 import {uncxLines} from './uncx-robinhood.mjs';
 import {baseLockSummary} from './base-lock-evidence.mjs';
 import {discoveryMessage} from './discovery-guide.mjs';
@@ -130,7 +131,7 @@ function inspectionDeliverable(report,ponsState,ponsStateUnavailable=false){
   if(history.coverage)lines.push('Trade-history coverage: '+safeLine(history.coverage,500));
   for(const source of (Array.isArray(history.sourceUrls)?history.sourceUrls:[]))if(typeof source==='string'&&/^https:\/\//i.test(source))lines.push('Pons history source: '+source.slice(0,500));
  }
- lines.push(...uncxLines(report.uncxVesting));
+ lines.push(...hoodLines(report.hoodLocks),...uncxLines(report.uncxVesting));
  if(report.pinkLock){
   const locks=report.pinkLock;
   lines.push('','## PinkLock token locks and vesting','Coverage: '+safeLine(locks.scope,400));

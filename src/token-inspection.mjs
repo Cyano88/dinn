@@ -1,3 +1,4 @@
+import {hoodLines,hoodLocks} from './hoodlock-robinhood.mjs';
 import {uncxLines,uncxVesting} from './uncx-robinhood.mjs';
 import {attachVerifiedArtifact,controlResearch} from './token-controls.mjs';
 import {researchHolders} from './holder-research.mjs';
@@ -72,9 +73,10 @@ export async function inspectToken(address,{rpc,chainId=99901,client:provided,fe
   if(!report.protocol)report.checks.push(unknown('Holder concentration','Holder balances and the deployer identity are not verified in this report.'));
   if(chainId===4663&&report.rawSupply){
    const holdersWork=researchHolders(address,{client,blockNumber,decimals:report.decimals,rawSupply:report.rawSupply,protocol:report.protocol,fetchImpl,signal}).catch(()=>({status:'unavailable',rows:[],reason:'Holder index could not be checked at the report block.'}));
-   const [holders,pinkLock,uncx,history]=await Promise.all([
+   const [holders,pinkLock,hood,uncx,history]=await Promise.all([
     holdersWork,
     researchPinkLocks({address,decimals:report.decimals,client,blockNumber,holders:holdersWork,fetchImpl,signal}).catch(()=>({status:'unavailable',records:[],reason:'PinkLock records could not be checked at the report block.'})),
+    hoodLocks({client,address,blockNumber,timestamp:block.timestamp,decimals:report.decimals}),
     uncxVesting({client,address,blockNumber,timestamp:block.timestamp,decimals:report.decimals}),
     (async()=>{
      if(report.protocol?.name!=='Pons v2'||!report.protocol.curve||!report.protocol.pairToken)return null;
@@ -85,7 +87,7 @@ export async function inspectToken(address,{rpc,chainId=99901,client:provided,fe
    ]);
    report.holders=holders;
    report.holders.behavior=await researchHolderBehavior({tokenAddress:address,tokenDecimals:report.decimals,rows:report.holders.rows,blockNumber:blockNumber.toString(),checkedAt:report.checkedAt,fetchImpl,signal}).catch(()=>({status:'unavailable',rows:[],reason:'Holder transaction history could not be checked.'}));
-   report.uncxVesting=uncx;report.pinkLock=pinkLock;if(history)report.ponsHistory=history;
+   report.hoodLocks=hood;report.uncxVesting=uncx;report.pinkLock=pinkLock;if(history)report.ponsHistory=history;
   }
   const recheck=await client.getBlock({blockNumber});if(recheck.hash!==block.hash)throw Error('REORG');
   return report;
@@ -100,7 +102,7 @@ export async function inspectToken(address,{rpc,chainId=99901,client:provided,fe
 export function inspectionSummary(report,message=''){
  const find=label=>report.checks.find(c=>c.label===label);
  let selected;
- if(/uncx|unlock|pink\s*lock|vesting|vested|locked supply|supply locked|tokens? locked|lock schedule|lock records|token lock/i.test(message)){
+ if(/hoodlock|uncx|unlock|pink\s*lock|vesting|vested|locked supply|supply locked|tokens? locked|lock schedule|lock records|token lock/i.test(message)){
   const locks=report.pinkLock,records=Array.isArray(locks?.records)?locks.records:[],clean=value=>String(value??'unavailable').replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/\s+/g,' ').slice(0,180);
   const detailedRows=records.slice(0,30).map(row=>{
    const details=[`- ${clean(row.kind)} lock ${clean(row.id)} via ${clean(row.adapter)}: ${clean(row.remaining)} ${clean(report.symbol||'tokens')} remains; ${clean(row.unlocked)} unlocked; ${clean(row.currentlyWithdrawable)} currently withdrawable.`,`Owner: ${clean(row.owner)}. Schedule: created ${clean(row.lockDate)}; TGE/unlock ${clean(row.tgeOrUnlockDate)} (${clean(row.tgeReleasePercent)}%); cycle ${clean(row.cycleDays)} days, ${clean(row.cycleReleasePercent)}% per cycle.`,
@@ -110,7 +112,7 @@ export function inspectionSummary(report,message=''){
   });
   const recordCount=records.length>30?` Showing the first 30 of ${records.length} matching records.`:'';
   const sourceUrls=(Array.isArray(locks?.sourceUrls)?locks.sourceUrls:[]).map(source=>source?.url).filter(url=>typeof url==='string'&&(/^https:\/\/robinhoodchain\.blockscout\.com\/address\/0x[0-9a-f]{40}(?:\?tab=read_contract)?$/i.test(url)||/^https:\/\/docs\.pinksale\.finance\/pinklock\/create-a-lock\/?$/i.test(url)||/^https:\/\/www\.pinksale\.finance\/pinklock\/robinhood\/record\/\d+$/.test(url))).slice(0,8).map(url=>`[${url.includes('pinksale.finance')?'PinkLock source':'Blockscout source'}](${url})`);
-  return [...uncxLines(report.uncxVesting),`PinkLock check: ${clean(locks?.status||'unavailable')}. ${clean(locks?.reason||'No PinkLock result was returned.')}`,...(detailedRows.length?detailedRows:['No matching PinkLock record was verified.']),recordCount,clean(locks?.scope||'The checked sources do not cover every locker.'),...(sourceUrls.length?['Checked sources: '+sourceUrls.join(' · ')]:[]),'No matching record is not proof that supply is unlocked. '+report.network+' block '+report.blockNumber+'.'].filter(Boolean).join('\n');
+  return [...hoodLines(report.hoodLocks),...uncxLines(report.uncxVesting),`PinkLock check: ${clean(locks?.status||'unavailable')}. ${clean(locks?.reason||'No PinkLock result was returned.')}`,...(detailedRows.length?detailedRows:['No matching PinkLock record was verified.']),recordCount,clean(locks?.scope||'The checked sources do not cover every locker.'),...(sourceUrls.length?['Checked sources: '+sourceUrls.join(' · ')]:[]),'No matching record is not proof that supply is unlocked. '+report.network+' block '+report.blockNumber+'.'].filter(Boolean).join('\n');
  }
  else if(/launch age|token age|how old|when (?:was|did).*launch|curve.*volume|trading volume|generated fees|fees generated|fees? (?:were )?(?:generated|collected)|curve fees/i.test(message)){
   const history=report.ponsHistory,curve=history?.curve||{},clean=value=>String(value??'unavailable').replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/\s+/g,' ').slice(0,220);
@@ -157,7 +159,7 @@ export function inspectionSummary(report,message=''){
   const holderText=holders?.rows?.length?`${clean(holders.topSharePercent)}% of supply across the listed holder sample; holder-wallet signal: ${clean(behavior?.summary?.holderSignal||behavior?.status||'unavailable')}`:'Holder concentration unavailable';
   const lockText=lock?`${clean(lock.status)} PinkLock checks, ${Array.isArray(lock.records)?lock.records.length:0} matching record(s)${lock.status==='observed'&&!lock.records?.length?' (no match does not prove supply is unlocked)':''}`:'PinkLock check unavailable';
   const caveat=history?.coverage||lock?.scope||'This is a dated read-only snapshot; unknown does not mean safe.';
-  return `- ${basics}\n- ${market}\n- Holders: ${holderText}. Locks: ${lockText}. ${uncxLines(report.uncxVesting)[0]||""}\n\n${clean(caveat)} These checks are not a security audit or a safe-to-trade verdict.`;
+  return `- ${basics}\n- ${market}\n- Holders: ${holderText}. Locks: ${lockText}. ${uncxLines(report.uncxVesting)[0]||""} ${hoodLines(report.hoodLocks,false).join(" ")}\n\n${clean(caveat)} These checks are not a security audit or a safe-to-trade verdict.`;
  }
  const lead=code.status==='not-found'?code.detail:selected?selected.label+': '+selected.detail:'Checked the contract. '+(report.tokenName?'It reports the name '+report.tokenName+'. ':'')+(find('Total supply (TS)')?.detail||'');
  return lead+'\n\n'+report.network+' (chain '+report.chainId+'), block '+report.blockNumber+'. Checked '+report.checkedAt+'. These limited checks do not establish that the token is safe to trade.';
