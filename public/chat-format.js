@@ -16,13 +16,24 @@
   }
   parent.append(doc.createTextNode(value.slice(offset)));
  }
+ const baseReport=String(text).includes('**Identity**')&&String(text).includes('on Base**')||String(text).startsWith('**Pairing**')&&String(text).includes('**Fees and vesting**');
+ let section=host;
  let list=null,paragraph=null,code=null;
  for(const line of String(text).split('\n')){
-  if(/^\s*```/.test(line)){if(code){code=null;}else{const pre=doc.createElement('pre');code=doc.createElement('code');pre.append(code);host.append(pre);}list=paragraph=null;continue;}
+  const heading=baseReport&&line.match(/^\*\*([^*]+)\*\*$/);
+  if(heading){
+   section=host;
+   if(/^(?:Token details|Who holds it|Holders(?: and activity)?|Holder activity|Token locks for .+|Contract|Sources)$/i.test(heading[1])){
+    const details=doc.createElement('details'),summary=doc.createElement('summary');
+    details.className='research-evidence';summary.textContent=heading[1];details.append(summary);
+    host.append(details);section=details;list=paragraph=code=null;continue;
+   }
+  }
+  if(/^\s*```/.test(line)){if(code){code=null;}else{const pre=doc.createElement('pre');code=doc.createElement('code');pre.append(code);section.append(pre);}list=paragraph=null;continue;}
   if(code){code.textContent+=(code.textContent?'\n':'')+line;continue;}
   if(!line.trim()){list=paragraph=null;continue;}
   const bullet=line.match(/^\s*(?:[-*]\s+|\d+[.)]\s+)(.*)$/);
-  if(bullet){const ordered=/^\s*\d/.test(line);if(!list||list.tagName!==(ordered?'OL':'UL')){list=doc.createElement(ordered?'ol':'ul');host.append(list);}const li=doc.createElement('li');inline(li,bullet[1]);list.append(li);paragraph=null;continue;}
-  list=null;if(!paragraph){paragraph=doc.createElement('p');host.append(paragraph);}else paragraph.append(doc.createElement('br'));inline(paragraph,line.replace(/^#{1,6}\s+/,''));
+  if(bullet){const ordered=/^\s*\d/.test(line);if(!list||list.tagName!==(ordered?'OL':'UL')){list=doc.createElement(ordered?'ol':'ul');section.append(list);}const li=doc.createElement('li');inline(li,bullet[1]);list.append(li);paragraph=null;continue;}
+  list=null;if(!paragraph){paragraph=doc.createElement('p');section.append(paragraph);}else paragraph.append(doc.createElement('br'));inline(paragraph,line.replace(/^#{1,6}\s+/,''));
  }
 }
