@@ -220,8 +220,11 @@ async function executeTool(name,args={},context={},dependencies={}){
   if(!addr(account))return reply('Connect your wallet so I can check a quote for that address.');
   try{
    const quote=await (dependencies.tradeQuote||quotePonsTrade)({...args,account},options);
-   return reply(quote.venue+' estimates '+quote.output+' '+quote.symbol+' for '+args.amount+' '+symbol+(quote.block?' at block '+quote.block:'')+'. This estimate can change before a trade.');
+   const availability=quote.reference?(quote.impactLimit?' The Relay route exceeds the 3% limit.':' Dinn could not verify an executable Relay route.'):' This estimate can change before a trade.';
+   const output=Number(quote.output).toLocaleString('en-US',{maximumSignificantDigits:7});
+   return reply(quote.venue+' estimates '+output+' '+quote.symbol+' for '+args.amount+' '+symbol+(quote.block?' at block '+quote.block:'')+'.'+availability);
   }catch(error){
+   if(error.message.startsWith('Route impact exceeds 3%'))return reply('Relay returned a route for '+args.amount+' '+symbol+', but its estimated impact exceeds the 3% limit. I could not verify a separate pool quote for '+label+'.');
    if(error.message.startsWith('No executable route'))return reply('Relay has no route for this '+args.kind+' of '+args.amount+' '+symbol+' on '+label+'. Other venues may have liquidity.');
    return reply('I could not verify a current '+args.kind+' quote for '+args.amount+' '+symbol+' on '+label+'. Pool liquidity and price impact remain unconfirmed.');}
  }

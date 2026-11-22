@@ -2,6 +2,7 @@ import {decodeEventLog,parseAbi,parseAbiItem,formatUnits} from 'viem';
 import {PONS_FACTORY,PONS_RPC} from './pons.mjs';
 import {assets,ZERO,same,address,hash,units,erc20,walletTransaction} from './robinhood-wallet-call.mjs';
 import {walletClient,walletSnapshot,walletAsset} from './robinhood-wallet.mjs';
+import {baseV4QuoterAbi} from './base-stock-v4.mjs';
 import {prepareRobinhoodRoute,robinhoodRouteQuote} from './robinhood-routes.mjs';
 
 const factoryAbi=parseAbi(['struct LaunchedToken { address token; address curve; address deployer; address creatorFeeRecipient; address pairToken; uint256 graduationThreshold; uint24 poolFee; int24 tickSpacing; uint16 creatorTaxBps; bool buybackEnabled; uint8 phase; uint256 sweptQuote; uint256 sweptTokens; uint256 sweptAt; bool exists; }','function getLaunchedToken(address token) view returns(LaunchedToken)']);
@@ -53,8 +54,23 @@ async function ponsTrade(input,o,quoteOnly){
  const asset=kind==='buy'?pair:token,outputAsset=kind==='buy'?token:pair,amountRaw=units(amount,asset.decimals);
  if(phase===2){
   if(quoteOnly){
-   const route=await robinhoodRouteQuote({kind:'swap',account,chainId:4663,asset:asset.address,outputAsset:outputAsset.address,amount},o);
-   return {output:route.expectedAmount,symbol:outputAsset.symbol,venue:'Relay',minimum:route.minimumAmount};
+   try{
+    const route=await robinhoodRouteQuote({kind:'swap',account,chainId:4663,asset:asset.address,outputAsset:outputAsset.address,amount},o);
+    return {output:route.expectedAmount,symbol:outputAsset.symbol,venue:'Relay',minimum:route.minimumAmount};
+   }catch(routeError){
+    // Uniswap's published Robinhood Chain v4 deployment. Match the manager to the Pons factory before quoting.
+    const manager='0x8366a39cc670b4001a1121b8f6a443a643e40951',quoter='0x8dc178efb8111bb0973dd9d722ebeff267c98f94';
+    try{
+     const abi=parseAbi(['function poolManager() view returns(address)','function memeHook() view returns(address)']);
+     const [factoryManager,quoterManager,hooks]=await Promise.all([[PONS_FACTORY,'poolManager'],[quoter,'poolManager'],[PONS_FACTORY,'memeHook']].map(([address,functionName])=>c.readContract({address,abi,functionName,blockNumber:block.number})));
+     if(!same(factoryManager,manager)||!same(quoterManager,manager)||!address(hooks)||amountRaw>=2n**128n)throw Error('Pool identity or amount could not be verified.');
+     const [currency0,currency1]=[asset.address,outputAsset.address].sort((a,b)=>a.toLowerCase().localeCompare(b.toLowerCase()));
+     const poolKey={currency0,currency1,fee:launch.poolFee,tickSpacing:launch.tickSpacing,hooks};
+     const {result:[output]}=await c.simulateContract({account,address:quoter,abi:baseV4QuoterAbi,functionName:'quoteExactInputSingle',args:[{poolKey,zeroForOne:same(asset.address,currency0),exactAmount:amountRaw,hookData:'0x'}],blockNumber:block.number});
+     if(output<=0n)throw Error('Empty pool quote.');
+     return {output:formatUnits(output,outputAsset.decimals),symbol:outputAsset.symbol,venue:'The Uniswap pool',block:String(block.number),reference:true,impactLimit:routeError.message.startsWith('Route impact exceeds 3%')};
+    }catch{throw routeError;}
+   }
   }
   const route=await prepareRobinhoodRoute({kind:'swap',account,chainId:4663,asset:asset.address,outputAsset:outputAsset.address,amount},{...o});
   return {...route,ponsTradeKind:kind,tokenAddress:token.address,tokenSymbol:token.symbol,venue:'graduated-pool'};
