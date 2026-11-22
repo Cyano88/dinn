@@ -101,9 +101,9 @@ function numericSeries(value,keys){if(!value||typeof value!=='object'||Array.isA
 function transactionSeries(value){if(!value||typeof value!=='object'||Array.isArray(value))return null;const result={};for(const period of ['m5','h1','h6','h24']){const row=numericSeries(value[period],['buys','sells']);if(row)result[period]=row;}return Object.keys(result).length?result:null;}
 function unpackInitialize(log){if(log?.address?.toLowerCase()!==BASE_V4_POOL_MANAGER||log?.topics?.[0]?.toLowerCase()!==INITIALIZE||log.topics.length<4)return null;try{const [fee,tickSpacing,hooks]=decodeAbiParameters(parseAbiParameters('uint24,int24,address,uint160,int24'),log.data);const poolKey={currency0:('0x'+log.topics[2].slice(-40)).toLowerCase(),currency1:('0x'+log.topics[3].slice(-40)).toLowerCase(),fee,tickSpacing,hooks:hooks.toLowerCase()},poolId=keccak256(encodeAbiParameters(parseAbiParameters(V4_POOL_KEY),[poolKey])).toLowerCase();return {poolId:log.topics[1]?.toLowerCase(),computedPoolId:poolId,currency0:poolKey.currency0,currency1:poolKey.currency1,poolKey};}catch{return null;}}
 async function receipt(txHash,fetchImpl,signal,rpc){const r=await fetchImpl(rpc,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_getTransactionReceipt',params:[txHash]}),signal});if(!r.ok)throw new Error('Base receipt source unavailable.');const j=await r.json();return j?.result||null;}
-async function geckoPoolMarket(poolId,token,quoteAddress,launch,stock,fetchImpl,signal){
+async function geckoPoolMarket(poolId,token,quoteAddress,launch,stock,fetchImpl,signal,batchPool){
  const cacheKey=poolId.toLowerCase(),cached=geckoPoolCache.get(cacheKey);if(cached&&cached.expiresAt>Date.now())return cached.value;
- const payload=await json(GECKO+'/networks/base/pools/'+poolId,fetchImpl,signal),pool=payload?.data,attributes=pool?.attributes||{},relationships=pool?.relationships||{};
+ const pool=batchPool===undefined?(await json(GECKO+'/networks/base/pools/'+poolId,fetchImpl,signal))?.data:batchPool,attributes=pool?.attributes||{},relationships=pool?.relationships||{};
  const baseId=relationships.base_token?.data?.id?.toLowerCase(),quoteId=relationships.quote_token?.data?.id?.toLowerCase(),dexId=relationships.dex?.data?.id;
  if(pool?.id?.toLowerCase()!=='base_'+poolId.toLowerCase()||dexId!=='bankr'||![baseId,quoteId].includes('base_'+token.toLowerCase())||![baseId,quoteId].includes('base_'+quoteAddress.toLowerCase())||baseId===quoteId){if(geckoPoolCache.size>=300)geckoPoolCache.delete(geckoPoolCache.keys().next().value);geckoPoolCache.set(cacheKey,{value:null,expiresAt:Date.now()+60_000});return null;}
  const reserves=finite(attributes.reserve_in_usd),noReserves=reserves===0;
@@ -173,4 +173,62 @@ export async function researchBaseStockPairedToken(input,options={}){
  const pending=researchBaseStockPairedTokenUncached({address:token},options);
  researchPending.set(token,pending);
  try{return await pending;}finally{if(researchPending.get(token)===pending)researchPending.delete(token);}
+}
+// A bounded comparison of recent launches. Rank only observations for the pool
+// initialized by the successful Bankr launch transaction.
+let discoveryScan;
+async function scanStockPairs({fetchImpl=fetch,env=process.env,baseStockOptionsImpl=baseStockOptions}={}){
+ const signal=AbortSignal.timeout(18000);
+ const feedUrl=BANKR+'/token-launches';
+ const [feed,registry]=await Promise.all([json(feedUrl,fetchImpl,signal),baseStockOptionsImpl({fetchImpl,signal})]);
+ if(!Array.isArray(feed?.launches)||registry.sources?.coinbase?.status!=='available')throw Error('The launch feed or stock registry could not be checked.');
+ const listed=feed.launches.slice(0,50),stocks=new Map(registry.coinbaseRegistry.map(s=>[s.address.toLowerCase(),s]));
+ const unique=new Map();
+ for(const l of listed){
+  const token=l?.tokenAddress?.toLowerCase(),quote=l?.pairedStock?.address?.toLowerCase();
+  if(l?.chain==='base'&&l.status==='deployed'&&addr(token)&&token!==quote&&stocks.has(quote)&&!unique.has(token))unique.set(token,l);
+ }
+ const sample=[...unique.values()].slice(0,8),rpc=serverRpcUrl(8453,env);
+ let poolBatch;
+ const poolIds=sample.map(l=>l.poolId).filter(id=>HASH.test(id||''));
+ if(poolIds.length){
+  try{
+   const payload=await json(GECKO+'/networks/base/pools/multi/'+poolIds.join(','),fetchImpl,signal);
+   if(Array.isArray(payload?.data))poolBatch=new Map(payload.data.map(p=>[p.id?.toLowerCase(),p]));
+  }catch{}
+ }
+ const checked=await Promise.allSettled(sample.map(async l=>{
+  const token=l.tokenAddress.toLowerCase(),quote=l.pairedStock.address.toLowerCase(),pool=l.poolId?.toLowerCase(),stock=stocks.get(quote);
+  if(!HASH.test(pool||'')||!HASH.test(l.txHash||''))return null;
+  const r=await receipt(l.txHash,fetchImpl,signal,rpc);
+  if(r?.status!=='0x1'||r.transactionHash?.toLowerCase()!==l.txHash.toLowerCase()||!r.logs?.map(unpackInitialize).some(e=>e&&e.poolId===pool&&e.computedPoolId===pool&&[e.currency0,e.currency1].includes(token)&&[e.currency0,e.currency1].includes(quote)))return null;
+  let market;
+  try{market=await geckoPoolMarket(pool,token,quote,l,stock,fetchImpl,signal,poolBatch?(poolBatch.get('base_'+pool)||null):undefined);}catch{}
+  if(!market || market.liquidityUsd==null || market.volumeUsd?.h24==null){
+   try{
+    const rows=await json(DEX+'/token-pairs/v1/base/'+token,fetchImpl,signal);
+    const pair=rows.find(p=>p.chainId==='base'&&p.pairAddress?.toLowerCase()===pool&&[p.baseToken?.address?.toLowerCase(),p.quoteToken?.address?.toLowerCase()].sort().join() === [token,quote].sort().join());
+    if(pair){
+     const dexUrl='https://dexscreener.com/base/'+pool;
+     const liquidity=market?.liquidityUsd??finite(pair.liquidity?.usd),volume=market?.volumeUsd?.h24??finite(pair.volume?.h24);
+     market={liquidityUsd:liquidity,volumeUsd:{h24:volume},url:market?.url||dexUrl,liquiditySource:market?.liquidityUsd!=null?market.url:dexUrl,volumeSource:market?.volumeUsd?.h24!=null?market.url:dexUrl};
+    }
+   }catch{}
+  }
+  if(!market)return null;
+  const clean=s=>String(s||'Token').replace(/[^\p{L}\p{N}._-]/gu,'').slice(0,24)||'Token';
+  return {address:token,symbol:clean(l.tokenSymbol),stock:clean(stock.symbol),stockAddress:quote,pool,liquidity:market.liquidityUsd,volume:market.volumeUsd?.h24??null,source:market.url,liquiditySource:market.liquiditySource||market.url,volumeSource:market.volumeSource||market.url,receipt:'https://basescan.org/tx/'+l.txHash};
+ }));
+ return {checkedAt:new Date().toISOString(),listed:listed.length,eligible:unique.size,checked:sample.length,rows:checked.flatMap(x=>x.status==='fulfilled'&&x.value?[x.value]:[]),feedUrl};
+}
+export async function discoverStockPairs(metric,options={}){
+ if(!['liquidity','volume'].includes(metric))throw Error('Choose liquidity or 24-hour volume.');
+ if(!discoveryScan||Date.now()>=discoveryScan.until){
+  const promise=scanStockPairs(options);
+  discoveryScan={promise,until:Date.now()+60000};
+  promise.catch(()=>{if(discoveryScan?.promise===promise)discoveryScan=null;});
+ }
+ const {rows,...coverage}=await discoveryScan.promise;
+ const ranked=rows.filter(x=>Number.isFinite(x[metric])&&x[metric]>0).sort((a,b)=>b[metric]-a[metric]||a.address.localeCompare(b.address));
+ return {...coverage,metric,comparable:ranked.length,candidates:ranked.slice(0,3)};
 }

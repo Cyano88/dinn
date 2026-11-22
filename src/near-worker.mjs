@@ -1,3 +1,5 @@
+import {intakePrompt,discoveryStep,discoveryMessage,chosenCandidate} from './discovery-guide.mjs';
+import {discoverStockPairs} from './base-stock-paired-research.mjs';
 import {researchTarget,researchQuestion,followResearch} from './research-guide.mjs';
 import {createHash,randomBytes} from 'node:crypto';
 import {createNearMarketClient,uuid} from './near-market-client.mjs';
@@ -71,19 +73,22 @@ function requestedResearchInput(row,job){
  if(chainLines.length&&(uniqueChains.size!==1||chainLines[0]!==4663))return null;
  return {service,address:addresses[0]};
 }
-export function eligibleNearResearchJob(row,fullJob,agentId,{minimumEscrow,escrowToken}={}){
+function eligibleAssignment(row,fullJob,agentId,{minimumEscrow,escrowToken}={}){
  const a=row?.assignment,j=row?.job;
  if(!uuid(a?.assignmentId)||!uuid(a?.jobId)||!uuid(a?.workerAgentId)||a.jobId!==j?.jobId||a.workerAgentId!==agentId||a.status!=='in_progress'||a.deliverableUrl||a.submittedAt||!['standard','instant'].includes(j?.jobKind)||j.attachments?.length||typeof fullJob?.isTestRun!=='boolean'||fullJob?.jobId!==a.jobId||fullJob?.status!=='in_progress'||typeof j.title!=='string'||j.title.length<1||j.title.length>120||fullJob.title!==j.title||!supportedResearchJobSurface(j,fullJob))return null;
  if(typeof j.description!=='string'||j.description.length>4000)return null;
- const amount=escrowUnits(a.escrowAmount),minimum=escrowUnits(minimumEscrow),input=requestedResearchInput(row,fullJob);
+ const amount=escrowUnits(a.escrowAmount),minimum=escrowUnits(minimumEscrow);
  const testRun=fullJob.isTestRun===true;
- if(!input||amount===null)return null;
+ if(amount===null)return null;
  if(testRun){if(amount!==0n||(a.escrowToken!=null&&!['USD','USDC'].includes(a.escrowToken)))return null;}
  else if(minimum===null||minimum<=0n||amount<minimum||a.escrowToken!==escrowToken)return null;
- return input;
+ return true;
+}
+export function eligibleNearResearchJob(row,fullJob,agentId,options){
+ return eligibleAssignment(row,fullJob,agentId,options)?requestedResearchInput(row,fullJob):null;
 }
 
-export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=process.env.NEAR_AGENT_ID,minimumEscrow=process.env.NEAR_WORKER_MIN_ESCROW,escrowToken=process.env.NEAR_WORKER_ESCROW_TOKEN,store,client,feedbackEnabled=false,report=agentAccessRequest,now=()=>new Date(),wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
+export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=process.env.NEAR_AGENT_ID,minimumEscrow=process.env.NEAR_WORKER_MIN_ESCROW,escrowToken=process.env.NEAR_WORKER_ESCROW_TOKEN,store,client,feedbackEnabled=false,discover=discoverStockPairs,report=agentAccessRequest,now=()=>new Date(),wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
  if(!uuid(agentId))throw Error('Configure the registered NEAR_AGENT_ID.');
  if(!store)throw Error('NEAR worker PostgreSQL storage is required.');
  if(escrowUnits(minimumEscrow)===null||escrowUnits(minimumEscrow)<=0n||!['USD','USDC'].includes(escrowToken))throw Error('Configure the owner-approved NEAR_WORKER_MIN_ESCROW and NEAR_WORKER_ESCROW_TOKEN.');
@@ -132,12 +137,47 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     return savedTarget && target.toLowerCase()===savedTarget.toLowerCase() && candidate.service===data.service && data.testRun===job.isTestRun ? candidate : null;
    };
    if(data.scopeNoticeSent)return {assignmentId:a.assignmentId,state:'unsupported-scope'};
-   if(!data.guidedInput && !data.submittedAt && !a.startedAt && !a.deliverableUrl &&
+   const canGuide=eligibleAssignment(row,full,agentId,{minimumEscrow,escrowToken}) && full.isPrivate===true;
+   if(canGuide && !data.guidedInput && !data.submittedAt && !a.startedAt && !a.deliverableUrl &&
       full.isPrivate===true && a.workerAgentId===agentId && a.jobId===row.job?.jobId && full.jobId===a.jobId &&
       a.status==='in_progress' && full.status==='in_progress' && !row.job.attachments?.length && supportedResearchJobSurface(row.job,full)){
     const m=row.latestMessage;
     const reply=m?.senderSide==='buyer' && m.origin==='direct' && m.truncated===false && !m.attachments?.length?m.body:null;
-    const target=data.guideTarget || researchTarget(row.job.description||'') || (full.origin==='a2a' && reply && researchTarget(reply));
+    const brief=row.job.description||'';
+    const buyerInput=reply || brief;
+    const explicitReply=data.intakeAsked && reply && /0x[0-9a-f]{40}/i.test(reply) && /\b(?:base|pons|robinhood|bankr)\b/i.test(reply)
+     ?requestedResearchInput({job:{description:reply}}, {origin:null}):null;
+    const selected=data.shortlist && reply && chosenCandidate(reply,data.shortlist.candidates);
+    if(selected || explicitReply){
+     data={...data,guidedInput:selected?{service:'base.stock-paired.research',address:selected}:explicitReply};
+     await store.save(lock,data);
+    }
+    const discovery=(!data.discoveryNotice || reply) && !data.guidedInput && !data.guideStage && !data.shortlist && !outsideResearchScope(buyerInput)
+     && discoveryStep(buyerInput,data.discoveryStage);
+    if(discovery){
+     const key=discovery.stage||discovery.metric||'coverage';
+     if(data.discoveryNotice!==key){
+      if(discovery.metric){
+       let shortlist;
+       try{shortlist=await discover(discovery.metric);}
+       catch{
+        assertLease();await client.scopeMessage(a.assignmentId,'The launch feed or stock registry is unavailable. You can send a token address for an individual report, or cancel this unstarted hire.','discover-source-offline');
+        await store.save(lock,{...data,intakeAsked:true,discoveryNotice:key});
+        return {assignmentId:a.assignmentId,state:'discovery-unavailable'};
+       }
+       data={...data,shortlist,intakeAsked:true};
+       await store.save(lock,data);
+      }
+      assertLease();await client.scopeMessage(a.assignmentId,data.shortlist?discoveryMessage(data.shortlist):discovery.message,'discover-'+key);
+      data={...data,discoveryNotice:key,discoveryStage:discovery.stage||null,intakeAsked:true};await store.save(lock,data);
+     }
+     return {assignmentId:a.assignmentId,state:'awaiting-research-details'};
+    }
+    if(data.shortlist && !data.discoveryNotice?.match(/^(liquidity|volume)$/)){
+     assertLease();await client.scopeMessage(a.assignmentId,discoveryMessage(data.shortlist),'discover-'+data.shortlist.metric);
+     data={...data,discoveryNotice:data.shortlist.metric,discoveryStage:null};await store.save(lock,data);
+    }
+    const target=!data.guidedInput && (data.guideTarget || researchTarget(brief) || ((full.origin==='a2a'||data.intakeAsked) && reply && researchTarget(reply)));
     if(target){
      const stage=data.guideStage||'chain';
      const next=reply && followResearch(stage,target,reply);
@@ -177,6 +217,13 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
      }
      return {assignmentId:a.assignmentId,state:'unsupported-scope'};
     }
+   }
+   if(canGuide && !input && !a.startedAt && !a.submittedAt && !a.deliverableUrl && !data.submittedAt && full.isPrivate===true &&
+      a.workerAgentId===agentId && a.jobId===row.job?.jobId && full.jobId===a.jobId && full.status==='in_progress' && supportedResearchJobSurface(row.job,full) &&
+      !row.job.attachments?.length && !data.intakeAsked){
+    assertLease();await client.scopeMessage(a.assignmentId,intakePrompt,'intake');
+    await store.save(lock,{...data,intakeAsked:true});
+    return {assignmentId:a.assignmentId,state:'awaiting-research-details'};
    }
    if(!input){if(data.phase==='not-eligible'&&data.eligibilityFingerprint===fingerprint)return {assignmentId:a.assignmentId,state:'not-eligible',recorded:false,cached:true};const recorded=data.phase!=='not-eligible';if(recorded||data.eligibilityFingerprint!==fingerprint){await store.save(lock,{...data,phase:'not-eligible',eligibilityFingerprint:fingerprint});if(recorded)await event('not-eligible');}return {assignmentId:a.assignmentId,state:'not-eligible',recorded};}
    if(['submitted','accepted-payout-pending','accepted-test-run'].includes(data.phase))return {assignmentId:a.assignmentId,state:data.phase,testRun:data.testRun===true,payout:data.testRun===true?'none':undefined};

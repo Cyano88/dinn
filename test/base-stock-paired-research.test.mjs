@@ -102,3 +102,16 @@ test('rejects invalid token addresses before any source request',async()=>{
  await assert.rejects(researchBaseStockPairedToken({address:'0x0'},{...deps}),/valid Base token/);
  assert.equal(deps.calls.length,0);
 });
+test('discovery counts only the receipt-verified pool and preserves missing volume',async()=>{
+ const {fetchImpl}=setup();
+ const {discoverStockPairs}=await import('../src/base-stock-paired-research.mjs');
+ const options={baseStockOptionsImpl:async()=>({sources:{coinbase:{status:'available'}},coinbaseRegistry:[{address:stock,symbol:'NVDAc'}]}),fetchImpl:async(url,init)=>{
+  if(String(url).includes('/pools/multi/'))return response({data:[]});
+  if(String(url).includes('dexscreener.com'))return response([{chainId:'base',pairAddress:poolId,baseToken:{address:token},quoteToken:{address:stock},liquidity:{usd:700}}]);
+  const r=await fetchImpl(url,init);
+  if(init?.method==='POST'){const j=await r.json();j.result.transactionHash=txHash;return response(j);}
+  return r;
+ }};
+ const ranked=await discoverStockPairs('liquidity',options);assert.equal(ranked.candidates[0].address,token);assert.equal(ranked.candidates[0].liquidity,700);
+ const missing=await discoverStockPairs('volume',options);assert.equal(missing.comparable,0);assert.deepEqual(missing.candidates,[]);
+});

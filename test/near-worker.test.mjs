@@ -341,3 +341,18 @@ test('private ticker hire waits for chain and stock type and resumes once in the
  assert.equal((await worker.process(row)).state,'submitted');
  assert.deepEqual(requests[0].input,{query:'NVDAc'});assert.equal(requests[0].service,'base.stock.research');
 });
+test('missing-target hire gets one prompt and can choose a ranked contract in the same job',async()=>{
+ const {row,fullJob}=fixture({jobKind:'instant',isPrivate:true,description:'My trading agent uses research to decide whether to trade or skip.'});
+ const lock={data:null},messages=[],requests=[],calls=[];
+ const store={acquire:async()=>lock,renew:async()=>{},save:async(_,d)=>{lock.data=d;},event:async()=>{},release:async()=>{}};
+ const client={job:async()=>fullJob,assignment:async()=>row,scopeMessage:async(_,body)=>messages.push(body),start:async()=>calls.push('start'),submit:async()=>({assignmentId,status:'submitted'})};
+ const candidates=[agentId,tokenAddress].map((address,i)=>({address,symbol:'Token'+i,stock:'NVDAc',liquidity:200-i,source:'pool',receipt:'launch'}));
+ const worker=createNearWorker({agentId,...options,store,client,wait:async()=>{},discover:async metric=>({metric,candidates,listed:50,checked:2,eligible:2,comparable:2,checkedAt:'today',feedUrl:'feed'}),report:async req=>{requests.push(req);return {status:'completed',deliverableMarkdown:'Verified report.',evidence:{sha256:'a'.repeat(64)}};}});
+ await worker.process(row);await worker.process(row);assert.equal(messages.length,1);assert.match(messages[0],/Do you have a token/);
+ const answer=async body=>{row.latestMessage={senderSide:'buyer',origin:'direct',truncated:false,body};return worker.process(row);};
+ await answer('find a pair');assert.match(messages.at(-1),/market you want/);
+ await answer('Base');assert.match(messages.at(-1),/Which matters more/);
+ await answer('liquidity');assert.match(messages.at(-1),/stock-pair shortlist/);assert.equal(calls.length,0);
+ assert.equal((await answer('research the second one')).state,'submitted');
+ assert.deepEqual(requests[0].input,{address:tokenAddress});
+});

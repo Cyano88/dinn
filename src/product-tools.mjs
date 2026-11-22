@@ -1,3 +1,4 @@
+import {discoveryStep,discoveryMessage,chosenCandidate,marketPrompt,metricPrompt} from './discovery-guide.mjs';
 import {researchTarget,researchQuestion,chatResearchGuide} from './research-guide.mjs';
 import {robinhoodBalances,prepareRobinhoodSend,walletAssetBalance} from './robinhood-wallet.mjs';
 import {prepareRobinhoodRoute,robinhoodRouteQuote} from './robinhood-routes.mjs';
@@ -13,7 +14,7 @@ import {serverRpcUrl} from './rpc-config.mjs';
 import {inspectCachedToken} from './inspection-cache.mjs';
 import {inspectionSummary} from './token-inspection.mjs';
 import {productCapabilities,productTools,actionTitles} from './tool-catalog.mjs';
-import {researchBaseStockPairedToken} from './base-stock-paired-research.mjs';
+import {discoverStockPairs,researchBaseStockPairedToken} from './base-stock-paired-research.mjs';
 import {researchBaseStock,baseStockResearchMessage as baseStockAssetMessage} from './base-stock-research.mjs';
 const addr=v=>typeof v==='string'&&/^0x[0-9a-f]{40}$/i.test(v)&&!/^0x0{40}$/i.test(v);
 const statusLabel={'wallet-approval':'wallet approval','read-only':'read-only','unavailable':'unavailable','coming-soon':'coming soon','external-checkout':'external checkout'};
@@ -175,6 +176,7 @@ async function executeTool(name,args={},context={},dependencies={}){
  if(name==='manage_launch_draft')return manageLaunchDraft(args,context,dependencies);
  if(name==='request_guidance'){const guidance=directProductIntent(context.message,context);return {message:guidance?.message||'Use supported tools or ask for the missing information.',data:{constraint:guidance?.message||'Use supported tools or ask for the missing information.',capabilities:productCapabilities},actions:guidance?.actions||[]};}
  if(name==='product_capabilities')return {message:Object.values(productCapabilities).map(c=>c.title+': '+(statusLabel[c.status]||'status unavailable')+'. '+c.description).join('\n\n'),actions:[],data:productCapabilities};
+ if(name==='discover_base_pairs'){const data=await (dependencies.discoverStockPairs||discoverStockPairs)(args.metric,{env:context.env||process.env});return {message:discoveryMessage(data),data,actions:[]};}
  if(name==='research_base_stock_paired_token'){const data=await (dependencies.baseStockResearch||researchBaseStockPairedToken)(args,{fetchImpl:dependencies.fetchImpl,env:context.env||process.env,holderSnapshotEnabled:context.holderSnapshotEnabled!==false});return {message:baseStockResearchMessage(data),data,actions:[]};}
  if(name==='research_base_stock'){const data=await (dependencies.baseStockAssetResearch||researchBaseStock)({query:args.query},{fetchImpl:dependencies.fetchImpl,env:context.env||process.env,holderSnapshotEnabled:context.holderSnapshotEnabled!==false});return {message:baseStockAssetMessage(data),data,actions:[]};}
  if(name==='dex_service_status'){const data=await (dependencies.dexStatus||dexStatus)(args);return {message:(data.indexed?'Token is indexed. ':'No indexed token pair was found. ')+data.orders.length+' public profile orders returned'+(data.orders.length?': '+data.orders.map(o=>o.status||'unknown').join(', '):'')+'. '+data.note,data,actions:[{id:'dex',title:actionTitles.dex,address:args.address}]};}
@@ -202,6 +204,12 @@ const conversationalQuestion=text=>/^(?:what|why|how|who|which|where|when|whethe
 export function directProductIntent(text,context={}){
  const lastAssistant=[...(context.history||[])].reverse().find(m=>m.role==='assistant')?.content||'';
  const t=text.trim(),addresses=t.match(/0x[0-9a-f]{40}(?![0-9a-f])/gi)||[],hash=t.match(/0x[0-9a-f]{64}(?![0-9a-f])/i)?.[0];
+ if(lastAssistant.startsWith('Base stock-pair shortlist by ')){
+  const rows=[...lastAssistant.matchAll(/^Contract: (0x[a-f0-9]{40})$/gim)].map(m=>({address:m[1]}));
+  const address=chosenCandidate(t,rows);if(address)return {name:'research_base_stock_paired_token',args:{address}};
+ }
+ const discovery=discoveryStep(t,lastAssistant===marketPrompt?'market':lastAssistant===metricPrompt?'metric':null);
+ if(discovery && !addresses.length)return discovery.metric?{name:'discover_base_pairs',args:{metric:discovery.metric}}:{message:discovery.message,actions:[]};
  const guided=chatResearchGuide(t,lastAssistant);
  if(guided)return guided;
  const initialTarget=researchTarget(t);
