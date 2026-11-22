@@ -175,6 +175,11 @@ const server=createServer(async(req,res)=>{
    if(path==='/api/launch/simulate')return json(res,200,await simulateLaunch(data,launchRpcUrl));
    return json(res,404,{error:'Unknown action. Broadcasting is not enabled.'});
   }
+  if(path==='/brand/dinn-icon.png' && (req.method==='GET'||req.method==='HEAD')){
+   const icon=await readFile(resolve(publicDir,'brand/dinn-icon.png'));
+   res.writeHead(200,{'content-type':'image/png','content-length':icon.length,'cache-control':'public, max-age=3600'});
+   return res.end(req.method==='HEAD'?undefined:icon);
+  }
   if(req.method!=='GET')return json(res,405,{error:'Method not allowed.'});
   if(/^\/auth\/(entry|chunk-[A-Z0-9]+)\.js$/.test(path)){
    try{const content=await readFile(resolve(publicDir,'.'+path));res.writeHead(200,{'content-type':'text/javascript; charset=utf-8','cache-control':'no-store'});return res.end(content);}catch{return json(res,404,{error:'Authentication bundle is not built. Run npm run build.'});}

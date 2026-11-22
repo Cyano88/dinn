@@ -77,7 +77,7 @@ async function initialize(env){
  const chain=createPublicClient({chain:base,transport:http(serverRpcUrl(8453,env))});
  const resource={
   url:origin.origin+path,mimeType:'application/json',serviceName:'Dinn Labs',
-  iconUrl:new URL('/brand/dinn-icon.svg',origin).href,
+  iconUrl:new URL('/brand/dinn-icon.png',origin).href,
   tags:['Token research','Tokenized stocks','Base','Bankr','Pons'],
   description:'Research Coinbase stock tokens and Bankr stock-paired launches on Base, or Pons tokens on Robinhood Chain. Check token identity, liquidity and trading activity. See which sampled holders match trading pools and, for Pons launches, check bonding-curve progress and reported locks or vesting. Each report includes sources, timestamps and what Dinn could verify.'
  };
