@@ -28,13 +28,13 @@ select{font:inherit;border:1px solid #dce3dd;border-radius:8px;padding:12px;back
 #launch-profile-dialog .logo-creator img{width:144px;height:144px;margin:12px auto}#launch-profile-dialog #continue-launch-profile{position:sticky;bottom:0;box-shadow:0 -10px 16px #fff}#launch-profile-dialog .logo-creator>p{font-size:13px;line-height:1.5}#launch-profile-dialog #launch-profile-fields{margin:16px 0}
 #launch-purchase-dialog{width:calc(100vw - 32px);max-width:460px;border:1px solid #dce3dd;border-radius:18px;padding:28px}#launch-purchase-dialog::backdrop{background:#14251e66}#close-launch-purchase{float:right}#launch-purchase-dialog p{color:#617168;line-height:1.6;font-size:14px}#launch-purchase-dialog input{width:100%;box-sizing:border-box;margin:12px 0}#launch-purchase-dialog details{margin:16px 0}.purchase-actions{display:flex;gap:12px;margin-top:20px}#purchase-error{color:#a12f2f!important}#approve-purchase{margin:0 10px 12px 0}#approval-recovery-label input{width:100%}
 /* Consistent outline chevrons for all launch disclosures, never native triangle markers. */
-:is(#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) details>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer}
-:is(#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) details>summary::-webkit-details-marker{display:none}
-:is(#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) details>summary::marker{content:''}
-:is(#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) details>summary::after{content:'';display:block;width:7px;height:7px;flex:0 0 7px;border:0;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);margin:0 4px 4px 0;transition:transform .15s ease}
-:is(#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) details[open]>summary::after{transform:rotate(225deg)}
-:is(#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) summary:focus-visible{outline:2px solid #52665a;outline-offset:4px;border-radius:3px}
-@media(prefers-reduced-motion:reduce){:is(#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) details>summary::after{transition:none}}
+:is(#messages,#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) details>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer}
+:is(#messages,#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) details>summary::-webkit-details-marker{display:none}
+:is(#messages,#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) details>summary::marker{content:''}
+:is(#messages,#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) details>summary::after{content:'';display:block;width:7px;height:7px;flex:0 0 7px;border:0;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);margin:0 4px 4px 0;transition:transform .15s ease}
+:is(#messages,#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) details[open]>summary::after{transform:rotate(225deg)}
+:is(#messages,#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) summary:focus-visible{outline:2px solid #52665a;outline-offset:4px;border-radius:3px}
+@media(prefers-reduced-motion:reduce){:is(#messages,#launch-profile-dialog,#launch-purchase-dialog,#pons-review-dialog,#summary-panel) details>summary::after{transition:none}}
 /* Setup is an assistant turn, not a stack of modal cards. */
 #launch-conversation{max-width:680px;margin:24px auto 32px;scroll-margin-top:20px;min-width:0}#launch-conversation>small{display:block;font-size:12px;font-weight:600;color:#617168;margin-bottom:10px}
 #launch-conversation .launch-chat-step{position:static;width:100%;max-width:none;max-height:none;overflow:visible;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;text-align:left;box-sizing:border-box}
@@ -82,7 +82,7 @@ select{font:inherit;border:1px solid #dce3dd;border-radius:8px;padding:12px;back
 #chat-thread .chat-logo-preview{display:block;width:min(192px,60vw);height:auto;aspect-ratio:1;object-fit:cover;border-radius:12px;margin-top:12px}
 #chat-thread .chat-inline-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 
-.chat-operation details>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px}.chat-operation details>summary::-webkit-details-marker{display:none}.chat-operation details>summary::before{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .15s}.chat-operation details[open]>summary::before{transform:rotate(45deg)}
+.chat-operation details>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px}.chat-operation details>summary::-webkit-details-marker{display:none}.chat-operation details>summary::before{content:none;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .15s}.chat-operation details[open]>summary::before{transform:rotate(45deg)}
 
 /* Clear navigation, agent access, and wallet layout */
 .sidebar .asidefoot a{color:inherit;text-decoration:none}.sidebar .asidefoot a:hover{text-decoration:underline;text-underline-offset:3px}.aside-support{display:flex;align-items:center;gap:5px;margin-top:8px;font-size:10px;color:#66746a!important}.aside-support img{opacity:.7}
