@@ -223,8 +223,18 @@ async function executeTool(name,args={},context={},dependencies={}){
    const quote=await (dependencies.tradeQuote||quotePonsTrade)({...args,account},options);
    const output=Number(quote.output).toLocaleString('en-US',{maximumSignificantDigits:6});
    const estimate=args.amount+' '+symbol+' could get you about '+output+' '+quote.symbol+'.';
-   const message=quote.reference?estimate+' '+(quote.impactLimit?limit:'I could not find a way to make this swap through Dinn right now.'):estimate+' The amount may change before you swap.';
-   return {...reply(message),data:{venue:quote.venue,block:quote.block,estimatedOutput:quote.output,symbol:quote.symbol}};
+   let message=quote.reference?estimate+' '+(quote.impactLimit?limit:'I could not find a way to make this swap through Dinn right now.'):estimate+' The amount may change before you swap.';
+   if(quote.reference&&quote.impactLimit&&quote.comparison){
+    const {impactPercent,output:routeOutput}=quote.comparison;
+    const offered=Number(routeOutput).toLocaleString('en-US',{maximumSignificantDigits:6});
+    message=estimate+' The swap provider quoted '+offered+' '+quote.symbol+'. Dinn paused the swap because the provider valued those tokens '+Math.abs(impactPercent)+'% '+(impactPercent>0?'higher':'lower')+' than your '+symbol+'. Dinn allows a 3% difference.';
+   }
+   if(quote.fees){
+    const {creatorBps,baseBps,openingBps}=quote.fees;
+    const tradingFee=baseBps==null?'Pons trading fee unavailable':baseBps/100+'% Pons trading fee';
+    message+='\n\nToken fees: '+creatorBps/100+'% creator tax, '+tradingFee+(openingBps?', '+openingBps/100+'% opening tax':'')+'.';
+   }
+   return {...reply(message),data:{venue:quote.venue,block:quote.block,estimatedOutput:quote.output,symbol:quote.symbol,fees:quote.fees,comparison:quote.comparison}};
   }catch(error){
    if(error.message.startsWith('Route impact exceeds 3%'))return reply(limit);
    if(error.message.startsWith('No executable route'))return reply('I could not find a way to swap '+args.amount+' '+symbol+' for '+(args.kind==='buy'?info.token.symbol:info.pair.symbol)+' through Dinn right now.');

@@ -191,6 +191,10 @@ test('Pons chat distinguishes a direct pool estimate from a rejected Relay route
  const dependencies={tradePair:async()=>({phase:2,token:{symbol:'GRAIL'},pair:{symbol:'ETH'}}),tradeQuote:async()=>({venue:'The Uniswap pool',output:'651589.773038197223710124',symbol:'GRAIL',block:'120860842',reference:true,impactLimit:true})};
  const quote=await executeProductTool('pons_trade_quote',args,{walletAccount:account},dependencies);
  assert.match(quote.message,/0.001 ETH could get you about 651,590 GRAIL/);assert.equal(quote.data.block,'120860842');assert.match(quote.message,/cannot offer this swap/);assert.doesNotMatch(quote.message,/block|Relay|Uniswap/);assert.deepEqual(quote.actions,[]);
+ const original=dependencies.tradeQuote;
+ dependencies.tradeQuote=async()=>({...await original(),fees:{creatorBps:200,baseBps:100},comparison:{impactPercent:10.86,output:'631465.3986'}});
+ const compared=await executeProductTool('pons_trade_quote',args,{walletAccount:account},dependencies);
+ assert.match(compared.message,/quoted 631,465 GRAIL/);assert.match(compared.message,/10.86% higher/);assert.match(compared.message,/2% creator tax, 1% Pons trading fee/);assert.deepEqual(compared.actions,[]);
  dependencies.tradeQuote=async()=>{throw Error('Route impact exceeds 3%. Try another amount or asset.');};
  const failure=await executeProductTool('pons_trade_quote',args,{walletAccount:account},dependencies);
  assert.match(failure.message,/more than 3%/);assert.match(failure.message,/cannot offer this swap/);

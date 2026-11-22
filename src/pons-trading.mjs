@@ -2,6 +2,7 @@ import {decodeEventLog,parseAbi,parseAbiItem,formatUnits} from 'viem';
 import {PONS_FACTORY,PONS_RPC} from './pons.mjs';
 import {assets,ZERO,same,address,hash,units,erc20,walletTransaction} from './robinhood-wallet-call.mjs';
 import {walletClient,walletSnapshot,walletAsset} from './robinhood-wallet.mjs';
+import {factoryAbi as feePolicyAbi} from './pons-fee-abi.mjs';
 import {baseV4QuoterAbi} from './base-stock-v4.mjs';
 import {prepareRobinhoodRoute,robinhoodRouteQuote} from './robinhood-routes.mjs';
 
@@ -54,9 +55,11 @@ async function ponsTrade(input,o,quoteOnly){
  const asset=kind==='buy'?pair:token,outputAsset=kind==='buy'?token:pair,amountRaw=units(amount,asset.decimals);
  if(phase===2){
   if(quoteOnly){
+   const policy=await c.readContract({address:PONS_FACTORY,abi:feePolicyAbi,functionName:'getLaunchFeePolicy',args:[tokenAddress],blockNumber:block.number}).catch(()=>null);
+   const fees={creatorBps:Number(launch.creatorTaxBps),baseBps:policy?Number(policy.hookFeeBps):null};
    try{
     const route=await robinhoodRouteQuote({kind:'swap',account,chainId:4663,asset:asset.address,outputAsset:outputAsset.address,amount},o);
-    return {output:route.expectedAmount,symbol:outputAsset.symbol,venue:'Relay',minimum:route.minimumAmount};
+    return {output:route.expectedAmount,symbol:outputAsset.symbol,venue:'Relay',fees,minimum:route.minimumAmount};
    }catch(routeError){
     // Uniswap's published Robinhood Chain v4 deployment. Match the manager to the Pons factory before quoting.
     const manager='0x8366a39cc670b4001a1121b8f6a443a643e40951',quoter='0x8dc178efb8111bb0973dd9d722ebeff267c98f94';
@@ -68,7 +71,7 @@ async function ponsTrade(input,o,quoteOnly){
      const poolKey={currency0,currency1,fee:launch.poolFee,tickSpacing:launch.tickSpacing,hooks};
      const {result:[output]}=await c.simulateContract({account,address:quoter,abi:baseV4QuoterAbi,functionName:'quoteExactInputSingle',args:[{poolKey,zeroForOne:same(asset.address,currency0),exactAmount:amountRaw,hookData:'0x'}],blockNumber:block.number});
      if(output<=0n)throw Error('Empty pool quote.');
-     return {output:formatUnits(output,outputAsset.decimals),symbol:outputAsset.symbol,venue:'The Uniswap pool',block:String(block.number),reference:true,impactLimit:routeError.message.startsWith('Route impact exceeds 3%')};
+     return {output:formatUnits(output,outputAsset.decimals),symbol:outputAsset.symbol,venue:'The Uniswap pool',block:String(block.number),reference:true,fees,comparison:routeError.routeComparison,impactLimit:routeError.message.startsWith('Route impact exceeds 3%')};
     }catch{throw routeError;}
    }
   }
@@ -89,7 +92,7 @@ async function ponsTrade(input,o,quoteOnly){
  if(feeBps+creatorTaxBps>=BPS)throw Error('Pons trade fees are outside the supported range. No trade was prepared.');
  const quote=kind==='buy'?quotePonsBuy({quoteIn:amountRaw,quoteReserve:reserves[0],tokenReserve:reserves[1],sellableTokens:sellable,feeBps,creatorTaxBps,snipeTaxBps}):quotePonsSell({tokensIn:amountRaw,quoteReserve:reserves[0],tokenReserve:reserves[1],feeBps,creatorTaxBps});
  const quotedOutput=kind==='buy'?quote.tokensOut:quote.quoteOut,slippageBps=100,minimumOutputRaw=quotedOutput*(BPS-BigInt(slippageBps))/BPS;if(minimumOutputRaw<=0n)throw Error('The minimum receive amount rounds to zero. Use a larger amount.');
- if(quoteOnly)return {output:formatUnits(quotedOutput,outputAsset.decimals),symbol:outputAsset.symbol,venue:'Pons curve',block:String(block.number)};
+ if(quoteOnly)return {output:formatUnits(quotedOutput,outputAsset.decimals),symbol:outputAsset.symbol,venue:'Pons curve',block:String(block.number),fees:{creatorBps:Number(creatorTaxBps),baseBps:Number(feeBps),openingBps:kind==='buy'?Number(quote.snipeBps):0}};
  if(!same(asset.address,ZERO)){
   const [balance,allowance]=await Promise.all([c.readContract({address:asset.address,abi:erc20,functionName:'balanceOf',args:[account],blockNumber:block.number}),c.readContract({address:asset.address,abi:parseAbi(['function allowance(address owner,address spender) view returns(uint256)']),functionName:'allowance',args:[account,launch.curve],blockNumber:block.number})]);
   if(balance<amountRaw)throw Error('Not enough '+asset.symbol+' in this wallet for this trade.');
