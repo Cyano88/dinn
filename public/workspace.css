@@ -182,3 +182,8 @@ select{font:inherit;border:1px solid #dce3dd;border-radius:8px;padding:12px;back
 #wallet-operation details > summary::-webkit-details-marker {display:none}
 #wallet-operation details > summary::before {content:'';display:inline-block;width:.42em;height:.42em;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:rotate(-45deg);margin-right:.65em;vertical-align:.12em}
 #wallet-operation details[open] > summary::before {transform:rotate(45deg)}
+.wallet-form-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin:1rem 0}
+
+#copy-address .wallet-copy-check,#copy-address[data-copied] svg:first-child{display:none}
+#copy-address[data-copied] .wallet-copy-check{display:block}
+#copy-address[data-copied]{color:#17633a;background:#eaf4ec;border-color:#9ec3a7}

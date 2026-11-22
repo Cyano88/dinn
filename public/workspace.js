@@ -317,7 +317,35 @@ async function check(button,status,path,data,render){const generation=epoch;butt
 
 
 
-$('copy-address').onclick=async()=>{try{if(!account)throw Error('Choose Dinn wallet or connect an external wallet from the menu above.');await navigator.clipboard.writeText(account);$('wallet-status').textContent='Address copied.';}catch(err){$('wallet-status').textContent=err.message;}};$('wallet-use-dinn').onclick=()=>window.dispatchEvent(new CustomEvent('dinn:use-dinn-wallet'));
+const copyWalletButton=$('copy-address');
+let copyAttempt=0,copyTimer;
+function resetWalletCopy(){
+ clearTimeout(copyTimer);copyAttempt++;
+ copyWalletButton.removeAttribute('data-copied');
+ copyWalletButton.title='Copy wallet address';
+ copyWalletButton.setAttribute('aria-label',copyWalletButton.title);
+ $('wallet-copy-status').textContent='';
+}
+copyWalletButton.onclick=async()=>{
+ resetWalletCopy();
+ const address=account,attempt=copyAttempt;
+ if(!address)return;
+ try{
+  await navigator.clipboard.writeText(address);
+  if(account!==address||copyAttempt!==attempt)return;
+  copyWalletButton.dataset.copied='true';
+  copyWalletButton.title='Address copied';
+  copyWalletButton.setAttribute('aria-label',copyWalletButton.title);
+  $('wallet-copy-status').textContent='Wallet address copied.';
+  copyTimer=setTimeout(resetWalletCopy,2000);
+ }catch{
+  if(account!==address||copyAttempt!==attempt)return;
+  const range=document.createRange();range.selectNodeContents($('wallet-address'));
+  const selection=window.getSelection();selection?.removeAllRanges();selection?.addRange(range);
+  $('wallet-status').textContent='Copy the selected wallet address manually.';
+ }
+};
+$('wallet-use-dinn').onclick=()=>window.dispatchEvent(new CustomEvent('dinn:use-dinn-wallet'));
 
 function clearAuthBootTimer(){if(authBootTimer)clearTimeout(authBootTimer);authBootTimer=null;authBootTimedOut=false;$('auth-timeout-notice')?.remove();}
 function startAuthBootTimer(){if(authBootResolved||authBootTimer||authBootTimedOut)return;authBootTimer=setTimeout(()=>{authBootTimer=null;if(authBootTimedOut||authBootResolved)return;authBootTimedOut=true;$('session-loading').hidden=true;$('auth-gate').hidden=false;$('workspace').hidden=true;$('workspace').inert=true;const card=document.querySelector('.signin-card');if(card&&!$('auth-timeout-notice')){const note=document.createElement('div');note.id='auth-timeout-notice';const message=document.createElement('p');message.className='auth-error';message.textContent='Sign-in is taking longer than expected. Reload to retry.';const retry=document.createElement('button');retry.className='social-login';retry.type='button';retry.textContent='Retry sign-in';retry.onclick=()=>location.reload();note.append(message,retry);card.append(note);}},25000);}
@@ -332,7 +360,7 @@ if(user&&((nextUser===user)||d.state==='loading'&&!nextUser)){
   $('wallet-address').textContent=account||'';$('wallet-balance').textContent=' - ETH';$('wallet-status').textContent=d.walletStatus||'';$('wallet-use-dinn').hidden=!d.canUseEmbedded;walletUI?.changed(d.state==='wallet-needed'?d.walletStatus:'',false);if(account&&!$('wallet-view').hidden)void walletUI?.refresh();return;
  }
 }
-if(nextUser===user&&d.state==='connected'&&d.address===account&&d.provider===provider)return;showLaunchStage(null,false);if(!$('pons-review-dialog').hidden)showLaunchStage(null);epoch++;launchBusy=false;logoCreator.reset();controller?.abort();launchActivity.stop();selectedToken=null;confirmedLaunchWallet=null;account=d.address||null;provider=d.provider||null;walletSource=d.source||null;walletSendTransaction=d.sendTransaction||null;invalidateLaunch();launchReturnPending=false;user=d.authenticated?(d.userId||account):null;const loading=d.state==='loading';$('session-loading').hidden=!loading;$('auth-gate').hidden=loading||!!user;$('workspace').hidden=loading||!user;$('workspace').inert=loading||!user;history=[];$('messages').replaceChildren();for(const id of ['feedback','brief-status','wallet-status'])$(id).textContent='';$('wallet-address').textContent=account||'';$('wallet-balance').textContent=' -  ETH';$('wallet-status').textContent=d.walletStatus||'';$('wallet-use-dinn').hidden=!d.canUseEmbedded;if(user){restore();restoreLaunch();restoreSettings();if(account){let prior;try{prior=JSON.parse(read('last-deployer'));}catch{}const recipient=$('launch-recipient');if(prior&&recipient.value.toLowerCase()===prior.toLowerCase()){recipient.value=account;saveSettings();}save('last-deployer',account);}renderTokenSummary();renderSetupChoices();}else {brief={};awaiting=null;syncBrief();}if(!user)for(const f of ['name','symbol','description'])$('brief-'+f).value='';draftSync.start(user);walletUI?.changed(d.state==='wallet-needed'?d.walletStatus:'',d.state==='wallet-changing');if(d.state==='wallet-changing'&&!account)walletUI?.switching();else if(d.state==='wallet-changing'&&account&&!$('wallet-view').hidden)void walletUI?.refresh();});
+if(nextUser===user&&d.state==='connected'&&d.address===account&&d.provider===provider)return;showLaunchStage(null,false);if(!$('pons-review-dialog').hidden)showLaunchStage(null);epoch++;launchBusy=false;logoCreator.reset();controller?.abort();launchActivity.stop();selectedToken=null;confirmedLaunchWallet=null;resetWalletCopy();account=d.address||null;provider=d.provider||null;walletSource=d.source||null;walletSendTransaction=d.sendTransaction||null;invalidateLaunch();launchReturnPending=false;user=d.authenticated?(d.userId||account):null;const loading=d.state==='loading';$('session-loading').hidden=!loading;$('auth-gate').hidden=loading||!!user;$('workspace').hidden=loading||!user;$('workspace').inert=loading||!user;history=[];$('messages').replaceChildren();for(const id of ['feedback','brief-status','wallet-status'])$(id).textContent='';$('wallet-address').textContent=account||'';$('wallet-balance').textContent=' -  ETH';$('wallet-status').textContent=d.walletStatus||'';$('wallet-use-dinn').hidden=!d.canUseEmbedded;if(user){restore();restoreLaunch();restoreSettings();if(account){let prior;try{prior=JSON.parse(read('last-deployer'));}catch{}const recipient=$('launch-recipient');if(prior&&recipient.value.toLowerCase()===prior.toLowerCase()){recipient.value=account;saveSettings();}save('last-deployer',account);}renderTokenSummary();renderSetupChoices();}else {brief={};awaiting=null;syncBrief();}if(!user)for(const f of ['name','symbol','description'])$('brief-'+f).value='';draftSync.start(user);walletUI?.changed(d.state==='wallet-needed'?d.walletStatus:'',d.state==='wallet-changing');if(d.state==='wallet-changing'&&!account)walletUI?.switching();else if(d.state==='wallet-changing'&&account&&!$('wallet-view').hidden)void walletUI?.refresh();});
 
 ﻿let reviewed=null,prepared=null,launchBusy=false,launchRevision=0;
 
