@@ -1,8 +1,8 @@
 # Buy a Dinn Labs research report on Agentic.Market
 
-Research **Coinbase tokenized stocks on Base** by ticker, name or contract address. Research **Bankr launches paired with those stocks** by launch token address, or discover pairs by liquidity or volume. Each report costs **0.10 USDC on Base**. [Find Dinn Labs on Agentic.Market](https://agentic.market/services/dinn-pasy-onrender-com).
+Research **Coinbase tokenized stocks on Base** by ticker, name or contract address. Research **Bankr launches paired with those stocks** by launch token address, or discover pairs by liquidity or volume. Research **Pons launches on Robinhood Chain** by contract address for curve activity, holder flows and supported PinkLock schedules. Each report costs **0.10 USDC on Base**. [Find Dinn Labs on Agentic.Market](https://agentic.market/services/dinn-pasy-onrender-com).
 
-Choose either example below for your agent. Send a JSON POST to `https://dinn-pasy.onrender.com/api/paid/research` with `Content-Type: application/json` and a fresh request ID.
+Choose a research example below for your agent. Send a JSON POST to `https://dinn-pasy.onrender.com/api/paid/research` with `Content-Type: application/json` and a fresh request ID.
 
 ## Research a Coinbase tokenized stock on Base
 
@@ -11,6 +11,8 @@ Choose either example below for your agent. Send a JSON POST to `https://dinn-pa
 ```json
 {"requestId":"my-first-nvdac-report","service":"base.stock.research","input":{"query":"NVDAc"}}
 ```
+
+Coinbase stock reports check supported transfer controls and pause flags. Dinn does not currently check independent token locks or vesting dates for standalone Coinbase stock tokens.
 
 ## Research Bankr stock-paired launches on Base
 
@@ -21,6 +23,22 @@ Choose either example below for your agent. Send a JSON POST to `https://dinn-pa
 ```
 
 To rank by 24-hour trading volume, use `volume` as the metric. Discovery checks a rotating sample. To research one result, use `base.stock-paired.research` with its launch token contract in `input.address` and a fresh request ID. Quote that follow-up separately. Discovery plus one follow-up costs **0.20 USDC total**.
+
+For creator vesting, request the individual launch report directly. When Bankr reports an eligible schedule, Dinn returns the locked amount, vesting start, cliff end and vesting end in UTC. The schedule covers the creator allocation. Other lockers and the paired stock token are outside this check.
+
+```json
+{"requestId":"my-bankr-vesting","service":"base.stock-paired.research","input":{"address":"0x8f277eee1254d3319355e76a8c6594e7d3e2eba3"}}
+```
+
+## Research a Pons launch on Robinhood Chain
+
+> Research GRAIL on Robinhood Chain. Check the launch stage, volume and fees, holder activity, and how much supply is locked in supported PinkLock records. Include the unlock date or first vesting release, later release schedule where available, and the source.
+
+```json
+{"requestId":"my-pons-grail-report","service":"token.research","input":{"address":"0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4"}}
+```
+
+For a fixed lock, read the unlock date. For staged vesting, read the first release date, its percentage, and the interval and percentage of later releases. An empty search leaves lock status unknown.
 
 ## Review the payment
 
