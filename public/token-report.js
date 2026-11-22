@@ -19,22 +19,45 @@ function cleanLocker(value){
   return record;
  });
  const status=['observed','no-match','partial','unavailable'].includes(value.status)?value.status:'unavailable';
- return {status,records,source:safeSource(value.source,['robinhoodchain.blockscout.com'])};
+ return {status,records,version:shortText(value.version,12),kind:shortText(value.kind,16),source:safeSource(value.source,['robinhoodchain.blockscout.com'])};
 }
 function lockGroups(r){
  return [['PinkLock',[r.pinkLock].filter(Boolean)],['Titan Locker',r.titanLocks||[]],['HoodLock',r.hoodLocks||[]],['UNCX',r.uncxVesting?[r.uncxVesting]:[]]];
 }
 export function lockCoverageText(r){
- const checked=[],incomplete=[],matches=[];
- for(const [name,reports] of lockGroups(r)){
-  if(!reports.length)continue;
-  checked.push(name);
-  if(reports.some(v=>!['observed','no-match','checked'].includes(v.status)||v.adapters?.some(a=>['partial','unavailable','unverified','source-mismatch'].includes(a.status))))incomplete.push(name);
-  if(reports.some(v=>v.records?.length))matches.push(name);
+ const reports=lockGroups(r).flatMap(([,sources])=>sources);
+ if(!reports.length)return 'Locker checks were unavailable for this report.';
+ const count=reports.reduce((total,source)=>total+(source.records?.length||0),0);
+ const incomplete=reports.some(v=>!['observed','no-match','checked'].includes(v.status)||v.adapters?.some(a=>['partial','unavailable','unverified','source-mismatch'].includes(a.status)));
+ const finding=count?'Found '+count+' lock or vesting record'+(count===1?'':'s')+' across our locker providers.':'No lock was confirmed across the locker providers checked.';
+ return finding+(incomplete?' Some checks were incomplete.':'')+(!count?' Other contracts may still hold locked tokens.':'');
+
+}
+function lockDestination(name,source,row){
+ if(/^\d{1,30}$/.test(row.id)){
+  const paths={'V2.2':'v2_2/','V2.1':'','V2':'v2/','V1':'v1/'};
+  if(name==='Titan Locker'&&Object.hasOwn(paths,source.version))return {label:'View lock',url:'https://titanlocker.com/lock/'+paths[source.version]+row.id};
+  if(name==='HoodLock'&&['lock','vesting'].includes(source.kind))return {label:'View lock',url:'https://hoodlock.tech/proof/'+source.kind+'/'+row.id};
+  if(name==='UNCX')return {label:'View lock',url:'https://app.uncx.network/vesting-v2/flux/4663-'+row.id};
  }
- if(!checked.length)return 'Locker checks were unavailable for this report.';
- const finding=matches.length?'Found lock or vesting records on '+matches.join(', ')+'.':'No matching record was confirmed.';
- return 'Checked '+checked.join(', ')+'. '+finding+(incomplete.length?' Some checks on '+incomplete.join(', ')+' were incomplete.':'')+(!matches.length?' Other contracts may still hold locked tokens.':'');
+ const record=safeSource(row.pinkSaleUrl,['www.pinksale.finance']);
+ if(record&&new URL(record).pathname==='/pinklock/robinhood/record/'+row.id)return {label:'View lock',url:record};
+ const contract=safeSource(row.sourceUrl||(addressPattern.test(row.child||'')?'https://robinhoodchain.blockscout.com/address/'+row.child:source.source),['robinhoodchain.blockscout.com']);
+ return contract?{label:'View locker contract',url:contract}:null;
+}
+export function firstLockPreview(r){
+ for(const [name,sources] of lockGroups(r))for(const source of sources)for(const row of source.records||[]){
+  if(row.cancelled)continue;
+  const amount=row.scheduledUnvested??row.locked??row.remaining;
+  const date=row.nextScheduleDate||row.tgeOrUnlockDate||row.unlockDate||row.cliff||row.scheduleEnd||row.end;
+  const link=lockDestination(name,source,row);
+  const info=[];
+  if(amount!=null)info.push(amount+' '+(r.symbol||'tokens')+(row.soft?' on a soft vesting schedule':row.scheduledUnvested!=null?' still to vest':' remaining'));
+  if(date&&Number.isFinite(Date.parse(date)))info.push('Release date: '+new Date(date).toISOString().slice(0,10)+' UTC');
+  if(link)info.push('['+link.label+']('+link.url+')');
+  if(info.length)return info.join(' ? ');
+ }
+ return '';
 }
 function renderLockSources(host,r){
  const doc=host.ownerDocument,section=doc.createElement('details'),heading=doc.createElement('summary');
@@ -46,7 +69,7 @@ function renderLockSources(host,r){
    const amount=row.scheduledUnvested??row.locked??row.remaining;
    const date=row.nextScheduleDate||row.tgeOrUnlockDate||row.unlockDate||row.cliff;
    const end=row.scheduleEnd||row.end;
-   const parts=[name+' #'+(row.id||'unknown')];
+   const parts=[row.kind==='liquidity-position'?'Liquidity lock':row.scheduledUnvested!=null?'Vesting schedule':'Lock record'];
    if(row.cancelled)parts.push('Cancelled schedule');
    else{
     if(amount!=null)parts.push(amount+' '+(r.symbol||'tokens')+(row.soft?' on a soft vesting schedule':row.scheduledUnvested!=null?' still to vest':' remaining'));
@@ -56,8 +79,8 @@ function renderLockSources(host,r){
     if(available!=null)parts.push('Available to withdraw: '+available);
    }
    line.textContent=parts.join(' ? ');section.append(line);
-   const url=safeSource(row.pinkSaleUrl||row.sourceUrl||(row.child?'https://robinhoodchain.blockscout.com/address/'+row.child:source.source),['www.pinksale.finance','robinhoodchain.blockscout.com']);
-   if(url){const link=doc.createElement('a');link.href=url;link.textContent='View record';link.target='_blank';link.rel='noopener noreferrer';section.append(link);}
+   const destination=lockDestination(name,source,row);
+   if(destination){const link=doc.createElement('a');link.href=destination.url;link.textContent=destination.label;link.target='_blank';link.rel='noopener noreferrer';section.append(link);}
   }
  }
  host.append(section);
@@ -72,7 +95,7 @@ export function cleanInspection(report){
 function renderResearchEvidence(card,r){const doc=card.ownerDocument,format=v=>v===null||v===undefined?'Unavailable':new Intl.NumberFormat('en-US',{maximumFractionDigits:4}).format(Number(v));
  if(r.ponsState||r.ponsStateUnavailable){const d=doc.createElement('details');d.className='research-evidence';const s=doc.createElement('summary');s.textContent='Current Pons state';d.append(s);const p=doc.createElement('p');if(r.ponsState){const x=r.ponsState,marketAt=x.market.checkedAt?` Market reference checked ${new Date(x.market.checkedAt).toLocaleString()}.`:'',lines=[x.status+(x.curve?` · bonding progress ${format(x.curve.progressPercent)}% (${format(x.curve.raised)} / ${format(x.curve.threshold)} ${x.pair.symbol||'pair asset'})`:''),x.curve?`Spot price ${format(x.curve.priceQuote)} ${x.pair.symbol}; FDV ${format(x.curve.fdvQuote)} ${x.pair.symbol}.`:x.market.priceUsd?`Reported price $${format(x.market.priceUsd)}; FDV $${format(x.market.fdvUsd)}.`:null,x.market.marketCapUsd?`Reported circulating market cap $${format(x.market.marketCapUsd)} (${x.market.source||'reference source'}).${marketAt}`:null,x.viewerAccount?`Claimable for ${x.accountSource}: ${format(x.claimable)} ${x.pair.symbol||'pair asset'} (${x.viewerAccount}); this is the address’s total in this escrow and may include multiple launches.`:'Connect a wallet to check its claimable balance.',x.unswept?`Estimated pending distribution: ${format(x.unswept.quote)} ${x.pair.symbol||'pair asset'}${x.unswept.launchTokens&&Number(x.unswept.launchTokens)>0?` and ${format(x.unswept.launchTokens)} ${r.symbol||'tokens'}`:''}; this is not yet claimable.`:'Pending distribution unavailable.', 'Lifetime earnings are unavailable.'];p.textContent=lines.filter(Boolean).join(' ');d.append(p);}else{p.textContent='This token matched Pons v2, but its live market and fee snapshot could not be completed.';d.append(p);}card.append(d);}
  if(r.ponsHistory){const h=r.ponsHistory,c=h.curve,d=doc.createElement('details');d.className='research-evidence';const s=doc.createElement('summary');s.textContent='Launch and curve history';d.append(s);const p=doc.createElement('p');const trades=c.tradeCount??c.scannedTradeCount,volume=c.totalVolume??c.scannedVolume,fees=c.totalFees??c.scannedFees;p.textContent=`Launched ${h.launchedAt?new Date(h.launchedAt).toLocaleString():'date unavailable'} · age ${h.age||'unavailable'}. ${format(trades)} ${c.tradeCount===null?'scanned ':' '}curve trades · ${format(volume)} ${c.pairSymbol||'pair asset'} quote volume · ${format(fees)} ${c.pairSymbol||'pair asset'} generated curve fees. ${h.coverage||h.reason||''} Generated event fees are not creator earnings or currently claimable fees; post-graduation pool trades are not included.`;d.append(p);if(h.holderEventSummary){const q=doc.createElement('p');q.textContent=`Cumulative Pons curve activity for the current indexed top-holder sample: ${format(h.holderEventSummary.addressesWithBuys)} addresses with buys and ${format(h.holderEventSummary.addressesWithSells)} with sells. This is not recent wallet activity. ${h.holderEventSummary.scope||''}`;d.append(q);}const active=h.holderActivity.filter(row=>row.buys||row.sells);if(active.length){for(const row of active){const item=doc.createElement('p');item.className='holder-curve-event';const a=doc.createElement('a');a.href='https://robinhoodchain.blockscout.com/address/'+row.address;a.target='_blank';a.rel='noopener noreferrer';a.textContent=row.address.slice(0,8)+'…'+row.address.slice(-6);item.append(a,doc.createTextNode(` · ${row.buys} buys (${format(row.buyQuote)} ${c.pairSymbol||'pair'} / ${format(row.buyTokens)} tokens) · ${row.sells} sells (${format(row.sellQuote)} ${c.pairSymbol||'pair'} / ${format(row.sellTokens)} tokens)`));if(row.lastTradeHash){const tx=doc.createElement('a');tx.href='https://robinhoodchain.blockscout.com/tx/'+row.lastTradeHash;tx.target='_blank';tx.rel='noopener noreferrer';tx.textContent='Last curve trade';item.append(doc.createTextNode(' · '),tx);}d.append(item);}}else{const q=doc.createElement('p');q.textContent='No cumulative curve events were found for the listed current top-holder sample; this does not prove those addresses were inactive.';d.append(q);}for(const url of h.sourceUrls){const a=doc.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=url.includes('/tx/')?'Launch transaction evidence':url.includes('/logs')?'Curve event logs':'Pons documentation';d.append(a);}card.append(d);}
- if(r.pinkLock){const l=r.pinkLock,d=doc.createElement('details');d.className='research-evidence';const s=doc.createElement('summary');s.textContent=`PinkLock and vesting · ${l.status}`;d.append(s);const p=doc.createElement('p');p.textContent=(l.reason||'')+' '+(l.scope||'');d.append(p);if(l.recordCount>l.records.length){const n=doc.createElement('p');n.textContent=`Showing ${l.records.length} of ${l.recordCount} verified records.`;d.append(n);}for(const row of l.records){const item=doc.createElement('div');item.className='research-lock-row';const title=doc.createElement('strong');title.textContent=`${row.kind==='liquidity-position'?'Liquidity position':'Token lock'} · ${format(row.remaining)} ${r.symbol||'tokens'} remaining`;const meta=doc.createElement('p');meta.textContent=`Unlocked ${format(row.unlocked)} · currently withdrawable ${format(row.currentlyWithdrawable)} · TGE/unlock ${row.tgeOrUnlockDate?new Date(row.tgeOrUnlockDate).toLocaleString():'not reported'} · TGE release ${format(row.tgeReleasePercent)}% · cycle ${format(row.cycleReleasePercent)}% every ${format(row.cycleDays)} days.`;item.append(title,meta);if(row.description){const note=doc.createElement('small');note.textContent=row.description;item.append(note);}for(const [url,label]of [[row.pinkSaleUrl,'PinkSale lock record'],[row.sourceUrl,'Contract evidence']])if(url){const a=doc.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=label;item.append(a);}d.append(item);}for(const adapter of l.adapters){const line=doc.createElement('p');line.className='research-adapter';line.textContent=`${adapter.name||'Lock adapter'}: ${adapter.status}${adapter.lockCount!==null?` · ${adapter.lockCount} records`:''}`;d.append(line);}const caveat=doc.createElement('p');caveat.textContent='No matching record is not proof that supply is unlocked.';d.append(caveat);card.append(d);}
+
 }
 export function renderInspection(host,report,{restored=false,onRecheck,onHolders}={}){
  let r;try{r=cleanInspection(report);}catch{}if(!r)return;const doc=host.ownerDocument,card=doc.createElement('section');card.className='token-report';

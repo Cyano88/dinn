@@ -11,8 +11,21 @@ test('chat keeps locker results and release dates after saving and reopening a r
  const restored=cleanInspection(cleanInspection(report));
  assert.equal(restored.titanLocks[0].records[0].unlockDate,'2027-01-01');
  const summary=lockCoverageText(restored);
- assert.match(summary,/Checked PinkLock, Titan Locker, HoodLock, UNCX/);
- assert.match(summary,/Found lock or vesting records on Titan Locker/);
+ assert.match(summary,/across our locker providers/);
+ assert.match(summary,/Found 1 lock or vesting record/);
+ assert.doesNotMatch(summary,/PinkLock|HoodLock|Titan|UNCX/);
  assert.match(summary,/incomplete/);
  assert.doesNotMatch(lockCoverageText(cleanInspection({...report,titanLocks:undefined,hoodLocks:undefined,uncxVesting:undefined})),/UNCX|HoodLock|Titan/);
+});
+
+test('public lock links use the correct network, record ID and manager version',async()=>{
+ const {firstLockPreview}=await import('../public/token-report.js');
+ const record={id:'14',locked:'15',unlockDate:'2027-01-01'};
+ for(const [input,url] of [
+  [{titanLocks:[{version:'V2.2',records:[record]}]},'https://titanlocker.com/lock/v2_2/14'],
+  [{hoodLocks:[{kind:'vesting',records:[record]}]},'https://hoodlock.tech/proof/vesting/14'],
+  [{uncxVesting:{records:[record]}},'https://app.uncx.network/vesting-v2/flux/4663-14'],
+  [{pinkLock:{records:[{...record,pinkSaleUrl:'https://www.pinksale.finance/pinklock/robinhood/record/14'}]}},'https://www.pinksale.finance/pinklock/robinhood/record/14']
+ ])assert.ok(firstLockPreview(input).includes('[View lock]('+url+')'));
+ assert.doesNotMatch(firstLockPreview({pinkLock:{records:[{...record,pinkSaleUrl:'https://www.pinksale.finance/pinklock/robinhood/record/15'}]}}),/View lock/);
 });

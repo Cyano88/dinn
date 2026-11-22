@@ -108,13 +108,21 @@ export function chatLockEvidence(scan,symbol){
  const checked=scan.sources.filter(source=>source.status==='checked');
  const records=scan.sources.flatMap(source=>source.records.map(record=>({source,record})));
  const lines=['**Token locks for '+symbol+'**'];
- if(!records.length)lines.push(checked.length?'No records returned by '+checked.map(source=>source.name).join(', ')+'.':'The locker checks could not be completed.');
  for(const {source,record:r} of records){
-  const schedule=r.cliffUtc?'Cliff '+r.cliffUtc+', vesting ends '+r.vestingEndUtc:r.firstReleaseUtc?'First release '+r.firstReleaseUtc+(r.cycleSeconds!=='0'?', then every '+r.cycleSeconds+' seconds':''):r.scheduledEndUtc?'Scheduled end '+r.scheduledEndUtc:'Release date unavailable';
-  lines.push('['+source.name+']('+source.url+') '+schedule+(r.conditionContract?' (an additional release condition applies)':'')+'.');
+  const schedule=r.cliffUtc?'First release: '+r.cliffUtc+'. Vesting ends: '+r.vestingEndUtc:r.firstReleaseUtc?'First release: '+r.firstReleaseUtc:r.scheduledEndUtc?'Scheduled end: '+r.scheduledEndUtc:'Release date unavailable';
+  lines.push(schedule+(r.conditionContract?' (an additional release condition applies)':'')+'. [View locker contract]('+source.url+')');
  }
- if(checked.length!==scan.sources.length)lines.push('Some sources were unavailable or only partly checked.');
- if(scan.index?.status==='indexed')lines.push('Vestream reports '+scan.index.activeSchedules+' active schedules'+(scan.index.nextIndexedEvent?' with a discrete release on '+scan.index.nextIndexedEvent.utc:'')+'.');
- lines.push(...additionalScheduleLines(scan.additionalSchedules),...projectVestingLines(scan.projectSchedules),'Other contracts may hold additional locks.');
+ for(const report of scan.additionalSchedules||[])for(const row of report.records||[]){
+  const url=row.contract?'https://basescan.org/address/'+row.contract+'#readContract':report.url;
+  lines.push('Scheduled end: '+row.endUtc+(row.cancelable?' (can be cancelled)':'')+'. [View locker contract]('+url+')');
+ }
+ for(const escrow of scan.projectSchedules?.magna?.escrows||[]){
+  for(const a of escrow.allocations)lines.push((a.terminated?'Cancelled allocation. Original end: ':'Scheduled end: ')+a.endUtc+'. [View transaction](https://basescan.org/tx/'+a.proofTransaction+')');
+ }
+ for(const wallet of scan.projectSchedules?.wallets?.records||[])lines.push('Vesting ends: '+wallet.endUtc+'. [View locker contract](https://basescan.org/address/'+wallet.address+'#readContract)');
+ if(scan.index?.status==='indexed'&&scan.index.activeSchedules)lines.push(scan.index.activeSchedules+' active schedules reported'+(scan.index.nextIndexedEvent?' with a release on '+scan.index.nextIndexedEvent.utc:'')+'.');
+ if(lines.length===1)lines.push('No lock was confirmed across the locker providers checked.');
+ if(checked.length!==scan.sources.length||scan.index?.status!=='indexed'||scan.additionalSchedules?.some(x=>['partial','unavailable'].includes(x.status))||scan.projectSchedules?.wallets?.inconclusive||scan.projectSchedules?.magna?.status==='partial')lines.push('Some checks were incomplete.');
+ lines.push('Other contracts may hold additional locks.');
  return lines.join('\n\n');
 }
