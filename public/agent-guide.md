@@ -104,3 +104,5 @@ Use `pons.stock-paired.research` with `{"address":"0x43468fc21c46d30cf765e1a1d0e
 Robinhood reports check PinkLock and UNCX V2 for each token address separately. UNCX reads up to the newest 256 schedule IDs and details up to 64 matches, prioritizing uncancelled records. A future schedule milestone can mark a point in a gradual release. Cancelled schedules do not count toward active vesting. Amounts the contract cannot return stay unknown.
 
 Robinhood reports also read HoodLock?s token-lock and vesting contracts by exact asset address. Each contract lists its own coverage. Reports distinguish locked, withdrawable and withdrawn balances and show the vesting cliff and end date. The scan details up to 64 matching IDs per contract. Liquidity-position NFTs are outside this check.
+
+Titan token research checks the Robinhood V1, V2, V2.1 and V2.2 general managers separately. Each manager checks up to 64 indexed IDs and matches the actual asset in each record. NFT liquidity positions and the Titan.fun LP vault are outside token supply coverage. Vesting balances distinguish the scheduled grant from what the child locker currently allows its owner to release.
