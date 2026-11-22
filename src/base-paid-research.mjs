@@ -21,12 +21,19 @@ const examples={
  'token.research':{address:'0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4'}
 };
 const inputSchema={type:'object',additionalProperties:false,required:['requestId','service','input'],
- properties:{requestId:{type:'string',pattern:'^[A-Za-z0-9._-]{1,100}$'},service:{enum:Object.keys(examples)},input:{type:'object'}},
+ properties:{
+  requestId:{type:'string',pattern:'^[A-Za-z0-9._-]{1,100}$',description:'Choose an ID for this report. Reuse it when retrying the same payment.',examples:['research-001']},
+  service:{type:'string',enum:Object.keys(examples),description:'Choose Base stock research, Bankr stock-pair research or discovery, or Pons token research on Robinhood Chain.',examples:['base.stock.research']},
+  input:{type:'object',description:'For a Base stock, send its ticker as query. For a Bankr or Pons token report, send its contract address as address. For discovery, send metric as liquidity or volume.',examples:[examples['base.stock.research']]}
+ },
  oneOf:Object.keys(examples).map(service=>({properties:{service:{const:service},input:{
   type:'object',additionalProperties:false,required:agentServices[service].required,properties:agentServices[service].properties
  }}}))};
 const extension=declareDiscoveryExtension({method:'POST',bodyType:'json',input:{requestId:'research-001',service:'base.stock.research',input:examples['base.stock.research']},inputSchema,
- output:{example:{status:'completed',charged:true,service:'base.stock.research'}}});
+ output:{example:{status:'completed',charged:true,service:'base.stock.research',result:{
+  checkedAt:'2026-11-22T08:39:17.701Z',address:'0xb20000000000000000000078ee7ce2fe4908108c',
+  identity:{status:'matched',symbol:'NVDAc',name:'NVIDIA Corporation'}
+ }}}});
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const reply=(status,body,headers={})=>({status,body,headers});
 const problem=(status,error)=>reply(status,{error});
@@ -68,7 +75,12 @@ async function initialize(env){
  const origin=new URL(env.DINN_PAID_ORIGIN);
  if(origin.protocol!=='https:'||origin.origin!==env.DINN_PAID_ORIGIN)throw Error('Invalid paid research origin.');
  const chain=createPublicClient({chain:base,transport:http(serverRpcUrl(8453,env))});
- const resource={url:origin.origin+path,mimeType:'application/json',description:'Sourced Base stock, Bankr stock-pair and Robinhood Chain Pons research. One report per call.'};
+ const resource={
+  url:origin.origin+path,mimeType:'application/json',serviceName:'Dinn Labs',
+  iconUrl:new URL('/brand/dinn-icon.svg',origin).href,
+  tags:['Token research','Tokenized stocks','Base','Bankr','Pons'],
+  description:'Research Coinbase stock tokens and Bankr stock-paired launches on Base, or Pons tokens on Robinhood Chain. Check token identity, liquidity and trading activity. See which sampled holders match trading pools and, for Pons launches, check bonding-curve progress and reported locks or vesting. Each report includes sources, timestamps and what Dinn could verify.'
+ };
  const facilitator=new HTTPFacilitatorClient(createFacilitatorConfig(env.CDP_API_KEY_ID,env.CDP_API_KEY_SECRET));
  const server=new x402ResourceServer(facilitator).register(network,new ExactEvmScheme());
  await server.initialize();
