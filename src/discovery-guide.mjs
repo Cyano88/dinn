@@ -23,7 +23,8 @@ export function chosenCandidate(text,rows){
 export function discoveryMessage(r){
  const label=r.metric==='volume'?'24-hour volume':'pool liquidity';
  const lines=['Base stock-pair shortlist by '+label+' | '+r.checkedAt,
-  'Checked '+r.checked+' of '+r.eligible+' stock-paired candidates in '+r.listed+' recent Bankr launch records. '+r.comparable+' had a verified pool and a positive reported value for this comparison.'];
+  'Checked '+r.checked+' of '+r.eligible+(r.catalogEnabled?' known stock-paired candidates, including earlier launches saved by Dinn. ':' stock-paired candidates in '+r.listed+' recent Bankr launch records. ')+r.comparable+' had a verified pool and a positive reported value for this comparison.'];
+ if(r.feedAvailable===false)lines.push('The latest Bankr launch feed was unavailable. This check covers previously saved pairs.');
  for(const [i,c] of r.candidates.entries())lines.push((i+1)+'. '+c.symbol+' / '+c.stock+' - '+Number(c[r.metric]).toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2})+' '+label+'\nContract: '+c.address+'\nPool: '+(c[r.metric+'Source']||c.source)+'\nLaunch: '+c.receipt);
  lines.push('Launch feed: '+r.feedUrl);
  if(!r.candidates.length)lines.push('There is too little verified market data for a shortlist. Send a token contract address if you want an individual report.');

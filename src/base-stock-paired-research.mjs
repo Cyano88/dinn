@@ -1,3 +1,4 @@
+import {pairCatalog} from './base-pair-catalog.mjs';
 import {baseStockOptions} from './base-stock-data.mjs';
 import {inspectToken} from './token-inspection.mjs';
 import {serverRpcUrl} from './rpc-config.mjs';
@@ -159,6 +160,10 @@ async function researchBaseStockPairedTokenUncached(input,{fetchImpl=fetch,baseS
  const feeConsistent=!fee||(feeNumeraire===declaredStockAddress&&feePoolId===launchPoolId);
  const feeHistory=(()=>{const payload=feesResult.status==='fulfilled'?feesResult.value:null,rows=Array.isArray(payload?.allTimeDailyEarnings)?payload.allTimeDailyEarnings:null,launchTime=finite(launch?.timestamp),total=finite(payload?.lifetimeEarnedWeth),days=payload?.lifetimeDays;if(!fee||!feeConsistent||!rows||launchTime===null||total===null||!Number.isSafeInteger(days)||days<0)return {status:'unavailable',reason:'Bankr lifetime earnings could not be checked against a matching launch and complete daily history.'};const launchDate=new Date(launchTime).toISOString().slice(0,10),validRows=rows.every(row=>typeof row?.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(row.date)&&finite(row.weth)!==null&&finite(row.weth)>=0),positive=rows.filter(row=>finite(row.weth)>0),sum=rows.reduce((value,row)=>value+(finite(row.weth)||0),0),best=payload.lifetimeBestDay;if(!validRows||positive.some(row=>row.date<launchDate)||positive.length!==days||Math.abs(sum-total)>0.00011||best&&(typeof best.date!=='string'||best.date<launchDate||finite(best.weth)===null))return {status:'unavailable',reason:'Bankr lifetime earnings did not reconcile with its daily history and verified launch date.'};return {status:'reported',lifetimeEarnedWeth:String(payload.lifetimeEarnedWeth),earningDays:days,bestDay:best?{date:best.date,weth:String(best.weth)}:null,source:'Bankr public fee history'};})();
  const pairVerified=!!(launch&&declaredStockAddress&&stock&&stock.address===declaredStockAddress&&launchPoolId&&chainCheck.poolId===launchPoolId&&chainCheck.computedPoolId===launchPoolId&&chainCheck.status==='verified'&&feeConsistent);
+ if(pairVerified && env.DATABASE_URL && env.RENDER){
+  try{const catalog=await pairCatalog(env);await catalog.remember([launch]);}
+  catch{console.error('Base discovery could not save a verified launch.');}
+ }
  const marketReport=market?{source:market.source||'DEX Screener',pairAddress:market.pairAddress,matchesBankrPool:market.source==='GeckoTerminal'||!!(launchPoolId&&typeof market.pairAddress==='string'&&market.pairAddress.toLowerCase()===launchPoolId),poolName:market.poolName||null,baseToken:market.baseToken,quoteToken:market.quoteToken,priceUsd:finite(market.priceUsd),priceNative:finite(market.priceNative),volumeUsd:market.volumeUsd||numericSeries(market.volume,['m5','h1','h6','h24']),transactions:market.transactions||transactionSeries(market.txns),liquidityUsd:market.liquidityUsd??finite(market.liquidity?.usd),fdvUsd:market.fdvUsd??finite(market.fdv),marketCapUsd:market.marketCapUsd??finite(market.marketCap),pairCreatedAt:finite(market.pairCreatedAt)!==null?new Date(Number(market.pairCreatedAt)).toISOString():typeof market.pairCreatedAt==='string'&&Number.isFinite(Date.parse(market.pairCreatedAt))?new Date(market.pairCreatedAt).toISOString():null,url:market.url||null}:null;
  const vestingResult=await bankrVesting(token,launch,fetchImpl,AbortSignal.timeout(6000)),supplyHuman=contractReport?units(contractReport.rawSupply,contractReport.decimals):null,vesting=vestingResult.status==='reported'?{...vestingResult,allocationPercentOfSupply:supplyHuman?allocationPercent(vestingResult.totalAmount,supplyHuman):null}:vestingResult;
  const checkedAt=new Date().toISOString(),timestamp=finite(launch?.timestamp),deployedAt=timestamp!==null&&Math.abs(timestamp)<=8.64e15?new Date(Number(timestamp)).toISOString():null,ageMs=deployedAt?Date.parse(checkedAt)-Date.parse(deployedAt):null,launchAgeDays=ageMs!==null&&ageMs>=0?Math.floor(ageMs/86400000):null;
@@ -177,18 +182,28 @@ export async function researchBaseStockPairedToken(input,options={}){
 // A bounded comparison of recent launches. Rank only observations for the pool
 // initialized by the successful Bankr launch transaction.
 let discoveryScan;
-async function scanStockPairs({fetchImpl=fetch,env=process.env,baseStockOptionsImpl=baseStockOptions}={}){
+async function scanStockPairs({fetchImpl=fetch,env=process.env,baseStockOptionsImpl=baseStockOptions,catalog:providedCatalog}={}){
  const signal=AbortSignal.timeout(18000);
  const feedUrl=BANKR+'/token-launches';
- const [feed,registry]=await Promise.all([json(feedUrl,fetchImpl,signal),baseStockOptionsImpl({fetchImpl,signal})]);
- if(!Array.isArray(feed?.launches)||registry.sources?.coinbase?.status!=='available')throw Error('The launch feed or stock registry could not be checked.');
- const listed=feed.launches.slice(0,50),stocks=new Map(registry.coinbaseRegistry.map(s=>[s.address.toLowerCase(),s]));
+ const [feed,registry]=await Promise.all([json(feedUrl,fetchImpl,signal).catch(()=>null),baseStockOptionsImpl({fetchImpl,signal})]);
+ const feedAvailable=Array.isArray(feed?.launches);
+ if(registry.sources?.coinbase?.status!=='available')throw Error('The launch feed or stock registry could not be checked.');
+ const listed=feedAvailable?feed.launches.slice(0,50):[],stocks=new Map(registry.coinbaseRegistry.map(s=>[s.address.toLowerCase(),s]));
  const unique=new Map();
  for(const l of listed){
   const token=l?.tokenAddress?.toLowerCase(),quote=l?.pairedStock?.address?.toLowerCase();
   if(l?.chain==='base'&&l.status==='deployed'&&addr(token)&&token!==quote&&stocks.has(quote)&&!unique.has(token))unique.set(token,l);
  }
- const sample=[...unique.values()].slice(0,8),rpc=serverRpcUrl(8453,env);
+ const recent=[...unique.values()].filter(l=>HASH.test(l.poolId||'')&&HASH.test(l.txHash||''));
+ const catalog=providedCatalog===undefined?await pairCatalog(env):providedCatalog;
+ let sample=recent.slice(0,8),eligible=recent.length;
+ if(catalog){
+  await catalog.remember(recent);
+  const selection=await catalog.sample([...stocks.keys()]);
+  sample=selection.launches;eligible=selection.total;
+ }
+ if(!feedAvailable&&!sample.length)throw Error('The launch feed is unavailable and there are no saved candidates to check.');
+ const rpc=serverRpcUrl(8453,env);
  let poolBatch;
  const poolIds=sample.map(l=>l.poolId).filter(id=>HASH.test(id||''));
  if(poolIds.length){
@@ -219,16 +234,18 @@ async function scanStockPairs({fetchImpl=fetch,env=process.env,baseStockOptionsI
   const clean=s=>String(s||'Token').replace(/[^\p{L}\p{N}._-]/gu,'').slice(0,24)||'Token';
   return {address:token,symbol:clean(l.tokenSymbol),stock:clean(stock.symbol),stockAddress:quote,pool,liquidity:market.liquidityUsd,volume:market.volumeUsd?.h24??null,source:market.url,liquiditySource:market.liquiditySource||market.url,volumeSource:market.volumeSource||market.url,receipt:'https://basescan.org/tx/'+l.txHash};
  }));
- return {checkedAt:new Date().toISOString(),listed:listed.length,eligible:unique.size,checked:sample.length,rows:checked.flatMap(x=>x.status==='fulfilled'&&x.value?[x.value]:[]),feedUrl};
+ if(catalog)await catalog.checked(sample.map(l=>l.tokenAddress.toLowerCase()));
+ return {catalogEnabled:!!catalog,feedAvailable,checkedAt:new Date().toISOString(),listed:listed.length,eligible,checked:sample.length,rows:checked.flatMap(x=>x.status==='fulfilled'&&x.value?[x.value]:[]),feedUrl};
 }
 export async function discoverStockPairs(metric,options={}){
  if(!['liquidity','volume'].includes(metric))throw Error('Choose liquidity or 24-hour volume.');
- if(!discoveryScan||Date.now()>=discoveryScan.until){
+ const custom=!!(options.fetchImpl||options.catalog||options.baseStockOptionsImpl);
+ if(!custom&&(!discoveryScan||Date.now()>=discoveryScan.until)){
   const promise=scanStockPairs(options);
   discoveryScan={promise,until:Date.now()+60000};
   promise.catch(()=>{if(discoveryScan?.promise===promise)discoveryScan=null;});
  }
- const {rows,...coverage}=await discoveryScan.promise;
+ const {rows,...coverage}=await (custom?scanStockPairs(options):discoveryScan.promise);
  const ranked=rows.filter(x=>Number.isFinite(x[metric])&&x[metric]>0).sort((a,b)=>b[metric]-a[metric]||a.address.localeCompare(b.address));
  return {...coverage,metric,comparable:ranked.length,candidates:ranked.slice(0,3)};
 }

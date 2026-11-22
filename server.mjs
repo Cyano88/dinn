@@ -1,3 +1,4 @@
+import {discoverStockPairs} from './src/base-stock-paired-research.mjs';
 import {feedbackFeed,feedbackRequest} from './src/research-feedback.mjs';
 import {createNearMarketClient} from './src/near-market-client.mjs';
 import {createNearWorkerStore} from './src/near-worker-store.mjs';
@@ -181,6 +182,12 @@ async function startNearWorker(){
   let polling=false,pollAgain=false;const poll=async()=>{if(polling){pollAgain=true;return;}polling=true;try{do{pollAgain=false;try{const result=await worker.runOnce();if(result.results.some(x=>x.state==='submitted'))console.log('NEAR worker submitted a verified-scope report; payout awaits buyer acceptance.');}catch(error){console.error('NEAR worker poll failed:',error.code||error.name||'error');}}while(pollAgain);}finally{polling=false;if(pollAgain)void poll();}};
   void poll();nearWorkerTimer=setInterval(poll,45000);nearWorkerTimer.unref();console.log('NEAR Agent Market worker enabled.');
  }catch(error){console.error('NEAR worker remains disabled:',error.message);await nearWorkerStore?.close().catch(()=>{});nearWorkerStore=null;}
+}
+// Sample the upstream feed between buyer requests so observed launches survive feed rollover.
+if(process.env.RENDER && process.env.DATABASE_URL){
+ const refresh=()=>discoverStockPairs('liquidity').catch(()=>console.error('Base discovery refresh unavailable.'));
+ void refresh();
+ setInterval(refresh,10*60_000).unref();
 }
 server.listen(port,host,()=>{console.log(`Dinn preview: http://${host}:${port}`);void startNearWorker();});
 for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{

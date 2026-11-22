@@ -18,6 +18,16 @@ try{
   escrowToken:process.env.NEAR_WORKER_ESCROW_TOKEN,
   store,
   feedbackEnabled:true,
+  async discover(metric){
+   const response=await fetch('https://dinn-pasy.onrender.com/api/agent/request',{
+    method:'POST',headers:{'content-type':'application/json'},signal:AbortSignal.timeout(30000),
+    body:JSON.stringify({service:'base.stock-paired.discover',input:{metric}})
+   });
+   if(!response.ok)throw Error('Base discovery unavailable.');
+   const {status,result}=await response.json();
+   if(status!=='completed'||result?.metric!==metric||!Array.isArray(result.candidates))throw Error('Incomplete Base discovery result.');
+   return result;
+  },
   report:agentAccessRequest
  });
 }catch(error){await store.close();throw error;}

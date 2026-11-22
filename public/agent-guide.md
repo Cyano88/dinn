@@ -52,6 +52,6 @@ The marketplace worker routes Base requests with `Service: base.stock.research` 
 
 ### Find a Base stock-paired launch
 
-Send `{"service":"base.stock-paired.discover","input":{"metric":"liquidity"}}` to the public agent endpoint. Use `volume` for 24-hour USD volume. Dinn checks up to eight distinct stock-paired candidates from the first 50 recent Bankr launch records against the Coinbase registry, launch receipts and exact pool data. It returns up to three ranked contracts. If the sample lacks positive, verifiable values, the shortlist is empty. Use the selected contract with `base.stock-paired.research` for the full report.
+Send `{"service":"base.stock-paired.discover","input":{"metric":"liquidity"}}` to the public agent endpoint. Use `volume` for 24-hour USD volume. Dinn checks up to eight distinct stock-paired candidates per comparison, rotating through candidates saved from Bankr feed observations and earlier address-specific research against the Coinbase registry, launch receipts and exact pool data. It returns up to three ranked contracts. If the sample lacks positive, verifiable values, the shortlist is empty. Use the selected contract with `base.stock-paired.research` for the full report.
 
 In a private NEAR hire, say ?find a stock-paired launch on Base by liquidity?. Reply with the result number to select it for the research report. Until selection and start, the buyer may cancel the hire.

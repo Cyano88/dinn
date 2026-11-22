@@ -114,4 +114,19 @@ test('discovery counts only the receipt-verified pool and preserves missing volu
  }};
  const ranked=await discoverStockPairs('liquidity',options);assert.equal(ranked.candidates[0].address,token);assert.equal(ranked.candidates[0].liquidity,700);
  const missing=await discoverStockPairs('volume',options);assert.equal(missing.comparable,0);assert.deepEqual(missing.candidates,[]);
+ const {PGlite}=await import('@electric-sql/pglite');
+ const {createPairCatalog}=await import('../src/base-pair-catalog.mjs');
+ const db=new PGlite();
+ try{
+  const catalog=await createPairCatalog(db);
+  await discoverStockPairs('liquidity',{...options,catalog});
+  const reopened=await createPairCatalog(db);
+  const older=await discoverStockPairs('liquidity',{...options,catalog:reopened,fetchImpl:(url,init)=>
+   String(url)==='https://api.bankr.bot/token-launches'?response({launches:[]}):options.fetchImpl(url,init)});
+  assert.equal(older.listed,0);
+  assert.equal(older.eligible,1);
+  assert.equal(older.candidates[0].address,token);
+  assert.equal(older.candidates[0].liquidity,700);
+ }finally{await db.close();}
+
 });
