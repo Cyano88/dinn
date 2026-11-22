@@ -359,19 +359,20 @@ test('missing-target hire gets one prompt and can choose a ranked contract in th
 
 test('one paid A2A call delivers a plain English stock brief or reaches a confirmed decline',async()=>{
  for(const description of ['Research NVDAc on Base','NVDAc','Research aMissingTicker on Base']){
-  const {row,fullJob}=fixture({jobKind:'instant',origin:'a2a',isPrivate:true,title:description,description,assignment:{escrowToken:'X402',escrowAmount:'0.1000'},
+  const {row,fullJob}=fixture({jobKind:'instant',origin:'a2a',isPrivate:true,title:description,description,assignment:{escrowToken:'X402',escrowAmount:'0.1000',...(description==='NVDAc'?{startedAt:'2026-11-22T00:00:00Z'}:{})},
    latestMessage:{senderSide:'buyer',origin:'direct',body:description,truncated:false,attachments:[]}});
   const calls=[],lock={data:null};
   const store={acquire:async()=>lock,renew:async()=>{},save:async(_,v)=>{lock.data=v;},event:async()=>{},release:async()=>{}};
   const client={job:async()=>fullJob,assignment:async()=>row,start:async()=>calls.push('start'),
-   submit:async()=>{calls.push('submit');return {assignmentId,status:'submitted'};},
+   submit:async()=>{calls.push('submit');return {assignmentId,status:'accepted'};},
    decline:async(_,reason)=>{calls.push(reason);return {assignmentId,status:'cancelled'};}};
   const worker=createNearWorker({agentId,...options,minimumEscrow:'0.1000',store,client,wait:async()=>{},report:async req=>{
    assert.equal(req.service,'base.stock.research');
    if(req.input.query!=='NVDAc')throw Error('unknown stock');
    return {status:'completed',deliverableMarkdown:'Verified stock evidence',evidence:{sha256:'d'.repeat(64)}};
   }});
-  await worker.process(row);
+  const outcome=await worker.process(row);
+  assert.equal(outcome.state,description==='Research NVDAc on Base'?'accepted-payout-pending':'declined');
   assert.deepEqual(calls,description==='NVDAc'?['rejected']:description.includes('aMissing')?['start','failed']:['start','submit']);
  }
 });

@@ -161,7 +161,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     return {assignmentId:a.assignmentId,state:'declined'};
    };
    if(data.phase==='declined')return {assignmentId:a.assignmentId,state:'declined'};
-   if(oneShot && !data.submittedAt && !a.startedAt && eligibleAssignment(row,full,agentId,{minimumEscrow,escrowToken}) && !resolveInput(row,full))
+   if(oneShot && !data.submittedAt && eligibleAssignment(row,full,agentId,{minimumEscrow,escrowToken}) && !resolveInput(row,full))
     return decline('rejected','Dinn needs one supported research brief per hire. Example: Research NVDAc on Base. For a Pons or Bankr launch, include its chain and contract address.');
    if(!oneShot && data.scopeNoticeSent)return {assignmentId:a.assignmentId,state:'unsupported-scope'};
    const canGuide=!oneShot && eligibleAssignment(row,full,agentId,{minimumEscrow,escrowToken}) && full.isPrivate===true;
@@ -295,6 +295,11 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
    await store.renew(lock);assertLease();
    await store.save(lock,{...data,phase:'submitting',submissionAttemptedAt:now().toISOString()});await event('submission-attempted');
    const submitted=await client.submit(a.assignmentId,data.markdown);
+   if(full.origin==='a2a' && submitted?.assignmentId===a.assignmentId && submitted.status==='accepted'){
+    await store.save(lock,{...data,phase:'accepted-payout-pending',submittedAt:now().toISOString(),marketplaceStatus:'accepted'});
+    await event('accepted-payout-not-confirmed');
+    return {assignmentId:a.assignmentId,state:'accepted-payout-pending'};
+   }
    if(submitted?.assignmentId!==a.assignmentId||submitted.status!=='submitted')throw Error('Marketplace did not confirm the expected submitted assignment.');
    await store.save(lock,{...data,phase:'submitted',submittedAt:now().toISOString(),marketplaceStatus:submitted.status});await event('submitted');
    return {assignmentId:a.assignmentId,state:'submitted',testRun:data.testRun===true,payout:data.testRun===true?'none':'pending-buyer-acceptance'};
