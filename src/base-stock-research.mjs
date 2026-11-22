@@ -1,4 +1,4 @@
-import {baseLockEvidence} from './base-lock-evidence.mjs';
+import {baseLockEvidence,chatLockEvidence} from './base-lock-evidence.mjs';
 import {decodeFunctionResult,encodeFunctionData,formatUnits,parseAbi} from 'viem';
 import {baseStockLookup} from './base-stock-data.mjs';
 import {baseHolderSnapshot} from './base-stock-paired-research.mjs';
@@ -156,6 +156,7 @@ export function baseStockResearchMessage(report){
   const holderSourceLabel=holder.source==='GoldRush Token Holders API'?'GoldRush holder data':holder.url?'Blockscout holder list':'Holder data source';
   lines.push('**Who holds it**\n\n'+rows.join('\n')+(holderSourceUrl?'\n\n['+holderSourceLabel+']('+holderSourceUrl+')':''));
  }else lines.push('**Who holds it**\n\nHolder data is not available: '+report.coverage.holders+'.');
+ if(report.tokenLocks)lines.push(chatLockEvidence(report.tokenLocks,report.identity.symbol));
  if(report.tradeHandoff.url)lines.push('**If you want to trade**\n\n[Open '+report.tradeHandoff.assetSymbol+' on Bankr]('+report.tradeHandoff.url+'). Bankr checks your location and shows its current executable quote. You choose whether to buy or sell there. Dinn has not prepared or sent a trade.');
  else lines.push('**If you want to trade**\n\nThis stock is not on Bankr’s current trade list, so Dinn cannot open a trade for it.');
  lines.push('This is evidence from the linked sources, not a contract safety check or a promise that a trade will work.');

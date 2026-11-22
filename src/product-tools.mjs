@@ -1,3 +1,4 @@
+import {chatLockEvidence} from './base-lock-evidence.mjs';
 import {discoveryStep,discoveryMessage,chosenCandidate,marketPrompt,metricPrompt} from './discovery-guide.mjs';
 import {researchTarget,researchQuestion,chatResearchGuide} from './research-guide.mjs';
 import {robinhoodBalances,prepareRobinhoodSend,walletAssetBalance} from './robinhood-wallet.mjs';
@@ -78,6 +79,7 @@ function baseStockResearchMessage(data){
   '**Pairing**\n\n'+pairingLine+'\n\nToken address: '+data.address+'. '+launchLine,
   '**Market**\n\n'+marketItems[0]+(marketItems.length>1?'\n\n'+marketItems.slice(1).map(item=>'- '+item).join('\n'):''),
   '**Fees and vesting**\n\n'+feeLine+'\n\n'+vestingLine,
+  ...[chatLockEvidence(data.tokenLocks,symbol),chatLockEvidence(data.stockLocks,stock)].filter(Boolean),
   '**Holders**\n\n'+holderItems.map(item=>'- '+item).join('\n'),
   '**Contract**\n\n'+contractLine+'\n\nThis is not a full safety check and does not confirm that a token can be sold.',
   data.classification==='verified-bankr-stock-paired-token'?'**If you want to trade**\n\nAsk Dinn for a buy or sell estimate. Dinn can show an estimate from the public Base market. For a real trade, Bankr must check the route and your location. Dinn will not send a trade.':'**Trade check**\n\nThis token pair could not be confirmed, so Dinn will not prepare a trade estimate.',

@@ -98,3 +98,18 @@ export function baseLockSummary(scan){
  else lines.push('Vestream multi-protocol index was not checked successfully.');
  return [...lines,scan.scope];
 }
+export function chatLockEvidence(scan,symbol){
+ if(!scan)return '';
+ const checked=scan.sources.filter(source=>source.status==='checked');
+ const records=scan.sources.flatMap(source=>source.records.map(record=>({source,record})));
+ const lines=['**Token locks for '+symbol+'**'];
+ if(!records.length)lines.push(checked.length?'No records returned by '+checked.map(source=>source.name).join(', ')+'.':'The locker checks could not be completed.');
+ for(const {source,record:r} of records){
+  const schedule=r.cliffUtc?'Cliff '+r.cliffUtc+', vesting ends '+r.vestingEndUtc:r.firstReleaseUtc?'First release '+r.firstReleaseUtc+(r.cycleSeconds!=='0'?', then every '+r.cycleSeconds+' seconds':''):r.scheduledEndUtc?'Scheduled end '+r.scheduledEndUtc:'Release date unavailable';
+  lines.push('['+source.name+']('+source.url+') '+schedule+(r.conditionContract?' (an additional release condition applies)':'')+'.');
+ }
+ if(checked.length!==scan.sources.length)lines.push('Some sources were unavailable or only partly checked.');
+ if(scan.index?.status==='indexed')lines.push('Vestream reports '+scan.index.activeSchedules+' active schedules'+(scan.index.nextIndexedEvent?' with a discrete release on '+scan.index.nextIndexedEvent.utc:'')+'.');
+ lines.push('Other contracts may hold additional locks.');
+ return lines.join('\n\n');
+}
