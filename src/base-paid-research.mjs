@@ -88,7 +88,10 @@ async function initialize(env){
 export async function paidResearch(request,signature,{env=process.env,lookup=baseStockLookup,report=agentAccessRequest,runtime}={}){
  if(!runtime&&!paidResearchConfigured(env))return problem(503,'Direct Base payments are not enabled.');
  if(!Object.hasOwn(examples,request?.service)||!request.requestId)return problem(400,'Choose a supported research service and supply a stable requestId.');
- try{if(validateAgentRequest(request).length)return problem(400,'Supply the required research inputs.');}
+ // Some x402 buyers send each CLI parameter as a string, including nested input.
+ try{
+  if(typeof request.input==='string')request={...request,input:JSON.parse(request.input)};
+  if(validateAgentRequest(request).length)return problem(400,'Supply the required research inputs.');}
  catch{return problem(400,'Invalid research request.');}
  const {service,input,requestId}=request;
  const state=runtime||await (setup??=initialize(env).catch(error=>{setup=undefined;throw error;}));

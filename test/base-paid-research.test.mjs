@@ -49,6 +49,8 @@ test('all four report types use the same settlement and recovery path',async()=>
   }
   assert.equal(settlements,4);assert.equal(reportCalls,4);
   const req={requestId:'recover',service:'base.stock.research',input:{query:'NVDAc'}};
+  assert.equal((await paidResearch({...req,input:JSON.stringify(req.input)},null,deps)).status,402);
+  assert.equal((await paidResearch({...req,input:'null'},null,deps)).status,400);
   assert.equal((await paidResearch({...req,input:{query:'UNKNOWN'}},null,deps)).status,422);
   assert.equal((await paidResearch({...req,service:'swap.quote'},null,deps)).status,400);
   assert.equal((await paidResearch(req,'invalid',deps)).status,400);
