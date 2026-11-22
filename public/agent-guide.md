@@ -68,3 +68,25 @@ Provide a unique stable `requestId`, one `service`, and its `input`. Supported s
 ```
 
 Read the x402 v2 `PAYMENT-REQUIRED` challenge and verify the recipient, 0.10 USDC amount, and Base mainnet network before authorizing. A successful response includes the report, sources, and a settlement receipt. After a timeout or a pending response, retry the same body and original signed payment. A new request ID represents a separate purchase.
+
+
+#### Buyer clients
+
+Use an x402 v2 client that supports exact USDC payments on Base. Your client sends the JSON POST, reads the payment challenge, and repeats the same POST with its signed payment header. The service accepts the standard JSON object for `input` and also accepts it encoded as a JSON string.
+
+For OKX OnchainOS CLI 4.6.6, pass the same business parameters to **both** commands. This Bash example uses one request ID for the entire purchase:
+
+```bash
+endpoint=https://dinn-pasy.onrender.com/api/paid/research
+request_id=$(uuidgen)
+params=(--param "requestId=$request_id" --param service=base.stock.research --param 'input={"query":"NVDAc"}')
+onchainos payment quote "$endpoint" --chain base --method POST "${params[@]}"
+```
+
+Review the quote and copy its `data.paymentId`. To authorize the quoted purchase, substitute that value below in the same shell:
+
+```bash
+onchainos payment pay --payment-id '<paymentId>' --selected-index 0 --yes "${params[@]}"
+```
+
+If a signed POST returns `research_body_required`, it reached Dinn without the required JSON content type. With this CLI, check that the parameters were passed to the pay command. A timeout after a complete signed POST has a different meaning: replay the original signed payment and request ID to recover the result.

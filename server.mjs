@@ -109,7 +109,11 @@ const server=createServer(async(req,res)=>{
    if(path.startsWith('/api/logos/')){if(req.headers.origin&&!allowedOrigins.has(req.headers.origin))return json(res,403,{error:'Origin rejected.'});if(req.headers['content-type']?.split(';')[0]!=='application/json')return json(res,415,{error:'JSON required.'});try{return json(res,200,await logoService.handle(req,path,await body(req,5000)));}catch(e){const safe=/^(Sign in|Your sign-in|Logo |This request|A logo|Daily logo|Invalid |Enter your|Reference logo|Unknown logo)/.test(e.message)?e.message:'Logo service is unavailable. Please try again.';return json(res,/sign.in/i.test(safe)?401:400,{error:safe});}}
 
    if(req.headers.origin && !allowedOrigins.has(req.headers.origin))return json(res,403,{error:'Origin rejected.'});
-   if(req.headers['content-type']?.split(';')[0]!=='application/json')return json(res,415,{error:'JSON required.'});
+   if(req.headers['content-type']?.split(';')[0]!=='application/json'){
+    if(path==='/api/paid/research' && req.headers['payment-signature'])
+     return json(res,415,{code:'research_body_required',error:'Repeat the original JSON POST with requestId, service and input, Content-Type: application/json and the same PAYMENT-SIGNATURE. This request did not reach settlement.'});
+    return json(res,415,{error:'JSON required.'});
+   }
    const data=await body(req,path==='/api/chat'?100000:16000);
    if(path==='/api/paid/research'){
     paidResearchStarts=paidResearchStarts.filter(t=>Date.now()-t<60000);
