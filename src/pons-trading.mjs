@@ -2,7 +2,7 @@ import {decodeEventLog,parseAbi,parseAbiItem,formatUnits} from 'viem';
 import {PONS_FACTORY,PONS_RPC} from './pons.mjs';
 import {assets,ZERO,same,address,hash,units,erc20,walletTransaction} from './robinhood-wallet-call.mjs';
 import {walletClient,walletSnapshot,walletAsset} from './robinhood-wallet.mjs';
-import {prepareRobinhoodRoute} from './robinhood-routes.mjs';
+import {prepareRobinhoodRoute,robinhoodRouteQuote} from './robinhood-routes.mjs';
 
 const factoryAbi=parseAbi(['struct LaunchedToken { address token; address curve; address deployer; address creatorFeeRecipient; address pairToken; uint256 graduationThreshold; uint24 poolFee; int24 tickSpacing; uint16 creatorTaxBps; bool buybackEnabled; uint8 phase; uint256 sweptQuote; uint256 sweptTokens; uint256 sweptAt; bool exists; }','function getLaunchedToken(address token) view returns(LaunchedToken)']);
 const curveAbi=parseAbi(['function getReserves() view returns(uint256 quoteReserve,uint256 tokenReserve)','function sellableTokens() view returns(uint256)','function readyToGraduate() view returns(bool)','function feeBps() view returns(uint256)','function creatorTaxBps() view returns(uint256)','function currentSnipeTaxBps(address recipient) view returns(uint256)','function pairToken() view returns(address)','event CurveBuy(address indexed buyer,address indexed recipient,uint256 quoteIn,uint256 tokensOut,uint256 fee,uint256 tax)','event CurveSell(address indexed seller,address indexed recipient,uint256 tokensIn,uint256 quoteOut,uint256 fee,uint256 tax)']);
@@ -24,7 +24,7 @@ export function quotePonsSell({tokensIn,quoteReserve,tokenReserve,feeBps,creator
 function tradeClient(o={}){return o.client||walletClient(4663,o);}
 function cleanLaunch(value,token){if(!value?.exists||!same(value.token,token)||!address(value.curve)||!/^0x[0-9a-f]{40}$/i.test(value.pairToken||''))throw Error('This address is not a registered Pons v2 token on Robinhood Chain.');return value;}
 async function launchAt(token,account,o={}){
- if(!address(token)||!address(account))throw Error('Send one Pons token address and connect the wallet that will trade.');
+ if(!address(token))throw Error('Send one Pons token address.');
  const c=tradeClient(o),block=await walletSnapshot(c,4663,o.now),factoryCode=await c.getCode({address:PONS_FACTORY,blockNumber:block.number});if(!factoryCode||factoryCode==='0x')throw Error('The Pons v2 factory could not be verified on Robinhood Chain.');
  const launch=cleanLaunch(await c.readContract({address:PONS_FACTORY,abi:factoryAbi,functionName:'getLaunchedToken',args:[token],blockNumber:block.number}),token);
  if(await c.getCode({address:launch.curve,blockNumber:block.number})==='0x')throw Error('The registered Pons curve has no deployed code.');
@@ -43,16 +43,23 @@ async function allowanceReview({c,block,account,tokenAddress,curve,asset,amount,
  const review={kind:'pons-approval',tradeAdapter:'pons-v2',tradeSide:side,chainId:4663,account,recipient:account,curve,spender:curve,tokenAddress,curveToken:tokenAddress,pairToken:asset.address,asset,amount,amountRaw:String(amountRaw),blockNumber:String(block.number),blockHash:block.hash,slippageBps:100,expiresAt:(o.now||Date.now)()+120000};
  const costs=await gasAndBalance({c,block,account,review,amountRaw});return {...review,...costs,simulated:true,approvalFor:tokenSymbol};
 }
-export async function preparePonsTrade(input,o={}){
+export function quotePonsTrade(input,o={}){return ponsTrade(input,o,true);}
+export function preparePonsTrade(input,o={}){return ponsTrade(input,o,false);}
+async function ponsTrade(input,o,quoteOnly){
  const {kind,account,token:tokenAddress,amount}=input||{};if(!['buy','sell'].includes(kind)||!address(account)||!address(tokenAddress))throw Error('Choose buy or sell, a Pons token address, and an amount.');
  const {c,block,launch,pair}=await launchAt(tokenAddress,account,o),token=await walletAsset(c,4663,launch.token,block),phase=Number(launch.phase);
  if(phase===1)throw Error('This Pons launch is between its curve and pool. Check again shortly; no trade was prepared.');
  if(phase===3)throw Error('This Pons token is in a recovery phase. Dinn cannot trade it.');
  const asset=kind==='buy'?pair:token,outputAsset=kind==='buy'?token:pair,amountRaw=units(amount,asset.decimals);
  if(phase===2){
+  if(quoteOnly){
+   const route=await robinhoodRouteQuote({kind:'swap',account,chainId:4663,asset:asset.address,outputAsset:outputAsset.address,amount},o);
+   return {output:route.expectedAmount,symbol:outputAsset.symbol,venue:'Relay',minimum:route.minimumAmount};
+  }
   const route=await prepareRobinhoodRoute({kind:'swap',account,chainId:4663,asset:asset.address,outputAsset:outputAsset.address,amount},{...o});
   return {...route,ponsTradeKind:kind,tokenAddress:token.address,tokenSymbol:token.symbol,venue:'graduated-pool'};
  }
+ if(phase!==0)throw Error('Unrecognized Pons trading phase.');
  const [reserves,sellable,readyToGraduate,feeBps,creatorTaxBps,snipeTaxBps]=await Promise.all([
   c.readContract({address:launch.curve,abi:curveAbi,functionName:'getReserves',blockNumber:block.number}),
   c.readContract({address:launch.curve,abi:curveAbi,functionName:'sellableTokens',blockNumber:block.number}),
@@ -66,6 +73,7 @@ export async function preparePonsTrade(input,o={}){
  if(feeBps+creatorTaxBps>=BPS)throw Error('Pons trade fees are outside the supported range. No trade was prepared.');
  const quote=kind==='buy'?quotePonsBuy({quoteIn:amountRaw,quoteReserve:reserves[0],tokenReserve:reserves[1],sellableTokens:sellable,feeBps,creatorTaxBps,snipeTaxBps}):quotePonsSell({tokensIn:amountRaw,quoteReserve:reserves[0],tokenReserve:reserves[1],feeBps,creatorTaxBps});
  const quotedOutput=kind==='buy'?quote.tokensOut:quote.quoteOut,slippageBps=100,minimumOutputRaw=quotedOutput*(BPS-BigInt(slippageBps))/BPS;if(minimumOutputRaw<=0n)throw Error('The minimum receive amount rounds to zero. Use a larger amount.');
+ if(quoteOnly)return {output:formatUnits(quotedOutput,outputAsset.decimals),symbol:outputAsset.symbol,venue:'Pons curve',block:String(block.number)};
  if(!same(asset.address,ZERO)){
   const [balance,allowance]=await Promise.all([c.readContract({address:asset.address,abi:erc20,functionName:'balanceOf',args:[account],blockNumber:block.number}),c.readContract({address:asset.address,abi:parseAbi(['function allowance(address owner,address spender) view returns(uint256)']),functionName:'allowance',args:[account,launch.curve],blockNumber:block.number})]);
   if(balance<amountRaw)throw Error('Not enough '+asset.symbol+' in this wallet for this trade.');

@@ -177,3 +177,8 @@ select{font:inherit;border:1px solid #dce3dd;border-radius:8px;padding:12px;back
 .tools-action-link:hover,.tools-action-external:hover{text-decoration:underline;text-underline-offset:3px}
 .tools-action-external{color:#707a72;font-weight:450}
 @media(max-width:700px){.tools-network-grid{grid-template-columns:1fr;gap:10px}.tools-network-card{min-height:122px;padding:17px}.tools-action-row{align-items:flex-start;flex-direction:column;gap:10px}.tools-action-controls{justify-content:flex-start;gap:18px}.tools-action-directory{gap:18px}}
+
+#wallet-operation details > summary {list-style:none;cursor:pointer}
+#wallet-operation details > summary::-webkit-details-marker {display:none}
+#wallet-operation details > summary::before {content:'';display:inline-block;width:.42em;height:.42em;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:rotate(-45deg);margin-right:.65em;vertical-align:.12em}
+#wallet-operation details[open] > summary::before {transform:rotate(45deg)}

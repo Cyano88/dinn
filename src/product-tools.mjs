@@ -7,7 +7,7 @@ import {prepareRobinhoodRoute,robinhoodRouteQuote} from './robinhood-routes.mjs'
 import {assets,networks,address as walletAddress,same} from './robinhood-wallet-call.mjs';
 import {ponsTokenState,tokenStateMessage} from './pons-token-state.mjs';
 import {preparePonsBurn} from './pons-burn.mjs';
-import {preparePonsTrade,ponsTradePair} from './pons-trading.mjs';
+import {preparePonsTrade,ponsTradePair,quotePonsTrade} from './pons-trading.mjs';
 import {manageLaunchDraft,draftIntent} from './launch-draft.mjs';
 import {prepareDexProfile} from './dex-profile-preparation.mjs';
 import {dexStatus} from './dex-services.mjs';
@@ -125,13 +125,13 @@ async function walletActionReview(args,context){
  const prefix=kind==='send'?'To send this, ':kind==='bridge'?'To bridge this, ':'To swap this, ',missing=question=>({message:prefix+question,actions:[]});
  if(!addr(context.walletAccount))return missing('connect your wallet from the account menu first, then tell me to continue.');
  const networkOptions=[[4663,/(?:robinhood(?:\s+chain)?|\bon\s+(?:chain\s+)?4663\b)/i],[8453,/(?:\bbase\b|\bon\s+(?:chain\s+)?8453\b)/i],[42161,/(?:arbitrum|\bon\s+(?:chain\s+)?42161\b)/i]],selectableNetworks=kind==='bridge'?networkOptions.filter(([id])=>[8453,42161].includes(id)):networkOptions,currentNetworkMentions=selectableNetworks.filter(([,pattern])=>pattern.test(context.message||'')).map(([id])=>id),mentionedNetworks=currentNetworkMentions.length?currentNetworkMentions:selectableNetworks.filter(([,pattern])=>pattern.test(source)).map(([id])=>id);
- if(!args.network||!networks[chainId]||kind==='bridge'&&![8453,42161].includes(chainId)||mentionedNetworks.length!==1||mentionedNetworks[0]!==chainId)return missing(kind==='send'?'which network should I use: Robinhood Chain, Base, or Arbitrum?':kind==='bridge'?'which network should I bridge from: Base or Arbitrum?':'which network should I use: Robinhood Chain, Base, or Arbitrum?');
+ if(!args.network||!networks[chainId]||kind==='bridge'&&![8453,42161].includes(chainId)||mentionedNetworks.length!==1||mentionedNetworks[0]!==chainId)return missing(kind==='send'?'which network should I use: Robinhood Chain or Base?':kind==='bridge'?'which network should I bridge from: Base?':'which network should I use: Robinhood Chain or Base?');
  if(kind==='send'&&(!addr(args.recipient)||!source.toLowerCase().includes(args.recipient.toLowerCase())))return missing('what recipient address should receive the tokens?');
  const amountSource=source.replace(/0x[0-9a-f]{40}/gi,' ').replace(/\b(?:on\s+|chain\s+(?:id\s+)?)(?:4663|8453|42161)\b/gi,' '),explicitAmounts=amountSource.match(/(?<![\d.])\d+(?:\.\d+)?(?![\d.])/g)||[];if(!args.amount||!explicitAmounts.includes(args.amount))return missing('what amount and asset should I use? For example, 0.1 ETH or 25 USDC.');
  const sourceAddresses=[...new Set((source.match(/0x[0-9a-f]{40}/gi)||[]).map(a=>a.toLowerCase()))],assetIsAddress=walletAddress(args.asset),assetContext=assetIsAddress&&(sourceAddresses.length>1||/\b(?:token|contract|asset)\b/i.test(source))&&!(kind==='send'&&args.recipient?.toLowerCase()===args.asset.toLowerCase());
- if(!args.asset||!(assetIsAddress?assetContext:new RegExp('\\b'+args.asset+'\\b','i').test(source)))return missing('which asset should I use? On Base and Arbitrum, choose ETH, USDC, or USDT. On Robinhood Chain, choose ETH, USDG, WETH, or provide the token contract address.');
+ if(!args.asset||!(assetIsAddress?assetContext:new RegExp('\\b'+args.asset+'\\b','i').test(source)))return missing('which asset should I use? On Base, choose ETH, USDC, or USDT. On Robinhood Chain, choose ETH, USDG, WETH, or provide the token contract address.');
  if(kind!=='send'&&(!args.outputAsset||!context.message?.toLowerCase().includes(args.outputAsset.toLowerCase())&&!(walletAddress(args.outputAsset)&&new RegExp('\\b(?:to|receive|as|get)\\s+'+args.outputAsset.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i').test(source))))return missing(kind==='bridge'?'which asset should arrive on Robinhood Chain?':'which asset should I receive from the swap?');
- const resolveAsset=value=>{if(walletAddress(value))return value;const found=assets[chainId].find(a=>a.symbol.toLowerCase()===value.toLowerCase());if(!found)throw Error(chainId===4663?'Use ETH, USDG, WETH, or provide the Robinhood token contract address.':'On Base and Arbitrum, use ETH, USDC, or USDT.');return found.address;};
+ const resolveAsset=value=>{if(walletAddress(value))return value;const found=assets[chainId].find(a=>a.symbol.toLowerCase()===value.toLowerCase());if(!found)throw Error(chainId===4663?'Use ETH, USDG, WETH, or provide the Robinhood token contract address.':'On Base, use ETH, USDC, or USDT.');return found.address;};
  const asset=resolveAsset(args.asset),input={account:context.walletAccount,chainId,asset,amount:args.amount};
  if(kind==='send')input.recipient=args.recipient;
  else input.outputAsset=resolveAsset(args.outputAsset);
@@ -204,6 +204,27 @@ async function executeTool(name,args={},context={},dependencies={}){
  }
  if(name==='open_wallet_action')return walletActionReview(args,context);
   if(name==='base_stock_trade')return baseStockTradeAction(args,context,dependencies);
+ if(name==='pons_trade_quote'){
+  const reply=message=>({message,actions:[]});
+  const options={env:context.env||process.env};
+  let info;
+  try{info=await (dependencies.tradePair||ponsTradePair)({token:args.token,account},options);}
+  catch{return reply('I could not verify this address as a Pons launch on Robinhood Chain. Try the exact launch contract again.');}
+  const label=info.token.symbol+'/'+info.pair.symbol;
+  if(![0,2].includes(info.phase))return reply(label+' is '+(info.phase===1?'moving from the curve to its pool.':'outside the supported trading stages.')+' I cannot quote it right now.');
+  const stage=info.phase===2?'has graduated to its pool':'is on the Pons bonding curve';
+  const prefix='Quote for '+label+' ('+args.token+')';
+  if(!args.kind)return reply(prefix+'. '+label+' '+stage+'. Which side and amount should I check? For example, buy 0.001 '+info.pair.symbol+' or sell 100 '+info.token.symbol+'.');
+  const symbol=args.kind==='buy'?info.pair.symbol:info.token.symbol;
+  if(!args.amount||args.unit&&args.unit.toLowerCase()!==symbol.toLowerCase())return reply(prefix+'. '+args.kind+': enter the amount in '+symbol+'.');
+  if(!addr(account))return reply('Connect your wallet so I can check a quote for that address.');
+  try{
+   const quote=await (dependencies.tradeQuote||quotePonsTrade)({...args,account},options);
+   return reply(quote.venue+' estimates '+quote.output+' '+quote.symbol+' for '+args.amount+' '+symbol+(quote.block?' at block '+quote.block:'')+'. This estimate can change before a trade.');
+  }catch(error){
+   if(error.message.startsWith('No executable route'))return reply('Relay has no route for this '+args.kind+' of '+args.amount+' '+symbol+' on '+label+'. Other venues may have liquidity.');
+   return reply('I could not verify a current '+args.kind+' quote for '+args.amount+' '+symbol+' on '+label+'. Pool liquidity and price impact remain unconfirmed.');}
+ }
  if(name==='pons_trade')return ponsTradeAction(args,context,dependencies);
  if(name==='burn_token')return burnActionReview(args,context,dependencies);
  if(name==='wallet_portfolio'){if(!addr(account))return {message:'Connect or choose a wallet in the Wallet tab first.',actions:[]};const data=await (dependencies.portfolio||robinhoodBalances)({account,chainId:Number(args.network||4663)},{env:context.env||process.env});return {message:data.network+' balances:\n'+data.assets.map(a=>a.symbol+': '+(a.balance===null?'unavailable':a.balance)).join('\n')+'\nChecked at block '+data.blockNumber+'.'+(data.discovery==='unavailable'?' Token discovery was unavailable.':''),data,actions:[]};}
@@ -217,6 +238,20 @@ const conversationalQuestion=text=>/^(?:what|why|how|who|which|where|when|whethe
 export function directProductIntent(text,context={}){
  const lastAssistant=[...(context.history||[])].reverse().find(m=>m.role==='assistant')?.content||'';
  const t=text.trim(),addresses=t.match(/0x[0-9a-f]{40}(?![0-9a-f])/gi)||[],hash=t.match(/0x[0-9a-f]{64}(?![0-9a-f])/i)?.[0];
+ if(/\b(?:arbitrum|42161)\b/i.test(t)&&(/\b(?:send|transfer|swap|bridge|balance|portfolio|wallet)\b/i.test(t)||/^To (?:send|swap|bridge) this,/i.test(lastAssistant)))return {message:'Arbitrum is paused in Dinn wallet. Choose Base or Robinhood Chain.',actions:[]};
+ const pendingQuote=/^Quote for .*? \((0x[0-9a-f]{40})\)\. (?:(buy|sell):\s*)?/i.exec(lastAssistant);
+ const reportIndex=(context.history||[]).findLastIndex(m=>m.role==='assistant'&&/Robinhood Chain .*checked at block|\*\*(?:Pairing|Identity)\*\*/i.test(m.content));
+ const rhReport=reportIndex>=0&&/Robinhood Chain .*checked at block/i.test(context.history[reportIndex].content);
+ const previousRequest=rhReport?context.history[reportIndex-1]?.content||'':'';
+ const rhToken=addresses[0]||pendingQuote?.[1]||context.tokenAddress||previousRequest.match(/0x[0-9a-f]{40}/i)?.[0];
+ const tradability=/\b(?:trad[ae]able|buyable|sellable)\b|\bcan (?:i|we|you) (?:buy|sell|trade) (?:it|this(?: token)?)\b/i.test(t);
+ const quoteReply=/^(?:(buy|sell)\s*)?(?:(\d+(?:\.\d+)?)\s*([a-z][\w.-]*)?)?[?.!]?$/i.exec(t);
+ if(pendingQuote&&/^(?:cancel|stop|never ?mind)[.!]?$/i.test(t))return {message:'Quote check stopped.',actions:[]};
+ if(!/\b(?:base|bankr|arbitrum)\b/i.test(t)&&(tradability&&(rhReport||reportIndex<0&&context.tokenAddress||/\bpons\b/i.test(t))||pendingQuote&&quoteReply)){
+  if(!addr(rhToken)||addresses.length>1)return {message:'Which Pons token should I check? Send one Robinhood Chain contract address.',actions:[]};
+  const kind=quoteReply?.[1]?.toLowerCase()||pendingQuote?.[2]||t.match(/\b(buy|sell)\b/i)?.[1]?.toLowerCase();
+  return {name:'pons_trade_quote',args:{token:rhToken,...(kind?{kind}:{}),...(quoteReply?.[2]?{amount:quoteReply[2]}:{}),...(quoteReply?.[3]?{unit:quoteReply[3]}:{})}};
+ }
  const stockPrompt='Which Robinhood stock token? Send its ticker or Robinhood Chain contract address.';
  const pairPrompt='Send the contract address of the Pons launch whose stock pair you want to check.';
  const rh=/\b(?:pons|robinhood|4663)\b/i.test(t)&&!/\b(?:base|bankr|8453)\b/i.test(t);
@@ -268,9 +303,9 @@ export function directProductIntent(text,context={}){
   if(/\b(?:buy|sell)\b/i.test(t)&&!conversationalQuestion(t)){const kind=/\bsell\b/i.test(t)?'sell':'buy';return {name:'pons_trade',args:{kind,...(context.tokenAddress?{token:context.tokenAddress}:{}),...(addresses.length===1?{token:addresses[0]}:{})}};}
  const network=/\b(?:arbitrum|42161)\b/i.test(t)?'42161':/\b(?:base|8453)\b/i.test(t)?'8453':/\b(?:robinhood(?:\s+chain)?|4663)\b/i.test(t)?'4663':null,asset=(t.match(/\b(ETH|USDG|WETH|USDC|USDT)\b/i)||[])[0]?.toUpperCase();
  if(network==='8453'&&/\b(?:research|check|inspect|analy[sz]e|look up)\b/i.test(t)&&!/\b(?:wallet|balance|portfolio|transaction|receipt|swap|bridge)\b/i.test(t)&&(/\b(?:stock|token|contract|launch|paired)\b/i.test(t)||/\b(?:research|check|inspect|analy[sz]e|look up)\b[\s\S]{0,80}\bon\s+(?:Base|8453)\b/i.test(t)))return addresses.length===1?{name:'research_base_stock_paired_token',args:{address:addresses[0]}}:{message:'Send the Base token contract address and I will check its stock-pair evidence.',actions:[]};
- if(/\b(?:ethereum|optimism|polygon|solana|avalanche|bsc|binance smart chain)\b/i.test(t)&&/\b(?:balance|portfolio|wallet assets|all assets)\b/i.test(t))return {message:'I can read wallet balances on Robinhood Chain, Base, and Arbitrum. Which of those networks should I check?',actions:[]};
- if(!/\bholders?\b/i.test(t)&&/\b(?:wallet assets|portfolio|all balances|all assets|wallet balances|balances on base|balances on arbitrum|balances on robinhood)\b/i.test(t))return network?{name:'wallet_portfolio',args:{network}}:{message:'Which network should I check: Robinhood Chain, Base, or Arbitrum?',actions:[]};
- if(!/\bholders?\b/i.test(t)&&(/\bbalance\b/i.test(t)||/\bhow much\b.*\b(?:eth|usdg|weth|usdc|usdt)\b/i.test(t))){if(!network)return {message:'Which network should I check: Robinhood Chain, Base, or Arbitrum?',actions:[]};if(asset){const supported=assets[Number(network)].map(a=>a.symbol.toUpperCase());if(!supported.includes(asset))return {message:`${asset} is not a supported balance asset on ${networks[Number(network)].name}. I can check ${supported.join(', ')} there.`,actions:[]};return {name:'wallet_balance',args:{network,asset,...(addresses.length===1?{account:addresses[0]}:{})}};}return {name:'wallet_portfolio',args:{network}};}
+ if(/\b(?:ethereum|optimism|polygon|solana|avalanche|bsc|binance smart chain)\b/i.test(t)&&/\b(?:balance|portfolio|wallet assets|all assets)\b/i.test(t))return {message:'I can read wallet balances on Robinhood Chain and Base. Which of those networks should I check?',actions:[]};
+ if(!/\bholders?\b/i.test(t)&&/\b(?:wallet assets|portfolio|all balances|all assets|wallet balances|balances on base|balances on arbitrum|balances on robinhood)\b/i.test(t))return network?{name:'wallet_portfolio',args:{network}}:{message:'Which network should I check: Robinhood Chain or Base?',actions:[]};
+ if(!/\bholders?\b/i.test(t)&&(/\bbalance\b/i.test(t)||/\bhow much\b.*\b(?:eth|usdg|weth|usdc|usdt)\b/i.test(t))){if(!network)return {message:'Which network should I check: Robinhood Chain or Base?',actions:[]};if(asset){const supported=assets[Number(network)].map(a=>a.symbol.toUpperCase());if(!supported.includes(asset))return {message:`${asset} is not a supported balance asset on ${networks[Number(network)].name}. I can check ${supported.join(', ')} there.`,actions:[]};return {name:'wallet_balance',args:{network,asset,...(addresses.length===1?{account:addresses[0]}:{})}};}return {name:'wallet_portfolio',args:{network}};}
  if(draftIntent({...context,message:text}))return {name:'manage_launch_draft',args:{}};
  if(/\b(?:on|chain|network)\s+(?:ethereum|base|solana|arbitrum|polygon|bsc|hyperliquid)\b/i.test(t)&&!/\b(?:wallet|balance|portfolio|send|transfer|swaps?|bridges?)\b/i.test(t))return {message:'Only Robinhood Chain (4663) is connected for token and contract checks. No read was performed on another network.',actions:[]};
  if(addresses.length>1)return {message:'Send one contract or wallet address at a time so the check uses the correct target.',actions:[]};
@@ -284,7 +319,7 @@ export function directProductIntent(text,context={}){
  if(/\b(?:what can you do|available tools|capabilities|supported (?:tools|actions))\b/i.test(t))return {name:'product_capabilities',args:{}};
  if(/\b(?:lock|vest|burn|buy|sell|swap|claim|bridge|send tokens)\b/i.test(t)&&!addresses.length&&!/\b(?:why|what is|explain|how does)\b/i.test(t)){const key=/lock|vest/i.test(t)?'lock':/burn/i.test(t)?'burn':/claim/i.test(t)?'claim':/bridge/i.test(t)?'fund':/send tokens/i.test(t)?'transfer':/sell/i.test(t)?'sell':'buy';const c=productCapabilities[key];return {message:c.title+': '+c.status+'. '+c.description,actions:[]};}
  if(/\b(?:transaction|tx)\b.*\b(?:status|check|receipt)\b|\b(?:check|status|receipt)\b.*\b(?:transaction|tx)\b/i.test(t)&&!hash)return {message:'Send the full Robinhood Chain transaction hash (0x followed by 64 hexadecimal characters) and I’ll check its canonical receipt. A successful receipt alone does not prove a specific launch or payment.',actions:[]};
- if(hash&&/\b(?:tx|transaction|receipt|status|check)\b/i.test(t)){if(network&&network!=='4663')return {message:'I can verify transaction receipts only on Robinhood Chain. I cannot check a Base or Arbitrum transaction from this tool.',actions:[]};return {name:'transaction_status',args:{hash}};}
+ if(hash&&/\b(?:tx|transaction|receipt|status|check)\b/i.test(t)){if(network&&network!=='4663')return {message:'I can verify transaction receipts only on Robinhood Chain. I cannot check a Base transaction from this tool.',actions:[]};return {name:'transaction_status',args:{hash}};}
  if(/\bholders?\b/i.test(t)&&!/^(?:what is|what are|explain)\b/i.test(t))return {name:'inspect_token',args:{...(addresses[0]||context.tokenAddress?{address:addresses[0]||context.tokenAddress}:{}),focus:'holders'}};
  if(/\b(?:launch fee|launch options|launch configs?|can (?:i|my wallet) launch)\b/i.test(t))return {name:'launch_options',args:{}};
  if(addresses.length===1||/\b(?:holders?|holder research|ts|sc|total supply|source verification|check (?:a |the |this )?(?:token|contract)|inspect)\b/i.test(t)){

@@ -601,7 +601,8 @@ function researchSummary(report){
  const lines=[name+' · Robinhood Chain · checked at block '+report.blockNumber+'.'];
  const history=report.ponsHistory,curve=report.ponsState?.curve;
  if(history?.launchedAt)lines.push('Launched '+new Date(history.launchedAt).toLocaleDateString()+(history.age?' · '+history.age+' old':'')+'.');
- if(curve?.progressPercent!=null)lines.push('Bonding curve: '+curve.progressPercent+'% of the '+curve.threshold+' '+(history?.curve?.pairSymbol||report.ponsState?.pair?.symbol||'pair asset')+' reserve target.');
+ if(report.ponsState?.phase===2)lines.push('Graduated to its pool. Ask for a buy or sell quote to check current trading.');
+ else if(curve?.progressPercent!=null)lines.push('Bonding curve: '+curve.progressPercent+'% of the '+curve.threshold+' '+(history?.curve?.pairSymbol||report.ponsState?.pair?.symbol||'pair asset')+' reserve target.');
  if(history?.curve?.status==='complete-to-checked-block')lines.push('Since launch: '+history.curve.tradeCount+' curve trades · '+Number(history.curve.totalVolume).toLocaleString('en',{maximumFractionDigits:4})+' '+history.curve.pairSymbol+' volume · '+Number(history.curve.totalFees).toLocaleString('en',{maximumFractionDigits:4})+' '+history.curve.pairSymbol+' fees.');
  const events=history?.holderEventSummary;if(events)lines.push('Cumulative curve activity among '+events.indexedAddresses+' indexed top-holder addresses: '+events.addressesWithBuys+' addresses bought; '+events.addressesWithSells+' sold. This is not a recent wallet-history count.');
  const behavior=report.holders?.behavior;if(behavior?.summary)lines.push('Recent '+behavior.windowDays+'-day wallet sample: '+behavior.summary.targetTokenBuyCandidates+' candidate buys and '+behavior.summary.targetTokenSellCandidates+' candidate sells across '+behavior.summary.walletsAnalyzed+' sampled addresses. This sample can miss trades.');
@@ -671,7 +672,7 @@ function renderToolDirectory(capabilities){
   balances:{title:'Check wallet balances',description:'Read one asset or your supported wallet balances on '+network.name+'.',prompt:'Check my wallet balances on '+network.name},
   transfer:{title:'Send tokens',description:activeToolNetwork==='base'?'Send ETH, USDC, or USDT on Base.':'Send ETH or other tokens on Robinhood Chain.',prompt:'Send tokens on '+network.name},
   swap:{title:'Swap assets',description:activeToolNetwork==='base'?'Swap ETH, USDC, or USDT on Base.':'Swap assets on Robinhood Chain when a route is available.',prompt:'Swap assets on '+network.name},
-  bridge:{title:'Bridge to Robinhood Chain',description:'Move ETH, USDC, or USDT from Base or Arbitrum to Robinhood Chain. Dinn checks the send and arrival separately.',prompt:activeToolNetwork==='base'?'Bridge funds from Base to Robinhood Chain':'Bridge funds to Robinhood Chain'},
+  bridge:{title:'Bridge to Robinhood Chain',description:'Move ETH, USDC, or USDT from Base to Robinhood Chain. Dinn checks the send and arrival separately.',prompt:activeToolNetwork==='base'?'Bridge funds from Base to Robinhood Chain':'Bridge funds to Robinhood Chain'},
   transaction:{title:'Check a transaction',description:'Check whether a Robinhood Chain transaction is pending, confirmed, or failed.',prompt:'Check a transaction'}
  };
  const groups=activeToolNetwork==='base'?[{title:'Research',items:['baseStock','baseResearch']},{title:'Wallet',items:['balances','transfer','swap','bridge']}]:[{title:'Research',items:['rhStock','rhPair','inspect']},{title:'Pons',items:['launch','launches','options','buy','sell','claim','burn','lock','dex']},{title:'Wallet',items:['balances','transfer','swap','bridge','transaction']}];
