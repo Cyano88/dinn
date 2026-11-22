@@ -10,6 +10,8 @@ const usdc='0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',network='eip155:8453';
 const resource={url:'https://example.test/api/paid/research'};
 const terms={scheme:'exact',network,asset:usdc,amount:'100000',payTo,maxTimeoutSeconds:180,extra:{}};
 const services=[
+ ['pons.stock.research',{query:'NVDA'},{classification:'verified-robinhood-stock',stock:{symbol:'NVDA'}}],
+ ['pons.stock-paired.research',{address:payer},{address:payer,classification:'verified-pons-stock-pair',ponsState:{pair:{address:payTo}},stock:{address:payTo}}],
  ['base.stock.research',{query:'NVDAc'},{identity:{status:'matched',symbol:'NVDAc'}}],
  ['base.stock-paired.research',{address:payer},{classification:'verified-bankr-stock-paired-token'}],
  ['base.stock-paired.discover',{metric:'liquidity'},{candidates:[]}],
@@ -23,7 +25,7 @@ function signed(id){
 test('direct payment endpoint is disabled without merchant configuration',async()=>{
  assert.equal((await paidResearch({},null,{env:{}})).status,503);
 });
-test('all four report types use the same settlement and recovery path',async()=>{
+test('all supported report types use the same settlement and recovery path',async()=>{
  const db=new PGlite();
  await db.query('CREATE TABLE dinn_base_research_payments(payer text,request_id text,nonce text,proof text,request_hash text,start_block bigint,valid_before bigint,report jsonb,receipt jsonb,PRIMARY KEY(payer,request_id),UNIQUE(payer,nonce))');
  const receipt={payer,network,success:true,transaction:tx};
@@ -47,7 +49,7 @@ test('all four report types use the same settlement and recovery path',async()=>
    assert.equal((await paidResearch(req,signed(i+10),deps)).status,409);
    assert.equal((await paidResearch({...req,requestId:'different'},signed(i+1),deps)).status,409);
   }
-  assert.equal(settlements,4);assert.equal(reportCalls,4);
+  assert.equal(settlements,services.length);assert.equal(reportCalls,services.length);
   const req={requestId:'recover',service:'base.stock.research',input:{query:'NVDAc'}};
   assert.equal((await paidResearch({...req,input:JSON.stringify(req.input)},null,deps)).status,402);
   assert.equal((await paidResearch({...req,input:'null'},null,deps)).status,400);
@@ -77,6 +79,6 @@ test('all four report types use the same settlement and recovery path',async()=>
   uncertain=true;
   await assert.rejects(paidResearch(req,signed(20),deps),/Lost settlement response/);
   assert.equal((await paidResearch(req,signed(20),deps)).status,200);
-  assert.equal(settlements,6);assert.equal(reportCalls,6);
+  assert.equal(settlements,services.length+2);assert.equal(reportCalls,services.length+2);
  }finally{await db.close();}
 });

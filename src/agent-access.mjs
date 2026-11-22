@@ -11,8 +11,12 @@ import {inspectCachedToken} from './inspection-cache.mjs';
 import {serverRpcUrl} from './rpc-config.mjs';
 import {discoverStockPairs,researchBaseStockPairedToken} from './base-stock-paired-research.mjs';
 import {researchBaseStock} from './base-stock-research.mjs';
+import {robinhoodStock} from './robinhood-stock.mjs';
+import {purchaseUsdReference} from './purchase-usd.mjs';
 const account={type:'string',pattern:'^0x[0-9a-fA-F]{40}$'};
 export const agentServices={
+ 'pons.stock.research':{description:'Research a Robinhood stock token by exact ticker or chain 4663 address, including available contract, holder and lock evidence.',required:['query'],properties:{query:{type:'string',pattern:'^(?:0x[0-9a-fA-F]{40}|[a-zA-Z][a-zA-Z0-9.-]{0,19})$'}}},
+ 'pons.stock-paired.research':{description:'Research a Pons launch by address. Match its onchain pairing asset to the Robinhood stock registry and report launch activity and available lock schedules.',required:['address'],properties:{address:account}},
  'base.stock-paired.discover':{description:'Compare a rotating sample of verified Bankr stock pairs on Base by reported USD liquidity or 24-hour USD volume.',required:['metric'],properties:{metric:{type:'string',enum:['liquidity','volume']}}},
  'token.research':{description:'Read-only Robinhood Chain token research for trading agents: Pons launch age, phase and curve metrics; curve volume and generated fee totals where event coverage is complete; indexed holders and their Pons buy/sell history; current other-token balances; contract controls; PinkLock token and vesting records from the listed adapters plus verified per-lock PinkLock02 contracts among indexed top holders; and reference market data. Findings include their source, block and coverage limits. No trade execution or safe-to-trade verdict.',required:['address'],properties:{address:account,account}},
  'base.stock-paired.research':{description:'Read-only Base research for a token that may be paired with a Coinbase tokenized stock. Checks the Bankr launch record against its successful Base Uniswap v4 receipt and Coinbase stock registry; Dinn checks the 50 most recent launches and the address-specific Bankr launch endpoint. For verified launches it also reads Bankr creator vesting; missing schedules do not prove supply is unlocked, and reported allocations are not the full supply. Market data comes from DEX Screener pairs matched by token addresses or a GeckoTerminal record verified against the exact Bankr v4 pool ID and token addresses. Dinn labels a DEX Screener pair as the Bankr pool only if its pair ID exactly matches the Bankr v4 pool ID. Includes available trading activity and Bankr fee data plus block-pinned token supply, reported owner, proxy indicators, Sourcify source matching. Paid NEAR marketplace hires include GoldRush holder snapshots, or Blockscout holder balances when GoldRush is not configured; free API previews and zero-cost test runs skip holder requests. Recent buy/sell classification requires GoldRush and is checked for up to three largest sampled addresses only when no contract code was observed. This is partial activity evidence, not complete wallet history or proof of identity or intent. The report is not a contract audit or safe-to-trade verdict. Missing records from both Bankr lookup methods are inconclusive.',required:['address'],properties:{address:account}},
@@ -204,7 +208,21 @@ export async function agentAccessRequest(request,dependencies={}){
  if(missing.length)return {...base,status:'needs_input',missingFields:missing,next:{type:'collect_fields',message:'Supply the missing fields explicitly. No wallet or financial choices were inferred.'}};
  const i=request.input;let result,deliverable;
  if(request.service==='base.stock-paired.discover'){result=await (dependencies.discoverStockPairs||discoverStockPairs)(i.metric,{env});deliverable=discoveryMessage(result);}
- else if(request.service==='token.research'){
+ else if(['pons.stock.research','pons.stock-paired.research'].includes(request.service)){
+  const paired=request.service==='pons.stock-paired.research';
+  const inspect=address=>agentAccessRequest({service:'token.research',input:{address}},dependencies);
+  const launch=paired?await inspect(i.address):null;
+  const pair=launch?.result?.ponsState?.pair;
+  if(paired&&!pair)throw Error('A Pons launch and its trading pair could not be verified at the checked block.');
+  const stock=await robinhoodStock(paired?pair.address:i.query,dependencies.fetchImpl);
+  const stockReport=await inspect(stock.address);
+  if(stockReport.result.symbol!==stock.symbol||stockReport.result.decimals!==stock.decimals)throw Error('Robinhood registry and onchain stock details could not be matched.');
+  const reference=await (dependencies.stockReference||purchaseUsdReference)({pairToken:stock.address},{fetcher:dependencies.fetchImpl});
+  const primary=launch||stockReport;
+  result={...primary.result,classification:paired?'verified-pons-stock-pair':'verified-robinhood-stock',stock,reference,...(paired?{stockInspection:stockReport.result}:{})};
+  const price=reference.available?'Robinhood reference price $'+safeLine(reference.unitPriceUsd)+' at '+new Date(reference.asOf).toISOString()+'.':'A current Robinhood reference price is unavailable.';
+  deliverable=[paired?'# Pons stock-paired launch':'# Robinhood stock token',safeLine(stock.name)+' ('+safeLine(stock.symbol)+') ? '+stock.address,price,'Source: '+stock.source,...(paired?['## Launch token',launch.deliverableMarkdown,'## Pairing stock token']:[]),stockReport.deliverableMarkdown].join('\n\n');
+ }else if(request.service==='token.research'){
   const env=dependencies.env||process.env;
   const inspection=await (dependencies.inspect||inspectCachedToken)(i.address,{chainId:4663,rpc:serverRpcUrl(4663,env),fetchImpl:dependencies.fetchImpl||fetch,fresh:true});
   if(!inspection||!same(inspection.address,i.address)||inspection.chainId!==4663||typeof inspection.blockNumber!=='string'||!/^\d+$/.test(inspection.blockNumber)||typeof inspection.blockHash!=='string'||!/^0x[0-9a-f]{64}$/i.test(inspection.blockHash)||!Number.isFinite(Date.parse(inspection.checkedAt))||!Array.isArray(inspection.checks))throw Error('Inspection evidence does not match the requested token or checked block.');

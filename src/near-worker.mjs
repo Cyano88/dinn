@@ -42,22 +42,24 @@ function requestedResearchInput(row,job){
  if(outsideResearchScope(text))return null;
  const serviceLines=[...text.matchAll(/^\s*service\s*:\s*([a-z][a-z0-9.-]*)\s*$/gim)].map(match=>match[1].toLowerCase());
  if([...text.matchAll(/^\s*service\s*:/gim)].length!==serviceLines.length)return null;
- const services=[...new Set(serviceLines)];if(services.length>1||services.some(value=>!['token.research','token.inspect','base.stock-paired.research','base.stock.research'].includes(value)))return null;
+ const services=[...new Set(serviceLines)];if(services.length>1||services.some(value=>!['pons.stock.research','pons.stock-paired.research','token.research','token.inspect','base.stock-paired.research','base.stock.research'].includes(value)))return null;
  const addresses=[...new Set(sources.flatMap(value=>typeof value==='string'?[...value.matchAll(TOKEN_RE)].map(match=>match[0].toLowerCase()):[]))];
  const chainLines=[...text.matchAll(/^\s*chain\s*:\s*(\d+)\s*$/gim)].map(match=>Number(match[1]));
  if([...text.matchAll(/^\s*chain\s*:/gim)].length!==chainLines.length)return null;
  const uniqueChains=new Set(chainLines);
- if(services[0]==='base.stock.research'){
-  if(chainLines.length&&(uniqueChains.size!==1||chainLines[0]!==8453))return null;
+ if(['pons.stock.research','base.stock.research'].includes(services[0])){
+  if(chainLines.length&&(uniqueChains.size!==1||chainLines[0]!== (services[0]==='pons.stock.research'?4663:8453)))return null;
   const targets=[...text.matchAll(/^\s*(?:token|token address|ticker|symbol)\s*:\s*([^\s,;]+)\s*$/gim)].map(match=>match[1]);
   if([...text.matchAll(/^\s*(?:token|token address|ticker|symbol)\s*:/gim)].length!==targets.length||targets.length!==1)return null;
   const query=targets[0].trim();if(!(/^(?:0x[0-9a-f]{40}|[a-z][a-z0-9 ._-]{0,39})$/i.test(query)))return null;
   if(addresses.length&&(!/^0x[0-9a-f]{40}$/i.test(query)||addresses.length!==1||addresses[0]!==query.toLowerCase()))return null;
-  return {service:'base.stock.research',query};
+  return {service:services[0],query};
  }
  if(!services.length&&!chainLines.length&&!addresses.length){
   const title=brief?.title;
   const natural=[...new Set([...sources,title].filter(x=>typeof x==='string').map(x=>x.trim()))];
+  const robinhood=natural.map(x=>/^(?:please\s+)?(?:research|check|inspect)\s+\$?([a-z][\w.-]{0,19})\s+on\s+(?:pons|robinhood(?: chain)?)[.!?]?$/i.exec(x)?.[1]).filter(Boolean);
+  if(new Set(robinhood.map(x=>x.toLowerCase())).size===1&&!/\b(?:base|bankr|solana|arbitrum|ethereum)\b/i.test(text))return {service:'pons.stock.research',query:robinhood[0]};
   const ticker=/^(?:please\s+)?(?:research|check|inspect|look up)\s+\$?([a-z][a-z0-9._-]{0,14})\s+on\s+base(?:\s+chain)?[.!?]?$/i;
   const matches=[...new Set(natural.map(x=>ticker.exec(x)?.[1]?.toUpperCase()).filter(Boolean))];
   if(matches.length===1&&!/\b(?:robinhood|pons|bankr|solana|arbitrum|ethereum)\b/i.test(text)){
@@ -74,7 +76,10 @@ function requestedResearchInput(row,job){
  const comparesNetworks=namesBase&&namesRobinhood&&/\b(?:and|or|vs\.?|versus|compare|both|either)\b/i.test(text);
  if(comparesNetworks)return null;
  const baseRequested=!services.length&&(uniqueChains.has(8453)||namesBase);
- const service=services[0]||(baseRequested?'base.stock-paired.research':'token.research');
+ const stockPair=namesRobinhood&&!namesBase&&/\bstock[- ]paired\b/i.test(text);
+ const stockToken=namesRobinhood&&!namesBase&&!stockPair&&/\bstock token\b/i.test(text);
+ if(!services.length&&stockToken&&!chainLines.some(id=>id!==4663))return {service:'pons.stock.research',query:addresses[0]};
+ const service=services[0]||(stockPair?'pons.stock-paired.research':baseRequested?'base.stock-paired.research':'token.research');
  if(service==='base.stock-paired.research'){
   if(chainLines.length&&(uniqueChains.size!==1||chainLines[0]!==8453))return null;
   return {service,address:addresses[0]};

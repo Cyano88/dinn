@@ -15,6 +15,8 @@ const network='eip155:8453';
 const usdc='0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const path='/api/paid/research';
 const examples={
+ 'pons.stock.research':{query:'NVDA'},
+ 'pons.stock-paired.research':{address:'0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4'},
  'base.stock.research':{query:'NVDAc'},
  'base.stock-paired.research':{address:'0x8f277eee1254d3319355e76a8c6594e7d3e2eba3'},
  'base.stock-paired.discover':{metric:'liquidity'},
@@ -23,8 +25,8 @@ const examples={
 const inputSchema={type:'object',additionalProperties:false,required:['requestId','service','input'],
  properties:{
   requestId:{type:'string',pattern:'^[A-Za-z0-9._-]{1,100}$',description:'Choose an ID for this report. Reuse it when retrying the same payment.',examples:['research-001']},
-  service:{type:'string',enum:Object.keys(examples),description:'Choose Base stock research, Bankr stock-pair research or discovery, or Pons token research on Robinhood Chain.',examples:['base.stock.research']},
-  input:{type:'object',description:'For a Base stock, send its ticker as query. For a Bankr or Pons token report, send its contract address as address. For discovery, send metric as liquidity or volume.',examples:[examples['base.stock.research']]}
+  service:{type:'string',enum:Object.keys(examples),description:'Choose Base stock research, Bankr stock-pair research or discovery, or Robinhood stock, Pons stock-pair or general Pons launch research.',examples:['base.stock.research']},
+  input:{type:'object',description:'For a Base or Robinhood stock, send its ticker as query. For a Bankr or Pons token report, send its contract address as address. For discovery, send metric as liquidity or volume.',examples:[examples['base.stock.research']]}
  },
  oneOf:Object.keys(examples).map(service=>({properties:{service:{const:service},input:{
   type:'object',additionalProperties:false,required:agentServices[service].required,properties:agentServices[service].properties
@@ -160,6 +162,8 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
   if(!verification.isValid||verification.payer?.toLowerCase()!==payer)return problem(402,'Payment authorization was not verified.');
   const result=await report(request,{paidResearch:true,env});
   if(result.status!=='completed'||service==='token.research'&&result.result?.protocol?.name!=='Pons v2'||
+    service==='pons.stock.research'&&(result.result?.classification!=='verified-robinhood-stock'||![result.result?.stock?.address,result.result?.stock?.symbol].some(v=>v?.toLowerCase()===input.query.toLowerCase()))||
+    service==='pons.stock-paired.research'&&(result.result?.classification!=='verified-pons-stock-pair'||result.result?.address?.toLowerCase()!==input.address.toLowerCase()||result.result?.ponsState?.pair?.address?.toLowerCase()!==result.result?.stock?.address?.toLowerCase())||
     service==='base.stock.research'&&(result.result?.identity?.status!=='matched'||![result.result.address,result.result.identity?.symbol,result.result.identity?.name].some(v=>v?.toLowerCase()===input.query.trim().toLowerCase()))||
     service==='base.stock-paired.research'&&result.result?.classification!=='verified-bankr-stock-paired-token')return problem(422,'The requested research target could not be verified. No settlement was requested.');
   const startBlock=await state.chain.getBlockNumber();

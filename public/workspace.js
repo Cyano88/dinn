@@ -640,6 +640,8 @@ function renderToolDirectory(capabilities){
  const actions={
    baseStock:{title:'Research a Coinbase stock token',description:'Check the official stock registry against the Base token’s B20 data, including its transfer rules and pause state. See dated NAV, market pairs, and holder evidence when available. If Bankr lists the stock, continue there for its live quote and location check.',prompt:'Research Coinbase stock token NVDAc'},
    baseResearch:{title:'Research a Bankr stock-paired launch',description:'Check whether the Bankr launch, Base transaction, and stock registry match. See available pool activity, fees, creator vesting, contract details, and sampled holder data when configured. Signed-in Dinn chat and paid NEAR hires can include a holder snapshot; free previews skip it. Dinn does not provide a safety verdict.',prompt:'Research a Base token paired with a stock'},
+  rhStock:{title:'Research a stock token',description:'Check a Robinhood stock token, its reference price and available lock records.',prompt:'Research a stock token on Robinhood Chain'},
+  rhPair:{title:'Research a stock-paired launch',description:'Verify the stock behind a Pons pair and check the launch activity and unlock dates.',prompt:'Research a stock-paired launch on Pons'},
   inspect:{title:'Research a Pons token',description:'See launch age, curve activity, holder buys and sells, supported PinkLock records, and contract details. Missing data stays unknown.',prompt:'Research a Robinhood Chain token'},
   launch:{title:'Create a token',description:'Set up a Pons launch. Dinn checks the current options and cost before you approve it in your wallet.',prompt:'I want to launch'},
   launches:{title:'Browse Dinn launches',description:'Explore tokens launched through Dinn and verified on Pons.',navigate:'launches'},
@@ -656,10 +658,10 @@ function renderToolDirectory(capabilities){
   bridge:{title:'Bridge to Robinhood Chain',description:'Move ETH, USDC, or USDT from Base or Arbitrum to Robinhood Chain. Dinn checks the send and arrival separately.',prompt:activeToolNetwork==='base'?'Bridge funds from Base to Robinhood Chain':'Bridge funds to Robinhood Chain'},
   transaction:{title:'Check a transaction',description:'Check whether a Robinhood Chain transaction is pending, confirmed, or failed.',prompt:'Check a transaction'}
  };
- const groups=activeToolNetwork==='base'?[{title:'Research',items:['baseStock','baseResearch']},{title:'Wallet',items:['balances','transfer','swap','bridge']}]:[{title:'Research',items:['inspect']},{title:'Pons',items:['launch','launches','options','buy','sell','claim','burn','lock','dex']},{title:'Wallet',items:['balances','transfer','swap','bridge','transaction']}];
+ const groups=activeToolNetwork==='base'?[{title:'Research',items:['baseStock','baseResearch']},{title:'Wallet',items:['balances','transfer','swap','bridge']}]:[{title:'Research',items:['rhStock','rhPair','inspect']},{title:'Pons',items:['launch','launches','options','buy','sell','claim','burn','lock','dex']},{title:'Wallet',items:['balances','transfer','swap','bridge','transaction']}];
  for(const group of groups){
   const items=group.items.filter(id=>{
-   const required=id==='balances'?['portfolio','balance']:id==='bridge'?['fund']:id==='baseResearch'?['baseResearch']:id==='baseStock'?['baseStock']:id==='launches'?[]:({inspect:['inspect'],launch:['launch'],options:['options'],buy:['buy'],sell:['sell'],claim:['claim'],burn:['burn'],lock:['lock'],dex:['dex'],transfer:['transfer'],swap:['swap'],transaction:['transaction']})[id]||[];
+   const required=id==='balances'?['portfolio','balance']:id==='bridge'?['fund']:id==='baseResearch'?['baseResearch']:id==='baseStock'?['baseStock']:id==='launches'?[]:({rhStock:['inspect'],rhPair:['inspect'],inspect:['inspect'],launch:['launch'],options:['options'],buy:['buy'],sell:['sell'],claim:['claim'],burn:['burn'],lock:['lock'],dex:['dex'],transfer:['transfer'],swap:['swap'],transaction:['transaction']})[id]||[];
    return id==='launches'||required.some(available);
   });
   if(!items.length)continue;

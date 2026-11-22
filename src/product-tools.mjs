@@ -15,6 +15,7 @@ import {serverRpcUrl} from './rpc-config.mjs';
 import {inspectCachedToken} from './inspection-cache.mjs';
 import {inspectionSummary} from './token-inspection.mjs';
 import {productCapabilities,productTools,actionTitles} from './tool-catalog.mjs';
+import {agentAccessRequest} from './agent-access.mjs';
 import {discoverStockPairs,researchBaseStockPairedToken} from './base-stock-paired-research.mjs';
 import {researchBaseStock,baseStockResearchMessage as baseStockAssetMessage} from './base-stock-research.mjs';
 const addr=v=>typeof v==='string'&&/^0x[0-9a-f]{40}$/i.test(v)&&!/^0x0{40}$/i.test(v);
@@ -179,6 +180,15 @@ async function executeTool(name,args={},context={},dependencies={}){
  if(name==='request_guidance'){const guidance=directProductIntent(context.message,context);return {message:guidance?.message||'Use supported tools or ask for the missing information.',data:{constraint:guidance?.message||'Use supported tools or ask for the missing information.',capabilities:productCapabilities},actions:guidance?.actions||[]};}
  if(name==='product_capabilities')return {message:Object.values(productCapabilities).map(c=>c.title+': '+(statusLabel[c.status]||'status unavailable')+'. '+c.description).join('\n\n'),actions:[],data:productCapabilities};
  if(name==='discover_base_pairs'){const data=await (dependencies.discoverStockPairs||discoverStockPairs)(args.metric,{env:context.env||process.env});return {message:discoveryMessage(data),data,actions:[]};}
+ if(['research_pons_stock','research_pons_stock_pair'].includes(name)){
+  const service=name==='research_pons_stock'?'pons.stock.research':'pons.stock-paired.research';
+  const report=await agentAccessRequest({service,input:args},{...dependencies,env:context.env||process.env});
+  const data=report.result;
+  const price=data.reference.available?'Robinhood reference price $'+data.reference.unitPriceUsd+' at '+new Date(data.reference.asOf).toISOString()+'.':'A current Robinhood reference price is unavailable.';
+  const title=data.stockInspection?data.symbol+' trades against '+data.stock.symbol+' on Pons.':data.stock.name+' ('+data.stock.symbol+') on Robinhood Chain.';
+  const message=[title,price,inspectionSummary(data,context.message||'overview'),'Robinhood stock contract: '+data.stock.address].join('\n\n');
+  return {message,data,inspection:data,actions:[]};
+ }
  if(name==='research_base_stock_paired_token'){const data=await (dependencies.baseStockResearch||researchBaseStockPairedToken)(args,{fetchImpl:dependencies.fetchImpl,env:context.env||process.env,holderSnapshotEnabled:context.holderSnapshotEnabled!==false});return {message:baseStockResearchMessage(data),data,actions:[]};}
  if(name==='research_base_stock'){const data=await (dependencies.baseStockAssetResearch||researchBaseStock)({query:args.query},{fetchImpl:dependencies.fetchImpl,env:context.env||process.env,holderSnapshotEnabled:context.holderSnapshotEnabled!==false});return {message:baseStockAssetMessage(data),data,actions:[]};}
  if(name==='dex_service_status'){const data=await (dependencies.dexStatus||dexStatus)(args);return {message:(data.indexed?'Token is indexed. ':'No indexed token pair was found. ')+data.orders.length+' public profile orders returned'+(data.orders.length?': '+data.orders.map(o=>o.status||'unknown').join(', '):'')+'. '+data.note,data,actions:[{id:'dex',title:actionTitles.dex,address:args.address}]};}
@@ -206,6 +216,16 @@ const conversationalQuestion=text=>/^(?:what|why|how|who|which|where|when|whethe
 export function directProductIntent(text,context={}){
  const lastAssistant=[...(context.history||[])].reverse().find(m=>m.role==='assistant')?.content||'';
  const t=text.trim(),addresses=t.match(/0x[0-9a-f]{40}(?![0-9a-f])/gi)||[],hash=t.match(/0x[0-9a-f]{64}(?![0-9a-f])/i)?.[0];
+ const stockPrompt='Which Robinhood stock token? Send its ticker or Robinhood Chain contract address.';
+ const pairPrompt='Send the contract address of the Pons launch whose stock pair you want to check.';
+ const rh=/\b(?:pons|robinhood|4663)\b/i.test(t)&&!/\b(?:base|bankr|8453)\b/i.test(t);
+ const target=t.match(/^(?:research|check|inspect)\s+\$?([a-z][\w.-]{0,19})\s+on\s+(?:pons|robinhood(?: chain)?)\b/i)?.[1];
+ if(rh&&/\b(?:research|check|inspect)\b/i.test(t)&&/\b(?:stock[- ]pair(?:ed)?|paired with (?:a )?(?:tokenized )?stock)\b/i.test(t)||lastAssistant===pairPrompt&&addresses.length===1)
+  return addresses.length===1?{name:'research_pons_stock_pair',args:{address:addresses[0]}}:{message:pairPrompt,actions:[]};
+ if(rh&&/\b(?:research|check|inspect)\b/i.test(t)&&(/\bstock\b/i.test(t)||target&&!/^(?:token|wallet|balance|contract|launch|fees)$/i.test(target))||lastAssistant===stockPrompt&&/^(?:0x[a-f0-9]{40}|\$?[a-z][\w.-]{0,19})$/i.test(t)){
+  const query=addresses.length===1?addresses[0]:lastAssistant===stockPrompt?t.replace(/^\$/,''):target||t.match(/\b(?:stock(?: token)?|ticker)\s+\$?([A-Z][A-Z0-9.-]{0,14})\b/)?.[1];
+  return query?{name:'research_pons_stock',args:{query}}:{message:stockPrompt,actions:[]};
+ }
  if(lastAssistant.startsWith('Base stock-pair shortlist by ')){
   const rows=[...lastAssistant.matchAll(/^Contract: (0x[a-f0-9]{40})$/gim)].map(m=>({address:m[1]}));
   const address=chosenCandidate(t,rows);if(address)return {name:'research_base_stock_paired_token',args:{address}};

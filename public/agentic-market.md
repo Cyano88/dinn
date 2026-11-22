@@ -58,3 +58,9 @@ In Dinn's November 22, 2026 NVDAc report, a holder with **12.15% of total supply
 | What do the curve, holders and available lock records show for this Pons token on Robinhood Chain? | `token.research` | Token contract in `address` |
 
 All four reports use the same Base payment flow. Coverage depends on the token and available sources. Trading decisions stay with the buyer.
+
+## Robinhood stock tokens and Pons stock pairs
+
+Use `pons.stock.research` with `{"query":"NVDA"}` for the Robinhood stock token. An exact Robinhood Chain stock contract also works.
+
+Use `pons.stock-paired.research` with `{"address":"0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4"}` for a Pons launch. Dinn checks the launch?s actual pairing contract against the Robinhood registry and reports the launch and stock separately. Available lock dates belong to the asset named in each section. Use `token.research` for a general Robinhood token report.

@@ -94,3 +94,9 @@ onchainos payment pay --payment-id '<paymentId>' --selected-index 0 --yes "${par
 ```
 
 If a signed POST returns `research_body_required`, it reached Dinn without the required JSON content type. With this CLI, check that the parameters were passed to the pay command. A timeout after a complete signed POST has a different meaning: replay the original signed payment and request ID to recover the result.
+
+## Robinhood stock tokens and Pons stock pairs
+
+Use `pons.stock.research` with `{"query":"NVDA"}` for the Robinhood stock token. An exact Robinhood Chain stock contract also works.
+
+Use `pons.stock-paired.research` with `{"address":"0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4"}` for a Pons launch. Dinn checks the launch?s actual pairing contract against the Robinhood registry and reports the launch and stock separately. Available lock dates belong to the asset named in each section. Use `token.research` for a general Robinhood token report.
