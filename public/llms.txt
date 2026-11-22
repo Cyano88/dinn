@@ -2,6 +2,7 @@
 
 AI token workspace, starting with Pons on Robinhood Chain. Public agent services offer live Pons token research, wallet balances, launch options and route quotes. No agent signing or broadcasting endpoint.
 
+- Agentic.Market buyer quickstart (0.10 USDC on Base): /agentic-market.md
 - Agent guide: /agent-guide.md
 - Manifest: /.well-known/dinn.json
 - Service input schemas: /api/agent/schema

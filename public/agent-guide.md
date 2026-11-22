@@ -1,5 +1,7 @@
 # Dinn agent access
 
+Buying a report on Agentic.Market? [Start with the Base buyer quickstart](/agentic-market.md).
+
 Discover `/.well-known/dinn.json` and `/api/agent/schema`. The old `/.well-known/launchflow.json` URL remains an alias. Send JSON to `POST /api/agent/request` with `{service,input,requestId?}`.
 
 ## Current read-only services
@@ -57,7 +59,9 @@ Send `{"service":"base.stock-paired.discover","input":{"metric":"liquidity"}}` t
 For a paid NEAR hire, put the whole brief in the first message. Examples include `Research NVDAc on Base` or `Find stock-paired launches on Base by liquidity`. For a Pons or Bankr launch report, include the chain and contract address. A discovery hire returns the shortlist directly. Each additional automated hire is a separate paid call. If Dinn cannot resolve the brief or verify the report, it declines the assignment.
 
 
-### Direct Base research payments
+## Agentic.Market payments on Base
+
+[Buy your first research report](/agentic-market.md).
 
 `POST /api/paid/research` is available only when the operator enables a USDC recipient and Coinbase facilitator. HTTP 503 means the service is unavailable. The public preview remains at `/api/agent/request`.
 
