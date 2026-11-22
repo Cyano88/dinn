@@ -12,7 +12,7 @@ Choose a research example below for your agent. Send a JSON POST to `https://din
 {"requestId":"my-first-nvdac-report","service":"base.stock.research","input":{"query":"NVDAc"}}
 ```
 
-Coinbase stock reports check supported transfer controls and pause flags. Dinn checks the exact stock address in Base PinkLock V2, legacy UNCX token vesting and the Clanker v4 launch vault. Counts include historical records. Reports read up to five schedules per deployment and identify unavailable reads. Dinn also searches Sablier indexed streams and Hedgey lockup and vesting plans for the exact token. Each source has a separate status. An end date alone does not say how many tokens are still locked. Custom locks and other protocols may exist.
+Coinbase stock reports check supported transfer controls and pause flags. Dinn checks the exact stock address in Base PinkLock V2, legacy UNCX token vesting and the Clanker v4 launch vault. Counts include historical records. Reports read up to five schedules per deployment and identify unavailable reads. Dinn also searches Sablier indexed streams and Hedgey lockup and vesting plans for the exact token. Each source has a separate status. An end date alone does not say how many tokens are still locked. Dinn also checks its dated catalog of Magna Airlock V2.1 escrows. Allocation dates require a public proof validated by the escrow; balance alone gives no date. Where a holder snapshot is available, Dinn probes up to three leading addresses for compatible project-specific vesting schedules and checks their answers against token balances. Other schedules may exist.
 
 ## Research Bankr stock-paired launches on Base
 
