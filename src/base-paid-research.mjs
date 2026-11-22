@@ -79,7 +79,7 @@ async function initialize(env){
   url:origin.origin+path,mimeType:'application/json',serviceName:'Dinn Labs',
   iconUrl:new URL('/brand/dinn-icon.png',origin).href,
   tags:['Token research','Tokenized stocks','Base','Bankr','Pons'],
-  description:'Research Coinbase tokenized stocks on Base: verify identity, dated reference values, liquidity and holder evidence. Discover Bankr stock-paired launches or check a launch for creator vesting, locked amounts, cliff and end dates. Research Pons launches on Robinhood Chain for curve activity, fees, holder trades and supported PinkLock unlock dates or vesting schedules. Standalone stock reports do not check lock schedules. Each call buys one sourced report.'
+  description:'Research Coinbase tokenized stocks on Base: verify identity, dated reference values, liquidity and holder evidence. Discover Bankr stock-paired launches or check a launch for creator vesting, locked amounts, cliff and end dates. Research Pons launches on Robinhood Chain for curve activity, fees, holder trades and supported PinkLock unlock dates or vesting schedules. Base reports check PinkLock V2, legacy UNCX and Clanker v4 vaults for each verified asset. Each call buys one sourced report.'
  };
  const facilitator=new HTTPFacilitatorClient(createFacilitatorConfig(env.CDP_API_KEY_ID,env.CDP_API_KEY_SECRET));
  const server=new x402ResourceServer(facilitator).register(network,new ExactEvmScheme());

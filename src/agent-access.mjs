@@ -1,3 +1,4 @@
+import {baseLockSummary} from './base-lock-evidence.mjs';
 import {discoveryMessage} from './discovery-guide.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {formatUnits,parseUnits} from 'viem';
@@ -80,6 +81,7 @@ function baseStockResearchDeliverable(result){
  lines.push('Pairing receipt check: '+safeLine(result.verification?.status||'unavailable',30)+'.','Coverage: Bankr fee data '+(coverage.bankrFeeRecord==='found'?'found':'unavailable')+'; Coinbase registry '+(coverage.stockRegistry==='Coinbase registry address match'?'matched':'unavailable')+'; market data '+safeLine(coverage.marketPair||'unavailable',180)+'.','Holder balances are a point-in-time snapshot. '+(result.holders?.source==='GoldRush Token Holders API'?'GoldRush classifies recent swaps for up to three sampled addresses when no contract code is observed; coverage is limited to each address’s latest transaction page. A missing swap does not prove no earlier activity.':result.holders?.source==='Blockscout token holder API'?'Blockscout reports current balances only; it does not classify recent buys or sells.':'No holder snapshot was returned, so holder balances and recent activity are unavailable.')+' Holder addresses are not identified as people or labeled as team, exchange or pool wallets. Contract safety and sellability: not assessed. NAV is a reference value, not an executable price. Market fields may be unavailable. No safe-to-trade verdict is provided.');
  const handoff=result.tradeHandoff;
  if(handoff)lines.push('','## Agent trade handoff','Status: '+(handoff.status==='request_external_quote'?'Request a fresh quote from the calling agent’s execution provider.':'Review evidence before requesting a quote.'),'This is a quote handoff only; Dinn did not choose a side or amount, check an executable route, or prepare, sign, or send a transaction.',handoff.reasonCodes.length?'Evidence gaps: '+handoff.reasonCodes.join(', ')+'.':'A current quote and the calling agent’s own wallet policy are still required.');
+ lines.push(...baseLockSummary(result.tokenLocks),...baseLockSummary(result.stockLocks));
  return lines.join('\n');
 }
 function baseStockDeliverable(result){
@@ -92,6 +94,7 @@ function baseStockDeliverable(result){
  if(result.tradeHandoff?.url)lines.push('Bankr handoff: '+safeLine(result.tradeHandoff.url,200)+'. Bankr must provide its live quote and check location eligibility; no side or amount was selected and no transaction was prepared.');else lines.push('Bankr trade handoff: '+safeLine(result.tradeHandoff?.execution||'not available',220));
  lines.push('Limits: '+safeLine(result.coverage?.contractControls,300)+'. Market and holder sources are point-in-time provider reports. This is not an audit, eligibility decision or safe-to-trade verdict.');
  for(const source of result.sources||[])if(typeof source?.url==='string'&&/^https:\/\//i.test(source.url))lines.push('Source: '+safeLine(source.label,100)+' '+source.url);
+ lines.push(...baseLockSummary(result.tokenLocks),...baseLockSummary(result.stockLocks));
  return lines.join('\n');
 }
 const eventWord=count=>Number(count)===1?'event':'events';

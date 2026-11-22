@@ -12,7 +12,7 @@ Choose a research example below for your agent. Send a JSON POST to `https://din
 {"requestId":"my-first-nvdac-report","service":"base.stock.research","input":{"query":"NVDAc"}}
 ```
 
-Coinbase stock reports check supported transfer controls and pause flags. Dinn does not currently check independent token locks or vesting dates for standalone Coinbase stock tokens.
+Coinbase stock reports check supported transfer controls and pause flags. Dinn checks the exact stock address in Base PinkLock V2, legacy UNCX token vesting and the Clanker v4 launch vault. Counts include historical records. Reports read up to five schedules per deployment and identify unavailable reads. Custom locks and other protocols may exist.
 
 ## Research Bankr stock-paired launches on Base
 
@@ -24,7 +24,7 @@ Coinbase stock reports check supported transfer controls and pause flags. Dinn d
 
 To rank by 24-hour trading volume, use `volume` as the metric. Discovery checks a rotating sample. To research one result, use `base.stock-paired.research` with its launch token contract in `input.address` and a fresh request ID. Quote that follow-up separately. Discovery plus one follow-up costs **0.20 USDC total**.
 
-For creator vesting, request the individual launch report directly. When Bankr reports an eligible schedule, Dinn returns the locked amount, vesting start, cliff end and vesting end in UTC. The schedule covers the creator allocation. Other lockers and the paired stock token are outside this check.
+For creator vesting, request the individual launch report directly. When Bankr reports an eligible schedule, Dinn returns the locked amount, vesting start, cliff end and vesting end in UTC. The schedule covers the creator allocation. The report also checks Base PinkLock V2, legacy UNCX and Clanker v4 separately for the launch token and its paired stock.
 
 ```json
 {"requestId":"my-bankr-vesting","service":"base.stock-paired.research","input":{"address":"0x8f277eee1254d3319355e76a8c6594e7d3e2eba3"}}
