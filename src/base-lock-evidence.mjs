@@ -1,3 +1,4 @@
+import {additionalBaseSchedules,additionalScheduleLines} from './base-indexed-schedules.mjs';
 import {decodeFunctionResult,encodeFunctionData,parseAbi,zeroAddress} from 'viem';
 
 const lockers=[
@@ -58,8 +59,8 @@ export async function baseLockEvidence(token,block,rpcUrl,fetchImpl,env={}){
    return {...source,status:count===BigInt(records.length)?'checked':'partial',count:String(count),records};
   }catch{return {...source,status:'unavailable',count:null,records:[]};}
  }));
- const [sources,index]=await Promise.all([lockerReads,indexedUnlocks(token,fetchImpl,env.VESTREAM_API_KEY,signal)]);
- return {token,chainId:8453,block:block==null?null:String(block),sources,index,scope:'These Base token lockers only. Historical records can include withdrawn assets. Other lockers and custom schedules may exist.'};
+ const [sources,index,additionalSchedules]=await Promise.all([lockerReads,indexedUnlocks(token,fetchImpl,env.VESTREAM_API_KEY,signal),additionalBaseSchedules(token,block,rpcUrl,fetchImpl,signal)]);
+ return {token,chainId:8453,block:block==null?null:String(block),sources,index,additionalSchedules,scope:'These Base token lockers only. Historical records can include withdrawn assets. Other lockers and custom schedules may exist.'};
 }
 
 // Aggregate index findings stay separate from direct reads to avoid double counting.
@@ -96,7 +97,7 @@ export function baseLockSummary(scan){
  }
  if(scan.index?.status==='indexed')lines.push('Vestream: '+scan.index.activeSchedules+' indexed active schedules. Next discrete release in the 365-day window: '+(scan.index.nextIndexedEvent?.utc??'none reported')+'. '+scan.index.url);
  else lines.push('Vestream multi-protocol index was not checked successfully.');
- return [...lines,scan.scope];
+ return [...lines,...additionalScheduleLines(scan.additionalSchedules),scan.scope];
 }
 export function chatLockEvidence(scan,symbol){
  if(!scan)return '';
@@ -110,6 +111,6 @@ export function chatLockEvidence(scan,symbol){
  }
  if(checked.length!==scan.sources.length)lines.push('Some sources were unavailable or only partly checked.');
  if(scan.index?.status==='indexed')lines.push('Vestream reports '+scan.index.activeSchedules+' active schedules'+(scan.index.nextIndexedEvent?' with a discrete release on '+scan.index.nextIndexedEvent.utc:'')+'.');
- lines.push('Other contracts may hold additional locks.');
+ lines.push(...additionalScheduleLines(scan.additionalSchedules),'Other contracts may hold additional locks.');
  return lines.join('\n\n');
 }
