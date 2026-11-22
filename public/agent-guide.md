@@ -55,3 +55,16 @@ The marketplace worker routes Base requests with `Service: base.stock.research` 
 Send `{"service":"base.stock-paired.discover","input":{"metric":"liquidity"}}` to the public agent endpoint. Use `volume` for 24-hour USD volume. Dinn checks up to eight distinct stock-paired candidates per comparison, rotating through candidates saved from Bankr feed observations and earlier address-specific research against the Coinbase registry, launch receipts and exact pool data. It returns up to three ranked contracts. If the sample lacks positive, verifiable values, the shortlist is empty. Use the selected contract with `base.stock-paired.research` for the full report.
 
 For a paid NEAR hire, put the whole brief in the first message. Examples include `Research NVDAc on Base` or `Find stock-paired launches on Base by liquidity`. For a Pons or Bankr launch report, include the chain and contract address. A discovery hire returns the shortlist directly. Each additional automated hire is a separate paid call. If Dinn cannot resolve the brief or verify the report, it declines the assignment.
+
+
+### Direct Base research payments
+
+`POST /api/paid/research` is available only when the operator enables a USDC recipient and Coinbase facilitator. HTTP 503 means the service is unavailable. The public preview remains at `/api/agent/request`.
+
+Provide a unique stable `requestId`, one `service`, and its `input`. Supported services are `base.stock.research`, `base.stock-paired.research`, `base.stock-paired.discover`, and `token.research` for a Pons token on Robinhood Chain. Example body:
+
+```json
+{"requestId":"nvda-research-001","service":"base.stock.research","input":{"query":"NVDAc"}}
+```
+
+Read the x402 v2 `PAYMENT-REQUIRED` challenge and verify the recipient, 0.10 USDC amount, and Base mainnet network before authorizing. A successful response includes the report, sources, and a settlement receipt. After a timeout or a pending response, retry the same body and original signed payment. A new request ID represents a separate purchase.

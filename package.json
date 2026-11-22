@@ -15,12 +15,16 @@
     "check:network": "node --env-file-if-exists=.env scripts/check-network.mjs"
   },
   "dependencies": {
+    "@coinbase/x402": "2.1.0",
     "@privy-io/node": "^0.39.0",
     "@privy-io/react-auth": "^3.51.3",
     "@reown/walletkit": "1.6.0",
     "@solana-program/system": "^0.10.0",
     "@walletconnect/core": "2.26.0",
     "@walletconnect/utils": "2.26.0",
+    "@x402/core": "2.32.0",
+    "@x402/evm": "2.32.0",
+    "@x402/extensions": "2.32.0",
     "jose": "^6.2.17",
     "pg": "^8.23.1",
     "react": "^19.3.1",

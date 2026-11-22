@@ -24,7 +24,7 @@ export const agentServices={
 };
 export function agentAccessManifest(){return {name:'Dinn',version:'6',services:['plan','pons.brief',...Object.keys(agentServices)],discovery:{instructions:'/agent-guide.md',schema:'/api/agent/schema',tools:'/api/tools'},transport:{type:'http-json',endpoint:'/api/agent/request'},broadcastEnabled:false,canSign:false,acceptsPrivateKeys:false,payment:{mode:'free-public-preview',charged:false},marketplace:{provider:'NEAR Agent Market',status:'live',listingUrl:'https://market.near.ai/a/dinn',pricePerCallUsd:'0.10'},notes:['Public account input is a query target, not proof of ownership.','Research is a dated chain snapshot, not a security audit.','Base tradeHandoff only indicates whether the report supports asking another provider for a fresh quote; it does not confirm a route or recommend a trade.','Dinn never chooses trade side or size, prepares a transaction, signs or broadcasts.','Marketplace payment never grants wallet authority.']};}
 export function agentAccessSchema(){return {type:'object',required:['service','input'],additionalProperties:false,properties:{service:{enum:['plan','pons.brief',...Object.keys(agentServices)]},input:{type:'object'},requestId:{type:'string',pattern:'^[A-Za-z0-9._-]{1,100}$'}},serviceInputs:Object.fromEntries(Object.entries(agentServices).map(([k,v])=>[k,{type:'object',additionalProperties:false,...v}]))};}
-function validate(request){
+export function validateAgentRequest(request){
  if(!request||typeof request!=='object'||Array.isArray(request)||Object.keys(request).some(k=>!['service','input','requestId'].includes(k)))throw Error('Expected service, input and optional requestId only.');
  if(request.requestId!==undefined&&(typeof request.requestId!=='string'||!/^[A-Za-z0-9._-]{1,100}$/.test(request.requestId)))throw Error('Invalid requestId.');
  const spec=agentServices[request.service];if(!spec)throw Error('Unsupported agent service.');const i=request.input;
@@ -197,7 +197,7 @@ function inspectionDeliverable(report,ponsState,ponsStateUnavailable=false){
 }
 export async function agentAccessRequest(request,dependencies={}){
  const env=dependencies.env||process.env;
- const missing=validate(request),base={schemaVersion:'5',requestId:request.requestId||randomUUID(),service:request.service,broadcast:false,charged:false,ownershipVerified:false};
+ const missing=validateAgentRequest(request),base={schemaVersion:'5',requestId:request.requestId||randomUUID(),service:request.service,broadcast:false,charged:false,ownershipVerified:false};
  if(missing.length)return {...base,status:'needs_input',missingFields:missing,next:{type:'collect_fields',message:'Supply the missing fields explicitly. No wallet or financial choices were inferred.'}};
  const i=request.input;let result,deliverable;
  if(request.service==='base.stock-paired.discover'){result=await (dependencies.discoverStockPairs||discoverStockPairs)(i.metric,{env});deliverable=discoveryMessage(result);}
@@ -216,13 +216,13 @@ export async function agentAccessRequest(request,dependencies={}){
   result={...inspection,ponsState:marketAndFees,ponsStateUnavailable:marketAndFeesUnavailable};
   deliverable=inspectionDeliverable(inspection,marketAndFees,marketAndFeesUnavailable);
  }else if(request.service==='base.stock-paired.research'){
-  result=await (dependencies.baseStockResearch||researchBaseStockPairedToken)(i,{fetchImpl:dependencies.fetchImpl||fetch,env:dependencies.env||process.env,holderSnapshotEnabled:dependencies.paidMarketplaceHire===true});
+  result=await (dependencies.baseStockResearch||researchBaseStockPairedToken)(i,{fetchImpl:dependencies.fetchImpl||fetch,env:dependencies.env||process.env,holderSnapshotEnabled:dependencies.paidMarketplaceHire===true||dependencies.paidResearch===true});
   if(!result||!same(result.address,i.address)||result.chainId!==8453||!Number.isFinite(Date.parse(result.checkedAt))||!['verified-bankr-stock-paired-token','insufficient-evidence'].includes(result.classification))throw Error('Base research evidence does not match the requested token, network or checked time.');
   if(result.classification==='verified-bankr-stock-paired-token'&&(!same(result.stock?.address,result.launch?.pairedStock?.address)||result.verification?.status!=='verified'||typeof result.launch?.poolId!=='string'||!/^0x[0-9a-f]{64}$/i.test(result.launch.poolId)))throw Error('Verified Base stock-pair evidence is internally inconsistent.');
   result={...result,tradeHandoff:baseQuoteHandoff(result)};
   deliverable=baseStockResearchDeliverable(result);
  }else if(request.service==='base.stock.research'){
-  result=await (dependencies.baseStockAssetResearch||researchBaseStock)({query:i.query},{fetchImpl:dependencies.fetchImpl||fetch,env,holderSnapshotEnabled:dependencies.paidMarketplaceHire===true});
+  result=await (dependencies.baseStockAssetResearch||researchBaseStock)({query:i.query},{fetchImpl:dependencies.fetchImpl||fetch,env,holderSnapshotEnabled:dependencies.paidMarketplaceHire===true||dependencies.paidResearch===true});
   if(!result||result.chainId!==8453||!Number.isFinite(Date.parse(result.checkedAt))||!/^0x[0-9a-f]{40}$/i.test(result.address||'')||!['matched','mismatch'].includes(result.identity?.status)||result.contract?.address?.toLowerCase()!==result.address.toLowerCase()||!/^\d+$/.test(result.contract?.blockNumber||'')||!/^0x[0-9a-f]{64}$/i.test(result.contract?.blockHash||''))throw Error('Coinbase stock evidence does not match the requested Base token or checked block.');
   if(/^0x[0-9a-f]{40}$/i.test(i.query)&&i.query.toLowerCase()!==result.address.toLowerCase())throw Error('Coinbase stock result does not match the requested token address.');
   deliverable=baseStockDeliverable(result);

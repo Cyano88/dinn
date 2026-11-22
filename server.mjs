@@ -71,7 +71,7 @@ const launchEnabled=ascendLaunchEnabled();
 function json(res,status,data){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(data));}
 async function body(req,limit=16000){const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>limit)throw new Error('Request too large.');chunks.push(chunk);}return JSON.parse(Buffer.concat(chunks).toString('utf8'));}
 async function buildPlan(message){let result;for await(const event of streamChat({message},{productMode:true})){if(event.type==='done')result=event.result;}return result;}
-let walletReadStarts=[];
+let walletReadStarts=[],paidResearchStarts=[];
 const server=createServer(async(req,res)=>{
  try{
   res.setHeader('X-Content-Type-Options','nosniff');
@@ -111,6 +111,17 @@ const server=createServer(async(req,res)=>{
    if(req.headers.origin && !allowedOrigins.has(req.headers.origin))return json(res,403,{error:'Origin rejected.'});
    if(req.headers['content-type']?.split(';')[0]!=='application/json')return json(res,415,{error:'JSON required.'});
    const data=await body(req,path==='/api/chat'?100000:16000);
+   if(path==='/api/paid/research'){
+    paidResearchStarts=paidResearchStarts.filter(t=>Date.now()-t<60000);
+    if(paidResearchStarts.length>=60)return json(res,429,{error:'Research requests are busy. Retry shortly.'});
+    paidResearchStarts.push(Date.now());
+    try{
+     const {paidResearch}=await import('./src/base-paid-research.mjs');
+     const result=await paidResearch(data,req.headers['payment-signature']);
+     for(const [key,value] of Object.entries(result.headers))res.setHeader(key,value);
+     return json(res,result.status,result.body);
+    }catch{return json(res,503,{error:'Research or payment verification unavailable. Retry the same request ID and signed payment.'});}
+   }
    if(path.startsWith('/api/feedback/')){
     try{const result=await feedbackRequest(req,path,data);return json(res,result.status,result.body);}
     catch{return json(res,503,{error:'Feedback is temporarily unavailable. Please try again.'});}

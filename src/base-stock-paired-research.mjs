@@ -174,10 +174,11 @@ async function researchBaseStockPairedTokenUncached(input,{fetchImpl=fetch,baseS
 export async function researchBaseStockPairedToken(input,options={}){
  const token=typeof input?.address==='string'?input.address.trim().toLowerCase():'';
  if(!addr(token)||/^0x0{40}$/i.test(token))throw new Error('Enter a valid Base token contract address.');
- const active=researchPending.get(token);if(active)return active;
+ const key=token+(options.holderSnapshotEnabled===false?':public':':holders');
+ const active=researchPending.get(key);if(active)return active;
  const pending=researchBaseStockPairedTokenUncached({address:token},options);
- researchPending.set(token,pending);
- try{return await pending;}finally{if(researchPending.get(token)===pending)researchPending.delete(token);}
+ researchPending.set(key,pending);
+ try{return await pending;}finally{if(researchPending.get(key)===pending)researchPending.delete(key);}
 }
 // A bounded comparison of recent launches. Rank only observations for the pool
 // initialized by the successful Bankr launch transaction.
