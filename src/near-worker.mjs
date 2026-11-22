@@ -22,14 +22,16 @@ function supportedResearchJobSurface(brief,job){
  if(job.origin===null)return job.jobKind==='standard'&&job.isPrivate===false||job.jobKind==='instant'&&job.isPrivate===true;
  return job.origin==='a2a'&&job.jobKind==='instant'&&job.isPrivate===true;
 }
-const scopeNotice='Dinn does not cover this request today. On Robinhood Chain, send a Pons token address. On Base, request a Coinbase stock token or a Bankr token paired with a Coinbase stock. Other pairs and networks may be added later. No research has started. You can cancel this job.';
+const researchScope='Robinhood Chain: Pons launches and stock pairs by launch address, or Robinhood stock tokens by ticker or address. Base: Coinbase stock tokens by ticker or address, or Bankr stock pairs by launch address. Dinn provides research only.';
+const scopeNotice='Dinn does not cover this request today. '+researchScope+' Research has not started. You can cancel this job.';
 export function outsideResearchScope(text){
  if(typeof text!=='string')return false;
  const foreignNetwork=/^\s*chain\s*:\s*(?!8453\s*$|4663\s*$)(?:\d+|solana|arbitrum|polygon|ethereum|bsc|avalanche|near)\s*$/im;
  const namedNetwork=/\b(?:research|check|analyze|investigate|token|pair|launch|contract)\b[^.!?\n]{0,180}\b(?:on|via)\s+(?:the\s+)?(?:solana|arbitrum|polygon|ethereum|bsc|avalanche|near)(?!\s+(?:AI\s+)?(?:agent\s+)?market(?:place)?\b)(?:\s+(?:mainnet|chain))?\b/i;
  const base=/\b(?:on Base|Base chain|Bankr)\b|^\s*chain\s*:\s*8453\s*$/im;
  const nonStock=/\b(?:paired with|paired against|quote asset\s*:|pair\s*:)\s*(?:W?ETH|USDC|USDT|SOL|BTC|W?BTC)\b|\b[A-Z0-9]+\s*\/\s*(?:W?ETH|USDC|USDT|W?BTC)\b/i;
- return foreignNetwork.test(text)||namedNetwork.test(text)||(base.test(text)&&nonStock.test(text));
+ const execute=/^(?:please\s+)?(?:(?:buy|sell|swap|transfer|bridge|stake)\s+(?:this|that|my|all|some|the token|0x[0-9a-f]{40}|[0-9]+)\b|send funds\b|claim fees\b|execute (?:a |the )?trade\b|monitor daily\b|watch daily\b)/im;
+ return execute.test(text)||foreignNetwork.test(text)||namedNetwork.test(text)||(base.test(text)&&nonStock.test(text));
 }
 function requestedResearchInput(row,job){
  const brief=row?.job,sources=[brief?.description];
@@ -167,7 +169,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
    };
    if(data.phase==='declined')return {assignmentId:a.assignmentId,state:'declined'};
    if(oneShot && !data.submittedAt && eligibleAssignment(row,full,agentId,{minimumEscrow,escrowToken}) && !resolveInput(row,full))
-    return decline('rejected','Dinn needs one supported research brief per hire. Example: Research NVDAc on Base. For a Pons or Bankr launch, include its chain and contract address.');
+    return decline('rejected','Send one supported research brief with the chain and target. '+researchScope+' Example: Research NVDAc on Base.');
    if(!oneShot && data.scopeNoticeSent)return {assignmentId:a.assignmentId,state:'unsupported-scope'};
    const canGuide=!oneShot && eligibleAssignment(row,full,agentId,{minimumEscrow,escrowToken}) && full.isPrivate===true;
    if(canGuide && !data.guidedInput && !data.submittedAt && !a.startedAt && !a.deliverableUrl &&

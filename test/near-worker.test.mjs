@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {eligibleNearResearchJob,createNearWorker,submittedReportStatusMessage} from '../src/near-worker.mjs';
+import {outsideResearchScope,eligibleNearResearchJob,createNearWorker,submittedReportStatusMessage} from '../src/near-worker.mjs';
 
 const agentId='11111111-1111-4111-8111-111111111111';
 const assignmentId='22222222-2222-4222-8222-222222222222';
@@ -326,6 +326,7 @@ test('an unsupported private Base pair receives one scope notice before research
  assert.equal((await worker.process(row)).state,'unsupported-scope');
  assert.equal(messages.length,1);
  assert.match(messages[0],/does not cover this request today/);
+ assert.match(messages[0],/Robinhood stock tokens by ticker or address/);
 });
 test('private ticker hire waits for chain and stock type and resumes once in the same assignment',async()=>{
  const {row,fullJob}=fixture({jobKind:'instant',isPrivate:true,assignment:{escrowAmount:'0'},fullJob:{isTestRun:true},description:'NVDAc'});
@@ -382,4 +383,10 @@ test('X402 is accepted only for funded private A2A hires meeting the configured 
   const {row,fullJob}=fixture({origin,isPrivate:true,jobKind:'instant',description:'Research NVDAc on Base',assignment:{escrowToken:'X402',escrowAmount:amount}});
   assert.equal(Boolean(eligibleNearResearchJob(row,fullJob,agentId,{...options,minimumEscrow:'0.1000'})),expected);
  }
+});
+
+test('trade instructions are out of scope and trading evidence remains researchable',()=>{
+ assert.equal(outsideResearchScope('Please buy 100 NVDAc on Base'),true);
+ assert.equal(outsideResearchScope('Sell pressure for a Pons launch'),false);
+ assert.equal(outsideResearchScope('Research BONK on Solana'),true);
 });
