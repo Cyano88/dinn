@@ -4,3 +4,15 @@ test('DEX review payload survives refresh and stays aligned after chat trimming'
 test('legacy DEX reply recovers checkout only from its explicit token address',()=>{const messages=[{role:'user',content:'Prepare DEX Screener profile for '+address},{role:'assistant',content:'Prepared DEX Screener profile.'}];assert.equal(restoreChatState(JSON.stringify({messages})).results[1].actions[0].address,address);messages[0].content='read wallet balance '+address;assert.equal(restoreChatState(JSON.stringify({messages})).results[1],null);assert.equal(savedChatResult({actions:[{id:'dex',address:'https://evil.test'},{id:'launch',address}]}),null);});
 
 test('inspection evidence survives refresh without changing its checked time or becoming a fresh report',()=>{const inspection={chainId:4663,address,blockNumber:'42',blockHash:'0x'+'a'.repeat(64),checkedAt:'2026-11-10T12:00:00Z',checks:[{label:'LP lock',status:'unknown',detail:'Not verified.',evidence:[]}]};const s=appendChatState([],[],'check token '+address,'Checked.',{inspection});const r=restoreChatState(JSON.stringify(s)).results[1];assert.equal(r.inspection.checkedAt,inspection.checkedAt);assert.equal(r.restored,true);assert.equal(r.tokenAddress,address);assert.equal(savedChatResult({inspection:{...inspection,chainId:1}}),null);assert.equal(savedChatResult({inspection:{...inspection,checks:[{label:'x',status:'safe',detail:'safe'}]}}),null);});
+
+test('chat keeps locker results and release dates after saving and reopening a report',async()=>{
+ const {cleanInspection,lockCoverageText}=await import('../public/token-report.js');
+ const report={chainId:4663,address:'0x'+'1'.repeat(40),blockNumber:'77',blockHash:'0x'+'a'.repeat(64),checkedAt:'2026-11-22T12:00:00Z',checks:[],titanLocks:[{status:'observed',records:[{id:'1',locked:'25',unlockDate:'2027-01-01'}]}],hoodLocks:[{status:'no-match',records:[]}],uncxVesting:{status:'partial',records:[]},pinkLock:{status:'partial',records:[]}};
+ const restored=cleanInspection(cleanInspection(report));
+ assert.equal(restored.titanLocks[0].records[0].unlockDate,'2027-01-01');
+ const summary=lockCoverageText(restored);
+ assert.match(summary,/Checked PinkLock, Titan Locker, HoodLock, UNCX/);
+ assert.match(summary,/Found lock or vesting records on Titan Locker/);
+ assert.match(summary,/incomplete/);
+ assert.doesNotMatch(lockCoverageText(cleanInspection({...report,titanLocks:undefined,hoodLocks:undefined,uncxVesting:undefined})),/UNCX|HoodLock|Titan/);
+});

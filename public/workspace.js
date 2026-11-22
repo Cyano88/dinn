@@ -1,3 +1,4 @@
+import {lockCoverageText} from './token-report.js';
 import {showFeedbackFeed} from '/feedback-feed.js';
 import {hasLaunchProgress,launchReturnChoice} from './launch-resume.js';
 import {createDraftSync} from './draft-sync.js';
@@ -282,7 +283,8 @@ $('chat').onsubmit=async e=>{
   if(result.inspection){
    const overview=researchSummary(result.inspection);
    const stockReport=result.toolsUsed?.some(name=>['research_pons_stock','research_pons_stock_pair'].includes(name));
-   if(!stockReport){
+   if(stockReport)result.message+='\n\n'+lockCoverageText(result.inspection);
+   else{
     const takeaway=result.mode==='0g-tools'&&result.message?.trim();
     result.message=takeaway&&takeaway.length+overview.length<5400?overview+'\n\n'+takeaway:overview;
    }
@@ -603,7 +605,8 @@ function researchSummary(report){
  if(history?.curve?.status==='complete-to-checked-block')lines.push('Since launch: '+history.curve.tradeCount+' curve trades · '+Number(history.curve.totalVolume).toLocaleString('en',{maximumFractionDigits:4})+' '+history.curve.pairSymbol+' volume · '+Number(history.curve.totalFees).toLocaleString('en',{maximumFractionDigits:4})+' '+history.curve.pairSymbol+' fees.');
  const events=history?.holderEventSummary;if(events)lines.push('Cumulative curve activity among '+events.indexedAddresses+' indexed top-holder addresses: '+events.addressesWithBuys+' addresses bought; '+events.addressesWithSells+' sold. This is not a recent wallet-history count.');
  const behavior=report.holders?.behavior;if(behavior?.summary)lines.push('Recent '+behavior.windowDays+'-day wallet sample: '+behavior.summary.targetTokenBuyCandidates+' candidate buys and '+behavior.summary.targetTokenSellCandidates+' candidate sells across '+behavior.summary.walletsAnalyzed+' sampled addresses. This sample can miss trades.');
- const locks=report.pinkLock?.records;if(Array.isArray(locks)&&locks.length){const first=locks[0];lines.push('PinkLock: '+locks.length+' matching record'+(locks.length===1?'':'s')+'; '+Number(first.remaining).toLocaleString('en',{maximumFractionDigits:2})+' tokens remain locked'+(first.tgeOrUnlockDate?', first unlock or release '+new Date(first.tgeOrUnlockDate).toLocaleDateString():'')+'.');}else if(report.pinkLock)lines.push('No supported PinkLock record was confirmed. This does not prove supply is unlocked.');
+ const locks=report.pinkLock?.records;if(Array.isArray(locks)&&locks.length){const first=locks[0];lines.push('PinkLock: '+locks.length+' matching record'+(locks.length===1?'':'s')+'; '+Number(first.remaining).toLocaleString('en',{maximumFractionDigits:2})+' tokens remain locked'+(first.tgeOrUnlockDate?', first unlock or release '+new Date(first.tgeOrUnlockDate).toLocaleDateString():'')+'.');}
+ lines.push(lockCoverageText(report));
  return lines.join('\n\n');
 }
 function renderToolResult(body,result){
@@ -620,7 +623,7 @@ function renderToolResult(body,result){
  if(!result.restored&&(result.actions||[]).some(a=>a.id==='launch')){view('assistant');queueMicrotask(()=>submitChoice('resume setup'));}
  if(!result.restored&&(result.actions||[]).some(a=>a.id==='launchpads'))view('launches');
 
- if(result.inspection){const transcript=document.createElement('div');renderInspection(transcript,result.inspection,{restored:!!result.restored});transcript.querySelectorAll('button,.inspection-controls').forEach(b=>b.remove());const details=document.createElement('details');details.className='research-evidence';const summary=document.createElement('summary');summary.textContent='View research details';details.append(summary);const evidence=document.createElement('p');evidence.className='research-transcript';evidence.textContent=[...transcript.children].map(el=>el.innerText||el.textContent).filter(Boolean).join('\n\n').trim();details.append(evidence);for(const source of result.inspection.sources||[]){try{const link=document.createElement('a');link.href=source.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=source.label;details.append(document.createTextNode(' '),link);}catch{}}body.append(details);body.scrollIntoView({block:'start',behavior:'instant'});}else if(result.toolsUsed?.some(name=>['research_base_stock','research_base_stock_paired_token'].includes(name)))body.scrollIntoView({block:'start',behavior:'instant'});else scrollChat();
+ if(result.inspection){const transcript=document.createElement('div');renderInspection(transcript,result.inspection,{restored:!!result.restored});transcript.querySelectorAll('button,.inspection-controls').forEach(b=>b.remove());const details=document.createElement('details');details.className='research-evidence';const summary=document.createElement('summary');summary.textContent='View research details';details.append(summary);details.append(...transcript.childNodes);body.append(details);body.scrollIntoView({block:'start',behavior:'instant'});}else if(result.toolsUsed?.some(name=>['research_base_stock','research_base_stock_paired_token'].includes(name)))body.scrollIntoView({block:'start',behavior:'instant'});else scrollChat();
 
 }
 
