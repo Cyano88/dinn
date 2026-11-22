@@ -154,8 +154,12 @@ function handleLaunchReply(text){
 
  if(launchBusy){$('feedback').textContent='Dinn is preparing this step. Please wait.';return true;}
 
- if(/^(pause|pause setup|cancel)$/i.test(text)){pauseLaunchConversation();say('Launch setup paused. Your saved draft is still here.');return true;}
+ if(/^(pause|pause setup|cancel)$/i.test(text)){pauseLaunchConversation();recordSetupReply(text,'Launch paused. Say ?continue my launch? when you?re ready.');return true;}
 
+ if(/^(?:research|inspect|look up|check (?:a |my |the )?(?:token|contract|balance)|what is my .+ balance)\b/i.test(text)){
+  pauseLaunchConversation();
+  return false;
+ }
  if(launchConversationStep==='wallet'){if(/^(?:use )?(?:dinn|dinn wallet|embedded wallet)$/i.test(text)){$('use-dinn-wallet')?.click();return true;}if(/^(?:connect |use )?(?:external|external wallet)$/i.test(text)){$('connect-launch-wallet')?.click();return true;}say('Say “Dinn wallet” to use your Dinn wallet, or “external wallet” to connect one. The wallet you choose pays the launch cost and receives any buy at launch.');return true;}
  if(launchConversationStep==='profile'){
 
@@ -326,15 +330,12 @@ let profileEpoch=null;
 
 async function openLaunchProfile(){
 
- if(launchBusy||controller||setupBusy)return;const generation=epoch;launchBusy=true;
-
- if(!$('pons-review-dialog').hidden)showLaunchStage(null);
-
+ if(launchBusy||controller||setupBusy)return;
+ const generation=epoch;
  profileEpoch=epoch;$('launch-profile-error').textContent='';$('continue-launch-profile').textContent='Continue';
-
- say('Dinn is checking whether logo preview is available for this account…');
-
- try{await logoCreator.open();if(generation===epoch){showLaunchStage('profile');if(hasLocalLogo())$('launch-profile-error').textContent=localLogoMessage;}}finally{if(generation===epoch)launchBusy=false;}
+ showLaunchStage('profile');
+ await logoCreator.open();
+ if(generation===epoch&&launchConversationStep==='profile'&&hasLocalLogo())$('launch-profile-error').textContent=localLogoMessage;
 
 }
 
