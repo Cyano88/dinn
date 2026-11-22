@@ -46,3 +46,14 @@ test('skip description advances a real setup without asking inference to save an
  assert.equal(result.launchDraft.nextField,'pairToken');
  assert.match(result.message,/Which asset/);
 });
+
+test('holder explanations keep sample scope and separate pool liquidity from ownership',async()=>{
+ const report='**Identity** on Base. Largest 10 in the returned sample hold 77.88% of supply. This is the aero market contract, not an individual wallet.';
+ const context={message:'What does that holder concentration mean?',history:[{role:'assistant',content:report}]};
+ const events=[];
+ for await(const event of streamProductChat(context,[],{env:{}}))events.push(event);
+ const result=events.at(-1).result;
+ assert.match(result.message,/sample.*77.88%/);
+ assert.match(result.message,/shared trading liquidity/);
+ assert.deepEqual(result.toolsUsed,[]);
+});
