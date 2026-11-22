@@ -218,15 +218,17 @@ async function executeTool(name,args={},context={},dependencies={}){
   const symbol=args.kind==='buy'?info.pair.symbol:info.token.symbol;
   if(!args.amount||args.unit&&args.unit.toLowerCase()!==symbol.toLowerCase())return reply(prefix+'. '+args.kind+': enter the amount in '+symbol+'.');
   if(!addr(account))return reply('Connect your wallet so I can check a quote for that address.');
+  const limit='Dinn cannot offer this swap right now. The estimated values of what you pay and what you receive differ by more than 3%.';
   try{
    const quote=await (dependencies.tradeQuote||quotePonsTrade)({...args,account},options);
-   const availability=quote.reference?(quote.impactLimit?' The Relay route exceeds the 3% limit.':' Dinn could not verify an executable Relay route.'):' This estimate can change before a trade.';
-   const output=Number(quote.output).toLocaleString('en-US',{maximumSignificantDigits:7});
-   return reply(quote.venue+' estimates '+output+' '+quote.symbol+' for '+args.amount+' '+symbol+(quote.block?' at block '+quote.block:'')+'.'+availability);
+   const output=Number(quote.output).toLocaleString('en-US',{maximumSignificantDigits:6});
+   const estimate=args.amount+' '+symbol+' could get you about '+output+' '+quote.symbol+'.';
+   const message=quote.reference?estimate+' '+(quote.impactLimit?limit:'I could not find a way to make this swap through Dinn right now.'):estimate+' The amount may change before you swap.';
+   return {...reply(message),data:{venue:quote.venue,block:quote.block,estimatedOutput:quote.output,symbol:quote.symbol}};
   }catch(error){
-   if(error.message.startsWith('Route impact exceeds 3%'))return reply('Relay returned a route for '+args.amount+' '+symbol+', but its estimated impact exceeds the 3% limit. I could not verify a separate pool quote for '+label+'.');
-   if(error.message.startsWith('No executable route'))return reply('Relay has no route for this '+args.kind+' of '+args.amount+' '+symbol+' on '+label+'. Other venues may have liquidity.');
-   return reply('I could not verify a current '+args.kind+' quote for '+args.amount+' '+symbol+' on '+label+'. Pool liquidity and price impact remain unconfirmed.');}
+   if(error.message.startsWith('Route impact exceeds 3%'))return reply(limit);
+   if(error.message.startsWith('No executable route'))return reply('I could not find a way to swap '+args.amount+' '+symbol+' for '+(args.kind==='buy'?info.token.symbol:info.pair.symbol)+' through Dinn right now.');
+   return reply('I could not check how much you would receive for '+args.amount+' '+symbol+'. You can ask me to check again in a moment.');}
  }
  if(name==='pons_trade')return ponsTradeAction(args,context,dependencies);
  if(name==='burn_token')return burnActionReview(args,context,dependencies);

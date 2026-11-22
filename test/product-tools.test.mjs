@@ -190,8 +190,8 @@ test('Pons chat distinguishes a direct pool estimate from a rejected Relay route
  const args={token,kind:'buy',amount:'0.001',unit:'ETH'};
  const dependencies={tradePair:async()=>({phase:2,token:{symbol:'GRAIL'},pair:{symbol:'ETH'}}),tradeQuote:async()=>({venue:'The Uniswap pool',output:'651589.773038197223710124',symbol:'GRAIL',block:'120860842',reference:true,impactLimit:true})};
  const quote=await executeProductTool('pons_trade_quote',args,{walletAccount:account},dependencies);
- assert.match(quote.message,/651,589.8 GRAIL/);assert.match(quote.message,/120860842/);assert.match(quote.message,/Relay route exceeds the 3% limit/);assert.deepEqual(quote.actions,[]);
+ assert.match(quote.message,/0.001 ETH could get you about 651,590 GRAIL/);assert.equal(quote.data.block,'120860842');assert.match(quote.message,/cannot offer this swap/);assert.doesNotMatch(quote.message,/block|Relay|Uniswap/);assert.deepEqual(quote.actions,[]);
  dependencies.tradeQuote=async()=>{throw Error('Route impact exceeds 3%. Try another amount or asset.');};
  const failure=await executeProductTool('pons_trade_quote',args,{walletAccount:account},dependencies);
- assert.match(failure.message,/exceeds the 3% limit/);assert.match(failure.message,/could not verify a separate pool quote/);
+ assert.match(failure.message,/more than 3%/);assert.match(failure.message,/cannot offer this swap/);
 });
