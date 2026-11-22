@@ -1,3 +1,6 @@
+import {getClient,PONS_FACTORY,snapshot} from './pons.mjs';
+import {factoryAbi} from './pons-fee-abi.mjs';
+import {blockscoutRead} from './blockscout.mjs';
 import {PrivyClient} from '@privy-io/node';
 import {launchConfig,hashValid} from './pons-call.mjs';
 import {ponsReceipt} from './pons-launch.mjs';
@@ -17,7 +20,16 @@ function publicMetrics(state){
 }
 async function mapLimit(items,limit,fn){const out=new Array(items.length);let next=0;await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{while(next<items.length){const index=next++;try{out[index]=await fn(items[index]);}catch{out[index]=null;}}}));return out;}
 
-export function createPonsLaunchService({env=process.env,verify,storeFactory=createPonsLaunchStore,verifyReceipt=ponsReceipt,readMetrics=ponsTokenState,fetchImpl=fetch,now=Date.now}={}){
+async function registeredCandidates(addresses,env){
+ const client=getClient({env}),block=await snapshot(client);
+ const found=await mapLimit(addresses,5,async address=>{
+  const launch=await client.readContract({address:PONS_FACTORY,abi:factoryAbi,functionName:'getLaunchedToken',args:[address],blockNumber:block.number});
+  return launch.exists&&launch.token.toLowerCase()===address?address:false;
+ });
+ return {addresses:found.filter(Boolean),partial:found.includes(null)};
+}
+
+export function createPonsLaunchService({env=process.env,verify,storeFactory=createPonsLaunchStore,verifyReceipt=ponsReceipt,readMetrics=ponsTokenState,searchExplorer=blockscoutRead,findRegistered=registeredCandidates,fetchImpl=fetch,now=Date.now}={}){
  let client,storePromise;const metricsCache=new Map();
  const enabled=()=>!!env.DATABASE_URL||!!env.DINN_DRAFT_SYNC_URL;
  async function ownerFrom(req){const token=req.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];if(!token||token.length>12000)throw Object.assign(Error('Sign in to view Dinn launches.'),{status:401});try{let owner;if(verify)owner=await verify(token);else{client||=new PrivyClient({appId:env.PRIVY_APP_ID,appSecret:env.PRIVY_APP_SECRET});owner=(await client.utils().auth().verifyAccessToken(token)).user_id;}if(typeof owner!=='string'||!owner||owner.length>256)throw Error();return owner;}catch{throw Object.assign(Error('Your sign-in expired. Sign in again.'),{status:401});}}
@@ -35,7 +47,36 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
    const limit=data.limit===undefined?10:data.limit,offset=data.offset===undefined?0:data.offset;if(!Number.isInteger(limit)||limit<1||limit>10||!Number.isInteger(offset)||offset<0||offset>10000)return {status:400,body:{error:'Invalid launch history page.'}};
    const rows=await (await getStore()).list({query:query.trim(),limit,offset});
    const items=await mapLimit(rows.items,3,async item=>{try{const key=item.token.toLowerCase(),cached=metricsCache.get(key);let metrics;if(cached&&now()-cached.at<60000)metrics=cached.value;else{metrics=publicMetrics(await readMetrics({address:item.token}));metricsCache.set(key,{at:now(),value:metrics});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);}return {...publicLaunch(item),metrics};}catch{return {...publicLaunch(item),metrics:null};}});
-   return {status:200,body:{items,total:rows.total,limit,offset,source:'Dinn verified Pons launch receipts'}};
+   const external=[];
+   let searchNotice='';
+   const term=query.trim().replace(/^\$/,'');
+   if(!offset&&(validAddress(term)||term.length>=2&&!/^0x/i.test(term))){
+    try{
+     let candidates=[term];
+     if(!validAddress(term)){
+      const result=await searchExplorer('search',{env,fetchImpl,query:{q:term}});
+      if(!Array.isArray(result.items))throw Error();
+      candidates=result.items.filter(hit=>hit.type==='token'&&[hit.symbol,hit.name].some(value=>typeof value==='string'&&value.toLowerCase().includes(term.toLowerCase()))).map(hit=>hit.address_hash||hit.address);
+     }
+     const known=new Set(items.map(item=>item.token.toLowerCase()));
+     let addresses=[...new Set(candidates.filter(validAddress).map(value=>value.toLowerCase()))].filter(value=>!known.has(value)).slice(0,50);
+     if(addresses.length&&!validAddress(term)){
+      const found=await findRegistered(addresses,env);addresses=found.addresses.slice(0,4);
+      if(found.partial||found.addresses.length>4)searchNotice='Showing verified matches from the first search results. Use a contract address for an exact lookup.';
+     }
+     const matches=await mapLimit(addresses,2,async token=>{
+      try{
+       const state=await readMetrics({address:token});
+       return {token,name:state.name,symbol:state.symbol,origin:'pons',metrics:publicMetrics(state)};
+      }catch(error){
+       if(!error.message.includes('not registered in the supported Pons'))searchNotice='Some Pons launches could not be checked. Try again.';
+       return null;
+      }
+     });
+     external.push(...matches.filter(Boolean));
+    }catch{searchNotice='Pons search is unavailable. Try the token contract address.';}
+   }
+   return {status:200,body:{items,external,searchNotice,total:rows.total,limit,offset,source:'Dinn verified Pons launch receipts'}};
   }
   if(Object.keys(data).some(k=>!['hash','configuration','quote'].includes(k))||!hashValid(data.hash)||!data.configuration||!data.quote||JSON.stringify(data.quote).length>10000)return {status:400,body:{error:'Invalid verified launch record.'}};
   let configuration;try{configuration=launchConfig(data.configuration);}catch(error){return {status:400,body:{error:error.message}};}

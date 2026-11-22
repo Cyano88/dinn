@@ -13,7 +13,7 @@ test('HTTP preview rejects mutation and preserves draft-only boundaries',async()
   const auth=await(await fetch(root+'/api/auth/config')).json();assert.equal(auth.enabled,false);assert.equal(auth.appId,null);assert.equal(auth.rpcUrl,'https://rpc.mainnet.chain.robinhood.com/');assert.deepEqual(auth.loginMethods,['twitter','google']);
   assert.equal((await fetch(root+'/ui/auth.jsx')).status,404);
   const head=await fetch(root,{method:'HEAD'});assert.equal(head.status,200);assert.equal(await head.text(),'');
-  const page=await fetch(root);assert.equal(page.status,200);const html=await page.text();assert.match(html,/id="workspace" hidden inert/);assert.match(html,/Continue with Google/);assert.match(html,/id="launches-view"/);assert.match(html,/Tokens launched through Dinn/);
+  const page=await fetch(root);assert.equal(page.status,200);const html=await page.text();assert.match(html,/id="workspace" hidden inert/);assert.match(html,/Continue with Google/);assert.match(html,/id="launches-view"/);assert.match(html,/Explore Pons launches/);
   const post=(path,data,headers={})=>fetch(root+path,{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(data)});
   const launchList=await post('/api/dinn/launches/list',{});assert.ok([401,503].includes(launchList.status),`${launchList.status}: ${await launchList.text()}`);
   const plan=await(await post('/api/plan',{message:'launch token and burn supply'})).json();assert.equal(plan.actions.length,0);assert.equal(plan.mode,'tool');

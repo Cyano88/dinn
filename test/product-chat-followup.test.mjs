@@ -36,3 +36,13 @@ test('a saved token asks whether to resume or start new without selecting either
  assert.deepEqual(result.actions.map(a=>a.id),['new_setup','resume_setup']);
  assert.equal(result.launchDraft,undefined);
 });
+
+test('skip description advances a real setup without asking inference to save an empty string',async()=>{
+ const context={message:'Skip description',ponsSetup:{active:true,field:'description'},ponsBrief:{name:'Birch',symbol:'BIRCH'}};
+ const events=[];
+ for await(const event of streamProductChat(context,[],{env:{}}))events.push(event);
+ const result=events.at(-1).result;
+ assert.equal(result.launchDraft.brief.description,'');
+ assert.equal(result.launchDraft.nextField,'pairToken');
+ assert.match(result.message,/Which asset/);
+});

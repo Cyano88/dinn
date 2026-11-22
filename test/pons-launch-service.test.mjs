@@ -21,3 +21,18 @@ test('different viewers receive the same directory without stored account identi
 });
 test('launch history requires a signed-in account and bounded search',async()=>{const f=fixture();const noAuth=await f.service.handle({headers:{}},'/api/dinn/launches/list',{});assert.equal(noAuth.status,401);const tooLong=await f.service.handle(f.req,'/api/dinn/launches/list',{query:'x'.repeat(65)});assert.equal(tooLong.status,400);const wrongMethod=await f.service.handle(f.req,'/api/dinn/launches/delete',{});assert.equal(wrongMethod.status,404);});
 test('Postgres launch writes stay owner scoped while directory reads deduplicate across all accounts',async()=>{const calls=[];const row={transaction_hash:hash,token_address:token,curve_address:curve,deployer:account,name:'Diana',symbol:'DAN',logo:'',pair_token:zero,pair_symbol:'ETH',launch_block:'77',launched_at:new Date(1794643200*1000)};const db={query:async(sql,args)=>{calls.push({sql,args});if(sql.includes('INSERT INTO'))return {rows:[row]};if(sql.includes('SELECT *'))return {rows:[row]};if(sql.includes('COUNT(DISTINCT token_address)'))return {rows:[{total:1}]};return {rows:[]};}};const store=await createPonsLaunchStore({db});const inserted=await store.put('owner', {hash,token,curve,account,name:'Diana',symbol:'DAN',logo:'',pairToken:zero,pairSymbol:'ETH',blockNumber:77,launchedAtSeconds:1794643200});assert.equal(inserted.token,token);const page=await store.list({query:'dan',limit:10,offset:0});assert.equal(page.total,1);assert.equal(page.items[0].symbol,'DAN');const write=calls.find(call=>call.sql.includes('INSERT INTO'));assert.equal(write.args[0],'owner');const reads=calls.filter(call=>call.sql.includes('SELECT'));assert.ok(reads.every(call=>!call.sql.includes('WHERE owner=')));assert.ok(reads.some(call=>call.sql.includes('DISTINCT ON (token_address)')));assert.ok(reads.some(call=>call.sql.includes('COUNT(DISTINCT token_address)')));assert.deepEqual(reads[0].args,['%dan%',10,0]);assert.equal(page.items[0].owner,undefined);assert.equal(page.items[0].deployer,undefined);});
+
+test('external discovery verifies candidates and keeps Dinn launch totals separate',async()=>{
+ const f=fixture({searchExplorer:async()=>({items:[{type:'token',symbol:'GRAIL',address_hash:curve},{type:'token',symbol:'GRAIL',address_hash:account}]}),findRegistered:async candidates=>{assert.deepEqual(candidates,[curve,account]);return {addresses:[curve],partial:false};},readMetrics:async()=>({name:'Grail',symbol:'GRAIL',phase:0})});
+ const result=await f.service.handle(f.req,'/api/dinn/launches/list',{query:'GRAIL'});
+ assert.equal(result.body.total,1);
+ assert.deepEqual(result.body.external.map(row=>[row.token,row.origin]),[[curve,'pons']]);
+ assert.equal(f.saved.length,0);
+});
+test('external search outages leave the verified directory available',async()=>{
+ const f=fixture({searchExplorer:async()=>{throw Error('provider offline');}});
+ const result=await f.service.handle(f.req,'/api/dinn/launches/list',{query:'GRAIL'});
+ assert.equal(result.status,200);
+ assert.equal(result.body.items.length,1);
+ assert.match(result.body.searchNotice,/contract address/);
+});
