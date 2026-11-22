@@ -55,7 +55,7 @@ export function firstLockPreview(r){
   if(amount!=null)info.push(new Intl.NumberFormat('en-US',{maximumSignificantDigits:10}).format(amount)+' '+(r.symbol||'tokens')+(row.soft?' on a soft vesting schedule':row.scheduledUnvested!=null?' still to vest':' remaining'));
   if(date&&Number.isFinite(Date.parse(date)))info.push('Release date: '+new Date(date).toISOString().slice(0,10)+' UTC');
   if(link)info.push('['+link.label+']('+link.url+')');
-  if(info.length)return info.join(' ? ');
+  if(info.length)return info.join(' \u00b7 ');
  }
  return '';
 }
@@ -78,7 +78,7 @@ function renderLockSources(host,r){
     const available=row.currentlyWithdrawable??row.withdrawable;
     if(available!=null)parts.push('Available to withdraw: '+available);
    }
-   line.textContent=parts.join(' ? ');section.append(line);
+   line.textContent=parts.join(' \u00b7 ');section.append(line);
    const destination=lockDestination(name,source,row);
    if(destination){const link=doc.createElement('a');link.href=destination.url;link.textContent=destination.label;link.target='_blank';link.rel='noopener noreferrer';section.append(link);}
   }

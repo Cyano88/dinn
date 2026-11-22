@@ -76,7 +76,7 @@ export async function* streamProductChat(context,messages,{env=process.env,fetch
  if(routedTool==='manage_launch_draft'&&launchDraft&&['buybackEnabled','creatorFeeRecipient',null].includes(launchDraft.nextField)&&!conversationalQuestion){
   const update=JSON.parse(messages.findLast(m=>m.role==='tool').content).data;
   if(update?.changedFields?.length&&launchDraft.active){
-   const message=launchDraft.nextField==='buybackEnabled'?'Would you like to enable creator buybacks for this token?':launchDraft.nextField==='creatorFeeRecipient'?'Which wallet should receive creator fees? Say ?use my connected wallet? or send an address.':'Your launch settings are ready.';
+   const message=launchDraft.nextField==='buybackEnabled'?'Would you like to enable creator buybacks for this token?':launchDraft.nextField==='creatorFeeRecipient'?'Which wallet should receive creator fees? Say "use my connected wallet" or send an address.':'Your launch settings are ready.';
    yield {type:'delta',text:message};yield {type:'done',result:{message,actions,toolsUsed,launchDraft,mode:'tool'}};return;
   }
  }

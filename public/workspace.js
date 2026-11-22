@@ -155,7 +155,7 @@ function handleLaunchReply(text){
 
  if(launchBusy){$('feedback').textContent='Dinn is preparing this step. Please wait.';return true;}
 
- if(/^(pause|pause setup|cancel)$/i.test(text)){pauseLaunchConversation();recordSetupReply(text,'Launch paused. Say ?continue my launch? when you?re ready.');return true;}
+ if(/^(pause|pause setup|cancel)$/i.test(text)){pauseLaunchConversation();recordSetupReply(text,'Launch paused. Say "continue my launch" when you are ready.');return true;}
 
  if(/^(?:research|inspect|look up|check (?:a |my |the )?(?:token|contract|balance)|what is my .+ balance)\b/i.test(text)){
   pauseLaunchConversation();
