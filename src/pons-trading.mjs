@@ -92,7 +92,7 @@ async function ponsTrade(input,o,quoteOnly){
  if(feeBps+creatorTaxBps>=BPS)throw Error('Pons trade fees are outside the supported range. No trade was prepared.');
  const quote=kind==='buy'?quotePonsBuy({quoteIn:amountRaw,quoteReserve:reserves[0],tokenReserve:reserves[1],sellableTokens:sellable,feeBps,creatorTaxBps,snipeTaxBps}):quotePonsSell({tokensIn:amountRaw,quoteReserve:reserves[0],tokenReserve:reserves[1],feeBps,creatorTaxBps});
  const quotedOutput=kind==='buy'?quote.tokensOut:quote.quoteOut,slippageBps=100,minimumOutputRaw=quotedOutput*(BPS-BigInt(slippageBps))/BPS;if(minimumOutputRaw<=0n)throw Error('The minimum receive amount rounds to zero. Use a larger amount.');
- if(quoteOnly)return {output:formatUnits(quotedOutput,outputAsset.decimals),symbol:outputAsset.symbol,venue:'Pons curve',block:String(block.number),fees:{creatorBps:Number(creatorTaxBps),baseBps:Number(feeBps),openingBps:kind==='buy'?Number(quote.snipeBps):0}};
+ if(quoteOnly)return {output:formatUnits(quotedOutput,outputAsset.decimals),minimum:formatUnits(minimumOutputRaw,outputAsset.decimals),symbol:outputAsset.symbol,venue:'Pons curve',block:String(block.number),fees:{creatorBps:Number(creatorTaxBps),baseBps:Number(feeBps),openingBps:kind==='buy'?Number(quote.snipeBps):0}};
  if(!same(asset.address,ZERO)){
   const [balance,allowance]=await Promise.all([c.readContract({address:asset.address,abi:erc20,functionName:'balanceOf',args:[account],blockNumber:block.number}),c.readContract({address:asset.address,abi:parseAbi(['function allowance(address owner,address spender) view returns(uint256)']),functionName:'allowance',args:[account,launch.curve],blockNumber:block.number})]);
   if(balance<amountRaw)throw Error('Not enough '+asset.symbol+' in this wallet for this trade.');

@@ -35,6 +35,7 @@ function currentSocials(){return cleanSocials(Object.fromEntries(socialFields.ma
 
 let launchPair=null,setupActive=false,requestedSupply=null;
 
+let tradeQuoteOffer=null;
 let walletUI=null,launchesView=null,walletNetworkBusy=false,claimBusy=false,claimApprovalBusy=false,claimRecoveryKey=null,chatPendingApproval=null,chatApprovalBusy=false;
 async function openFeeClaim(address){
  if(!/^0x[0-9a-f]{40}$/i.test(address||''))return;view('assistant');const owner=account,run=epoch;
@@ -228,8 +229,8 @@ function forgetWalletApproval(action){
 }
 function handlePendingChatApproval(text){
  if(!chatPendingApproval)return false;
- if(/^(?:cancel|stop|never mind|nevermind|keep setup)[.!]?$/i.test(text.trim())){const pending=chatPendingApproval;chatPendingApproval=null;pending.cancel?.();if(pending.action)forgetWalletApproval(pending.action);recordSetupReply(text,'Canceled. No transaction was sent.');return true;}
- if(!/^(?:yes|yes do it|go ahead|approve|approve this|approve action|approve transaction|confirm|confirm this|continue)[.!]?$/i.test(text.trim()))return false;
+ if(/^(?:cancel|decline|no|stop|never mind|nevermind|keep setup)[.!]?$/i.test(text.trim())){const pending=chatPendingApproval;chatPendingApproval=null;pending.cancel?.();if(pending.action)forgetWalletApproval(pending.action);recordSetupReply(text,'Canceled. No transaction was sent.');return true;}
+ if(!/^(?:yes|yes do it|proceed|accept|go ahead|approve|approve this|approve action|approve transaction|confirm|confirm this|continue)[.!]?$/i.test(text.trim()))return false;
  const pending=chatPendingApproval;chatPendingApproval=null;if(pending.action)forgetWalletApproval(pending.action);const body=recordSetupReply(text,walletSource==='embedded'?'Dinn is submitting the reviewed '+pending.label+' from your Dinn wallet now.':'Your external wallet will open for your confirmation of the reviewed '+pending.label+'.');chatApprovalBusy=true;void Promise.resolve(pending.run(body)).catch(error=>appendChatActionNote(body,'Could not continue the wallet action: '+error.message)).finally(()=>{chatApprovalBusy=false;});return true;
 }
 
@@ -255,22 +256,28 @@ $('chat').onsubmit=async e=>{
   try{const {getAccessToken}=await import('/auth/entry.js');const result=await feedbackChat({...feedback,reply},await getAccessToken());if(epoch!==feedbackEpoch||user!==feedbackOwner)return;localStorage.setItem(key('research-feedback'),JSON.stringify({...feedback,done:true}));$('prompt').value='';recordSetupReply(text,result.published?'Published to Feedback. To remove it, say "remove my latest feedback".':'Feedback saved for the Dinn team. Thank you.');}
   catch{if(epoch===feedbackEpoch)say('Your feedback could not be saved. Your reply is ready to retry.');}return;
  }
- let requestText=text;const command=workspaceCommand(text);
+ let requestText=text;
+ const offer=tradeQuoteOffer;tradeQuoteOffer=null;
+ if(offer&&offer.user===user&&offer.epoch===epoch&&offer.turn===history.at(-1)?.content&&offer.account?.toLowerCase()===account?.toLowerCase()){
+  if(/^(?:no|decline|cancel|stop)[.!]?$/i.test(text)){recordSetupReply(text,'Swap declined. Nothing was sent.');$('prompt').value='';return;}
+  if(/^(?:yes|proceed|continue|review|accept)[.!]?$/i.test(text))requestText=offer.kind+' '+offer.amount+' '+offer.unit+' '+offer.token;
+ }
+ const command=workspaceCommand(requestText);
  const launchEntry=command==='start-launch'||/^(?:resume(?: setup| launch)?|continue (?:my |the |saved )?(?:token launch|launch|setup))[.!]?$/i.test(text);
- if(launchReturnPending){const choice=launchReturnChoice(text);launchReturnPending=false;if(choice==='cancel'){recordSetupReply(text,'Your launch progress is saved. Come back whenever you are ready.');$('prompt').value='';return;}if(choice==='continue'){if(restoreLaunchConversation(()=>recordSetupReply(text,'Continuing your saved launch setup.'))){$('prompt').value='';return;}requestText='resume setup';}else if(choice==='new'){startFreshTokenSetup();requestText='create a token';}}
+ if(requestText===text&&launchReturnPending){const choice=launchReturnChoice(text);launchReturnPending=false;if(choice==='cancel'){recordSetupReply(text,'Your launch progress is saved. Come back whenever you are ready.');$('prompt').value='';return;}if(choice==='continue'){if(restoreLaunchConversation(()=>recordSetupReply(text,'Continuing your saved launch setup.'))){$('prompt').value='';return;}requestText='resume setup';}else if(choice==='new'){startFreshTokenSetup();requestText='create a token';}}
  else if(launchEntry&&hasLaunchProgress(brief,currentSettings())){if(controller||setupBusy||launchBusy){$('feedback').textContent='Please wait for the current action to finish.';return;}if(savedSetupWasLaunched()){startFreshTokenSetup();requestText='create a token';}else{launchReturnPending=true;showLaunchStage(null,false);const label=brief.name?(brief.name+(brief.symbol?' ('+brief.symbol+')':'')):'your saved token';recordSetupReply(text,'You have a launch in progress for '+label+'. Would you like to continue with it or start a new token? Starting a new token replaces this unfinished setup.');$('prompt').value='';return;}}
  if(command==='clear-chat'){clearConversation();return;}
  if(command==='reset-draft'){
   resetDraftPending=true;recordSetupReply(text,'This clears the token setup and conversation but keeps saved transaction records. Reply “confirm reset” to continue, or “keep setup” to cancel.');$('prompt').value='';return;
  }
- if(resetDraftPending){
+ if(requestText===text&&resetDraftPending){
   if(/^(?:confirm|confirm reset|reset it|yes)[.!]?$/i.test(text)){resetDraftPending=false;recordSetupReply(text,'Resetting token setup.');$('confirm-reset-draft').click();$('prompt').value='';return;}
   if(/^(?:keep|keep setup|cancel|no)[.!]?$/i.test(text)){resetDraftPending=false;recordSetupReply(text,'Okay. Your token setup is unchanged.');$('prompt').value='';return;}
   say('Reply “confirm reset” to clear setup, or “keep setup” to cancel.');$('prompt').value='';return;
  }
- if(conversationalLaunchStatus(text)){$('prompt').value='';return;}
+ if(requestText===text&&conversationalLaunchStatus(text)){$('prompt').value='';return;}
  if(requestText===text&&handleLaunchReply(text)){$('prompt').value='';return;}
- if(handlePendingChatApproval(text)){$('prompt').value='';return;}
+ if(requestText===text&&handlePendingChatApproval(text)){$('prompt').value='';return;}
  if(chatPendingApproval&&!/^(?:what|why|how|explain|can you explain)\b/i.test(text)){const pending=chatPendingApproval;chatPendingApproval=null;if(pending.action)forgetWalletApproval(pending.action);say('I cleared the earlier approval review before handling this request. Ask me to check the current terms again before proceeding.');}
  if(controller||setupBusy)return;
  const requestUser=user,generation=epoch,draftRevision=launchRevision;controller=new AbortController();const request=controller;let advanceLaunchProfile=false;$('prompt').value='';$('send').disabled=true;$('stop-response').hidden=false;$('feedback').textContent='';message('user',text);const reply=message('assistant','');reply.textContent='Thinking';reply.classList.add('thinking');reply.setAttribute('aria-label','Dinn is thinking');for(let i=0;i<3;i++){const dot=document.createElement('span');dot.className='thinking-dot';dot.textContent='.';dot.setAttribute('aria-hidden','true');reply.append(dot);}let received=false;
@@ -289,7 +296,8 @@ $('chat').onsubmit=async e=>{
     result.message=takeaway&&takeaway.length+overview.length<5400?overview+'\n\n'+takeaway:overview;
    }
   }
-  const walletAction=result.actions?.find(action=>action.id==='wallet_approve');if(walletAction)result.message+='\n\nWould you like me to continue with these exact terms? Reply “yes” or “approve” to send, or “cancel” to stop. Nothing has been sent yet.';
+  if(result.tradeQuoteOffer)tradeQuoteOffer={...result.tradeQuoteOffer,user,epoch,turn:result.message};
+  const walletAction=result.actions?.find(action=>action.id==='wallet_approve');if(walletAction)result.message+='\n\nDo you accept these exact terms? Reply “yes” or “approve” to send, or “cancel” to stop. Nothing has been sent yet.';
   const researchTarget=result.inspection?.address||result.data?.address;
   const baseResearch=result.toolsUsed?.some(name=>['research_base_stock','research_base_stock_paired_token'].includes(name));
   if(accessToken && (baseResearch||result.inspection) && /^0x[a-f0-9]{40}$/i.test(researchTarget) && !JSON.parse(read('research-feedback')||'null')?.publicFeed){

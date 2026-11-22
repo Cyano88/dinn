@@ -13,7 +13,7 @@ export function validateRobinhoodRoute(raw,i,now=Date.now()){
  if(order.inputs.length!==1||source.payment?.chainId!==networks[i.chainId].slug||!same(source.payment.currency,i.asset.address)||source.payment.amount!==inc.amount||!source.refunds?.length||source.refunds.some(r=>!same(r.recipient,i.account)||![networks[i.chainId].slug,networks[destinationChainId].slug].includes(r.chainId))||order.output.chainId!==networks[destinationChainId].slug||!Array.isArray(pay)||pay.length!==1||!same(pay[0].recipient,i.account)||!same(pay[0].currency,i.outputAsset.address)||pay[0].minimumAmount!==out.minimumAmount||pay[0].expectedAmount!==out.amount||order.output.calls?.length!==0||!Number.isSafeInteger(order.output.deadline)||order.output.deadline*1000<=now)throw Error('Route payment or refund destination did not match.');
  const impact=Number(d.totalImpact?.percent);if(d.totalImpact?.percent==null||String(d.totalImpact.percent).trim()===''||!Number.isFinite(impact))throw Error('Route impact unavailable.');if(Math.abs(impact)>3){
   const error=Error('Route impact exceeds 3%. Try another amount or asset.');
-  error.routeComparison={impactPercent:impact,output:formatUnits(BigInt(out.amount),i.outputAsset.decimals)};
+  error.routeComparison={impactPercent:impact,output:formatUnits(BigInt(out.amount),i.outputAsset.decimals),minimum:formatUnits(BigInt(out.minimumAmount),i.outputAsset.decimals)};
   throw error;
  }
  const fee=raw.fees?.relayer;if(!uint(fee?.amount)||fee.currency?.chainId!==i.chainId||!same(fee.currency.address,i.asset.address))throw Error('Route fee could not be verified.');
