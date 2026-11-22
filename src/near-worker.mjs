@@ -1,3 +1,4 @@
+import {requestedLockFocus} from './research-finding.mjs';
 import {intakePrompt,discoveryStep,discoveryMessage,chosenCandidate} from './discovery-guide.mjs';
 import {discoverStockPairs} from './base-stock-paired-research.mjs';
 import {researchTarget,researchQuestion,followResearch} from './research-guide.mjs';
@@ -272,6 +273,12 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     if(!input){await store.save(lock,{...lock.data,phase:'stopped-before-research'});await event('stopped-before-research');return {assignmentId:a.assignmentId,state:'stopped-before-research'};}
     assertLease();
     const {service,...reportInput}=input;
+    if(service!=='base.stock-paired.discover'){
+     const buyer=current.latestMessage;
+     const brief=[current.job?.description,buyer?.senderSide==='buyer'&&buyer.origin==='direct'&&!buyer.truncated?buyer.body:''].filter(Boolean).join(' ');
+     const focus=requestedLockFocus(brief);
+     if(focus)reportInput.focus=focus;
+    }
     let made;
     try{
      if(service==='base.stock-paired.discover'){

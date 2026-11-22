@@ -1,3 +1,4 @@
+import {leadWithLockFinding,requestedLockFocus} from './research-finding.mjs';
 import {titanLines,titanLocks} from './titan-robinhood.mjs';
 import {hoodLines,hoodLocks} from './hoodlock-robinhood.mjs';
 import {uncxLines,uncxVesting} from './uncx-robinhood.mjs';
@@ -114,7 +115,7 @@ export function inspectionSummary(report,message=''){
   });
   const recordCount=records.length>30?` Showing the first 30 of ${records.length} matching records.`:'';
   const sourceUrls=(Array.isArray(locks?.sourceUrls)?locks.sourceUrls:[]).map(source=>source?.url).filter(url=>typeof url==='string'&&(/^https:\/\/robinhoodchain\.blockscout\.com\/address\/0x[0-9a-f]{40}(?:\?tab=read_contract)?$/i.test(url)||/^https:\/\/docs\.pinksale\.finance\/pinklock\/create-a-lock\/?$/i.test(url)||/^https:\/\/www\.pinksale\.finance\/pinklock\/robinhood\/record\/\d+$/.test(url))).slice(0,8).map(url=>`[${url.includes('pinksale.finance')?'PinkLock source':'Blockscout source'}](${url})`);
-  return [...titanLines(report.titanLocks),...hoodLines(report.hoodLocks),...uncxLines(report.uncxVesting),`PinkLock check: ${clean(locks?.status||'unavailable')}. ${clean(locks?.reason||'No PinkLock result was returned.')}`,...(detailedRows.length?detailedRows:['No matching PinkLock record was verified.']),recordCount,clean(locks?.scope||'The checked sources do not cover every locker.'),...(sourceUrls.length?['Checked sources: '+sourceUrls.join(' · ')]:[]),'No matching record is not proof that supply is unlocked. '+report.network+' block '+report.blockNumber+'.'].filter(Boolean).join('\n');
+  return leadWithLockFinding(report,requestedLockFocus(message),[...titanLines(report.titanLocks),...hoodLines(report.hoodLocks),...uncxLines(report.uncxVesting),`PinkLock check: ${clean(locks?.status||'unavailable')}. ${clean(locks?.reason||'No PinkLock result was returned.')}`,...(detailedRows.length?detailedRows:['No matching PinkLock record was verified.']),recordCount,clean(locks?.scope||'The checked sources do not cover every locker.'),...(sourceUrls.length?['Checked sources: '+sourceUrls.join(' · ')]:[]),'No matching record is not proof that supply is unlocked. '+report.network+' block '+report.blockNumber+'.'].filter(Boolean).join('\n'));
  }
  else if(/launch age|token age|how old|when (?:was|did).*launch|curve.*volume|trading volume|generated fees|fees generated|fees? (?:were )?(?:generated|collected)|curve fees/i.test(message)){
   const history=report.ponsHistory,curve=history?.curve||{},clean=value=>String(value??'unavailable').replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/\s+/g,' ').slice(0,220);

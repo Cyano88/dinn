@@ -33,21 +33,20 @@ import {fundingRoute,fundingBalance} from './src/funding-route.mjs';
 import {marketTokens} from './src/market-tokens.mjs';
 import {baseStockLookup} from './src/base-stock-data.mjs';
 import {researchBaseStockPairedToken} from './src/base-stock-paired-research.mjs';
-import {nativeTransfersEnabled,montraSwapsEnabled,ascendLaunchEnabled,ascendFeesEnabled} from './src/execution-policy.mjs';
+import {nativeTransfersEnabled,montraSwapsEnabled,ascendLaunchEnabled} from './src/execution-policy.mjs';
 import {prepareMarketTrade,marketTradeReceipt} from './src/market-execution.mjs';
 import {walletRouteCheck,trackMontraDelivery} from './src/delivery-status.mjs';
 import {detectMarket,marketQuote} from './src/market-quotes.mjs';
 import {walletNativeBalance,walletBalances,prepareTransfer,transferReceipt} from './src/wallet-actions.mjs';
-import {quoteSwap,swapReceipt,swapPreviewEnabled} from './src/swap-service.mjs';
-import {streamChat,validateChat,chatMessages,clarifySupplyRequest,tokenChatResult} from './src/chat.mjs';
+import {quoteSwap,swapReceipt} from './src/swap-service.mjs';
+import {streamChat,validateChat} from './src/chat.mjs';
 import {readLaunchReceipt} from './src/launch-receipt.mjs';
 import {embeddedAuthConfig,contentSecurityPolicy} from './src/auth-config.mjs';
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {resolve,extname} from 'node:path';
-import {draftPlan,capabilities,validateLaunch,CHAIN_ID} from './src/domain.mjs';
+import {capabilities,validateLaunch,CHAIN_ID} from './src/domain.mjs';
 import {simulateLaunch} from './src/ascend.mjs';
-import {manifest,requestSchema,agentRequest} from './src/agent-service.mjs';
 // Keep direct Node starts consistent with npm start without overriding environment values.
 try{process.loadEnvFile(new URL('./.env',import.meta.url));}catch(error){if(error.code!=='ENOENT')throw error;}
 const port=Number(process.env.PORT||4317), host=process.env.RENDER?'0.0.0.0':'127.0.0.1';

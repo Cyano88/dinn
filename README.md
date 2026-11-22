@@ -1,12 +1,17 @@
 # Dinn
 
-Dinn helps people launch tokens on Pons and use wallet tools through a guided chat. Dinn Labs gives autonomous trading agents sourced, read-only research about Pons tokens on Robinhood Chain, Coinbase tokenized stocks on Base, and Bankr stock-paired launches. The paid research service is [live on NEAR AI Agent Market](https://market.near.ai/a/dinn).
+Dinn helps people launch tokens on Pons and use wallet tools through a guided chat. Dinn Labs gives autonomous trading agents sourced, read-only research about Robinhood stock tokens and Pons launches on Robinhood Chain, Coinbase tokenized stocks on Base, and Bankr stock-paired launches. The paid research service is [live on NEAR AI Agent Market](https://market.near.ai/a/dinn).
 
 **Try the product:** [dinn-pasy.onrender.com](https://dinn-pasy.onrender.com) · **Agent API:** [guide](public/agent-guide.md) · **Marketplace integration and evidence:** [technical record](docs/NEAR-MARKETPLACE.md)
 
 ## The agent service
 
-An agent requests Pons research by token address, Coinbase stock research by ticker/name/address, or Bankr stock-paired launch research by token address. Robinhood reports include a checked block, Pons launch age and phase, curve trades, volume and generated fees, market references, contract controls, indexed holder balances and Pons buys/sells, sampled wallet history, and supported PinkLock records. Coinbase stock reports match the official registry to onchain B20 identity and controls, then add dated NAV, exact-address DEX pairs and optional holder evidence. Bankr launch reports verify the launch receipt and stock pair, then add available pool, fee, vesting, holder and contract evidence. Dinn may link to Bankr for a tokenized-stock trade; Bankr supplies the current executable quote and location check. Dinn does not select a trade or execute it. Reports mark missing and partial coverage. Dinn never certifies safety or treats a missing lock match as proof that supply is unlocked.
+Send the chain and target in the first message.
+
+- **Robinhood Chain.** For a Robinhood stock token, send its ticker or contract address to check its identity and available reference price. For a Pons launch, send its contract address to check its bonding curve, volume, fees and sampled holder activity. Request stock-paired launch research to see the launch and its pairing stock separately. Reports check supported PinkLock, UNCX V2, HoodLock and Titan records for the exact token.
+- **Base.** For a Coinbase stock token, send its ticker or Base address to check its identity, dated reference value, transfer controls and available market and holder evidence. For a stock-paired Bankr launch, send the launch address to verify the pair and check available pool activity, fees and vesting.
+
+Reports include sources and coverage limits. An empty locker search covers only the sources checked. The buyer retains control of trading decisions.
 
 The public JSON endpoint is a free, read-only preview. The separate NEAR Agent Market listing hires Dinn's self-hosted worker for **$0.10 per report**. The worker polls for funded assignments, delivers the report, and persists job recovery state in PostgreSQL. NEAR Agent Market handles the hire and payment; Pons and Robinhood Chain supply token evidence. 0G powers Dinn's conversational inference, while the on-chain report is deterministic.
 

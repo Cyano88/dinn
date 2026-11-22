@@ -63,12 +63,16 @@ export async function scanSchedules({client,address,blockNumber,timestamp,decima
  return report;
 }
 
+export function uncxRecordLine(r){
+  if(r.cancelled)return 'Schedule '+r.id+' was cancelled.';
+  return 'Schedule '+r.id+(r.soft?' (soft vesting)':'')+'. Scheduled tokens still to vest: '+(r.scheduledUnvested??'unavailable')+'. Withdrawable now: '+(r.currentlyWithdrawable??'unavailable')+'. Next schedule milestone: '+(r.nextScheduleDate||'none ahead')+'.';
+}
+
 export function uncxLines(report){
  if(!report)return [];
  const lines=['UNCX V2: '+report.status+' ('+report.scanned+' schedule IDs checked, '+report.matched+' matched, '+report.records.length+' detailed).'];
  for(const r of report.records){
-  if(r.cancelled){lines.push('Schedule '+r.id+' was cancelled.');continue;}
-  lines.push('Schedule '+r.id+(r.soft?' (soft vesting)':'')+'. Scheduled tokens still to vest: '+(r.scheduledUnvested??'unavailable')+'. Withdrawable now: '+(r.currentlyWithdrawable??'unavailable')+'. Next schedule milestone: '+(r.nextScheduleDate||'none ahead')+'.');
+  lines.push(uncxRecordLine(r));
  }
  lines.push('Source: '+report.source);
  return lines;

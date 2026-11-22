@@ -85,15 +85,18 @@ async function indexedUnlocks(token,fetchImpl,key,signal){
  }catch{return {...source,status:'unavailable'};}
 }
 
+export function baseLockRecordLine(r){
+   if('lockedRaw' in r)return 'Launch vault: '+r.lockedRaw+' token base units locked. Cliff: '+r.cliffUtc+'. Vesting ends: '+r.vestingEndUtc+'.';
+   if('remainingRaw' in r)return 'Lock '+r.id+': '+r.remainingRaw+' token base units remain. First release: '+(r.firstReleaseUtc??'unknown')+'; cycle: '+r.cycleSeconds+' seconds.';
+   return 'Lock '+r.id+': '+r.remainingShares+' vesting shares remain. Scheduled end: '+(r.scheduledEndUtc??'unknown')+'.'+(r.conditionContract?' Additional release condition: '+r.conditionContract+'.':'');
+}
 export function baseLockSummary(scan){
  if(!scan)return [];
  const lines=['Token lock checks for '+scan.token+' at Base block '+(scan.block??'unavailable')+'.'];
  for(const s of scan.sources){
   lines.push(s.name+': '+(s.count===null?'unavailable':s.count+' records; '+s.records.length+' schedules read')+'. '+s.url);
   for(const r of s.records){
-   if('lockedRaw' in r)lines.push('Launch vault: '+r.lockedRaw+' token base units locked. Cliff: '+r.cliffUtc+'. Vesting ends: '+r.vestingEndUtc+'.');
-   else if('remainingRaw' in r)lines.push('Lock '+r.id+': '+r.remainingRaw+' token base units remain. First release: '+(r.firstReleaseUtc??'unknown')+'; cycle: '+r.cycleSeconds+' seconds.');
-   else lines.push('Lock '+r.id+': '+r.remainingShares+' vesting shares remain. Scheduled end: '+(r.scheduledEndUtc??'unknown')+'.'+(r.conditionContract?' Additional release condition: '+r.conditionContract+'.':''));
+   lines.push(baseLockRecordLine(r));
   }
  }
  if(scan.index?.status==='indexed')lines.push('Vestream: '+scan.index.activeSchedules+' indexed active schedules. Next discrete release in the 365-day window: '+(scan.index.nextIndexedEvent?.utc??'none reported')+'. '+scan.index.url);

@@ -106,3 +106,5 @@ Robinhood reports check PinkLock and UNCX V2 for each token address separately. 
 Robinhood reports also read HoodLock?s token-lock and vesting contracts by exact asset address. Each contract lists its own coverage. Reports distinguish locked, withdrawable and withdrawn balances and show the vesting cliff and end date. The scan details up to 64 matching IDs per contract. Liquidity-position NFTs are outside this check.
 
 Titan token research checks the Robinhood V1, V2, V2.1 and V2.2 general managers separately. Each manager checks up to 64 indexed IDs and matches the actual asset in each record. NFT liquidity positions and the Titan.fun LP vault are outside token supply coverage. Vesting balances distinguish the scheduled grant from what the child locker currently allows its owner to release.
+
+For token research, add an optional input field named "focus" with the value "locks" to put lock findings first. On Robinhood Chain you can also request "titan", "hoodlock", "uncx" or "pinklock". Marketplace buyers can ask for the same findings in their brief. The full report follows the answer.

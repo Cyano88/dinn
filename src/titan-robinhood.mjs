@@ -59,12 +59,16 @@ export async function titanLocks(input){
  }));
 }
 
+export function titanRecordLine(version,x){
+  const terms=x.kind==='fixed'?'Locked '+(x.locked??'unavailable')+' until '+x.unlockDate:'Scheduled balance still to vest '+(x.scheduledUnvested??'unavailable')+'. Cliff '+(x.cliff??'unavailable')+', ends '+(x.end??'unavailable');
+  return version+' #'+x.id+'. '+terms+'. Withdrawable '+(x.withdrawable??'unavailable')+'. https://robinhoodchain.blockscout.com/address/'+x.child;
+}
+
 export function titanLines(reports,detail=true){
  if(!reports)return [];
  const lines=['Titan Locker: '+reports.map(r=>r.version+' '+r.status+' ('+r.records.length+')').join(', ')+'.'];
  if(detail)for(const r of reports)for(const x of r.records){
-  const terms=x.kind==='fixed'?'Locked '+(x.locked??'unavailable')+' until '+x.unlockDate:'Scheduled balance still to vest '+(x.scheduledUnvested??'unavailable')+'. Cliff '+(x.cliff??'unavailable')+', ends '+(x.end??'unavailable');
-  lines.push(r.version+' #'+x.id+'. '+terms+'. Withdrawable '+(x.withdrawable??'unavailable')+'. https://robinhoodchain.blockscout.com/address/'+x.child);
+  lines.push(titanRecordLine(r.version,x));
  }
  return lines;
 }

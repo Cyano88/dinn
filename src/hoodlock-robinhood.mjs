@@ -58,13 +58,17 @@ export async function hoodLocks(input){
  }));
 }
 
+export function hoodRecordLine(r){
+   const dates=r.kind==='lock'?'Unlock date '+r.unlockDate:'Vesting cliff '+r.cliff+', ends '+r.end;
+   return '#'+r.id+' '+r.status+'. '+dates+'. Locked: '+(r.locked??'unavailable')+'. Withdrawable: '+(r.withdrawable??'unavailable')+'.';
+}
+
 export function hoodLines(reports,detailed=true){
  return (reports||[]).flatMap(report=>{
   const lines=['HoodLock '+(report.kind==='lock'?'token locks':'vesting')+': '+report.status+(report.matched===null?'':' ('+report.records.length+' of '+report.matched+' records checked)')+'.'];
   if(!detailed)return lines;
   for(const r of report.records){
-   const dates=r.kind==='lock'?'Unlock date '+r.unlockDate:'Vesting cliff '+r.cliff+', ends '+r.end;
-   lines.push('#'+r.id+' '+r.status+'. '+dates+'. Locked: '+(r.locked??'unavailable')+'. Withdrawable: '+(r.withdrawable??'unavailable')+'.');
+   lines.push(hoodRecordLine(r));
   }
   lines.push('Source: '+report.source);
   return lines;

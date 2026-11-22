@@ -1,3 +1,4 @@
+import {leadWithLockFinding} from './research-finding.mjs';
 import {titanLines} from './titan-robinhood.mjs';
 import {hoodLines} from './hoodlock-robinhood.mjs';
 import {uncxLines} from './uncx-robinhood.mjs';
@@ -30,6 +31,9 @@ export const agentServices={
  'swap.quote':{description:'Read-only same-chain quote. Base and Arbitrum support ETH, USDC and USDT; Base also supports the exact pair of a Dinn-verified Bankr stock-paired token and its declared stock asset. Bankr location eligibility is not checked. No deposit address, signing or execution is provided.',required:['account','chainId','asset','outputAsset','amount'],properties:{account,chainId:{type:'integer',enum:[4663,8453,42161]},asset:account,outputAsset:account,amount:{type:'string',pattern:'^[0-9]+(\\.[0-9]+)?$'}}},
  'bridge.quote':{description:'Read-only Base/Arbitrum to Robinhood route quote; no deposit or signing.',required:['account','chainId','asset','outputAsset','amount'],properties:{account,chainId:{type:'integer',enum:[8453,42161]},asset:account,outputAsset:account,amount:{type:'string',pattern:'^[0-9]+(\\.[0-9]+)?$'}}}
 };
+for(const service of ['token.research','token.inspect','pons.stock.research','pons.stock-paired.research','base.stock.research','base.stock-paired.research']){
+ agentServices[service].properties.focus={type:'string',enum:['locks','titan','hoodlock','uncx','pinklock']};
+}
 export function agentAccessManifest(){return {name:'Dinn',version:'6',services:['plan','pons.brief',...Object.keys(agentServices)],discovery:{instructions:'/agent-guide.md',schema:'/api/agent/schema',tools:'/api/tools'},transport:{type:'http-json',endpoint:'/api/agent/request'},broadcastEnabled:false,canSign:false,acceptsPrivateKeys:false,payment:{mode:'free-public-preview',charged:false},marketplace:{provider:'NEAR Agent Market',status:'live',listingUrl:'https://market.near.ai/a/dinn',pricePerCallUsd:'0.10'},notes:['Public account input is a query target, not proof of ownership.','Research is a dated chain snapshot, not a security audit.','Base tradeHandoff only indicates whether the report supports asking another provider for a fresh quote; it does not confirm a route or recommend a trade.','Dinn never chooses trade side or size, prepares a transaction, signs or broadcasts.','Marketplace payment never grants wallet authority.']};}
 export function agentAccessSchema(){return {type:'object',required:['service','input'],additionalProperties:false,properties:{service:{enum:['plan','pons.brief',...Object.keys(agentServices)]},input:{type:'object'},requestId:{type:'string',pattern:'^[A-Za-z0-9._-]{1,100}$'}},serviceInputs:Object.fromEntries(Object.entries(agentServices).map(([k,v])=>[k,{type:'object',additionalProperties:false,...v}]))};}
 export function validateAgentRequest(request){
@@ -210,7 +214,7 @@ export async function agentAccessRequest(request,dependencies={}){
  const env=dependencies.env||process.env;
  const missing=validateAgentRequest(request),base={schemaVersion:'5',requestId:request.requestId||randomUUID(),service:request.service,broadcast:false,charged:false,ownershipVerified:false};
  if(missing.length)return {...base,status:'needs_input',missingFields:missing,next:{type:'collect_fields',message:'Supply the missing fields explicitly. No wallet or financial choices were inferred.'}};
- const i=request.input;let result,deliverable;
+ const {focus,...i}=request.input;let result,deliverable;
  if(request.service==='base.stock-paired.discover'){result=await (dependencies.discoverStockPairs||discoverStockPairs)(i.metric,{env});deliverable=discoveryMessage(result);}
  else if(['pons.stock.research','pons.stock-paired.research'].includes(request.service)){
   const paired=request.service==='pons.stock-paired.research';
@@ -272,7 +276,8 @@ export async function agentAccessRequest(request,dependencies={}){
   const stockToken=/^0x[0-9a-f]{40}$/i.test(quote.baseStockPair?.tokenAddress||'')?quote.baseStockPair.tokenAddress.toLowerCase():null;
   result={kind:quote.kind,chainId:quote.chainId,destinationChainId:quote.destinationChainId,account:quote.account,amount:quote.amount,asset:{address:quote.asset.address,symbol:quote.asset.symbol,decimals:quote.asset.decimals},outputAsset:{address:quote.outputAsset.address,symbol:quote.outputAsset.symbol,decimals:quote.outputAsset.decimals},expectedAmount:quote.expectedAmount,minimumAmount:quote.minimumAmount,fee:quote.fee,impactPercent:quote.impactPercent,provider:quote.provider,expiresAt:quote.quoteExpiresAt||quote.expiresAt,...(quote.quoteBlockNumber?{quoteBlockNumber:quote.quoteBlockNumber}:{}),...(stockToken?{baseStockPair:{tokenAddress:stockToken,stockAddress:quote.baseStockPair.stockAddress,bankrPoolId:quote.baseStockPair.bankrPoolId,checkedAt:quote.baseStockPair.checkedAt,classification:quote.baseStockPair.classification},bankrTradeUrl:'https://bankr.bot/trade/'+stockToken,executionNote:'Reference quote only. Bankr must provide its executable quote and verify location eligibility.'}:{})};
  }
- const evidence={service:request.service,input:i,result,...(deliverable?{deliverableMarkdown:deliverable}:{})};
+ deliverable=leadWithLockFinding(result,focus,deliverable);
+ const evidence={service:request.service,input:request.input,result,...(deliverable?{deliverableMarkdown:deliverable}:{})};
  const content=JSON.stringify(evidence),sha256=createHash('sha256').update(content).digest('hex');
  return {...base,status:'completed',result,...(deliverable?{deliverableMarkdown:deliverable}:{}),evidence:{format:'application/json',content,sha256,meaning:'Content integrity only; not a signature or proof of payment.'},next:{type:'stop',message:result.baseStockPair?'Reference quote only. Dinn does not execute this stock-paired trade; Bankr must provide its executable quote and location check.':result.tradeHandoff?.url?'Research only. Bankr must provide a fresh quote and check location eligibility; Dinn did not choose or execute a trade.':request.service.endsWith('.quote')?'Quote only. No transfer was prepared or sent; obtain a fresh wallet-approved review to execute.':'Read-only result. No wallet authority or marketplace payment was granted.'}};
 }
