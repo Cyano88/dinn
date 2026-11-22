@@ -154,3 +154,10 @@ test('guided research carries a ticker across chain and asset questions',()=>{
  assert.equal(ask(baseToken,ca.message).args.address,baseToken);
  assert.match(ask('Solana',first.message).message,/currently researches/);
 });
+test('chat discovery intent executes through the registered product tool',async()=>{
+ const intent=directProductIntent('Find a stock-paired token on Base by liquidity');
+ const result=await executeProductTool(intent.name,intent.args,{},{
+  discoverStockPairs:async metric=>({metric,listed:50,checked:2,comparable:0,eligible:2,candidates:[],checkedAt:'today',feedUrl:'https://api.bankr.bot/token-launches'})
+ });
+ assert.match(result.message,/too little verified market data/);
+});
