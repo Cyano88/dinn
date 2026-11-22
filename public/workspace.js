@@ -279,7 +279,14 @@ $('chat').onsubmit=async e=>{
   const result=await receiveChat(r,delta=>{if(epoch===generation){if(!received){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');received=true;}reply.append(document.createTextNode(delta));scrollChat();}});
   if(epoch!==generation)return;
   if(result.launchDraft){try{if(launchRevision!==draftRevision)throw Error('Your token details changed while Dinn was responding. Retry against the current details.');applyLaunchDraft(result.launchDraft);}catch(error){received=false;reply.replaceChildren();throw error;}}
-  if(result.inspection)result.message=researchSummary(result.inspection);
+  if(result.inspection){
+   const overview=researchSummary(result.inspection);
+   const stockReport=result.toolsUsed?.some(name=>['research_pons_stock','research_pons_stock_pair'].includes(name));
+   if(!stockReport){
+    const takeaway=result.mode==='0g-tools'&&result.message?.trim();
+    result.message=takeaway&&takeaway.length+overview.length<5400?overview+'\n\n'+takeaway:overview;
+   }
+  }
   const walletAction=result.actions?.find(action=>action.id==='wallet_approve');if(walletAction)result.message+='\n\nWould you like me to continue with these exact terms? Reply “yes” or “approve” to send, or “cancel” to stop. Nothing has been sent yet.';
   const researchTarget=result.inspection?.address||result.data?.address;
   const baseResearch=result.toolsUsed?.some(name=>['research_base_stock','research_base_stock_paired_token'].includes(name));
@@ -601,7 +608,7 @@ function researchSummary(report){
 }
 function renderToolResult(body,result){
 
- renderAssistantText(body,result.inspection?researchSummary(result.inspection)+(result.feedbackPrompt?'\n\n'+result.feedbackPrompt:result.message?.endsWith(oldFeedbackPrompt)?'\n\n'+oldFeedbackPrompt:''):result.message);
+ renderAssistantText(body,result.message||'');
 
  if(result.tokenState){const extra=document.createElement('p');extra.className='research-transcript';extra.textContent=['Token: '+result.tokenState.address,'Fee recipient: '+result.tokenState.feeRecipient,'Fees shown for: '+result.tokenState.viewerAccount,'Checked at block '+result.tokenState.blockNumber+' · '+result.tokenState.checkedAt,result.tokenState.claimScope].filter(Boolean).join('\n');body.append(extra);}
  if(result.toolsUsed?.some(name=>['research_base_stock','research_base_stock_paired_token'].includes(name)))selectedToken=null;
