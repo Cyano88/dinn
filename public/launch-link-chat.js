@@ -18,3 +18,13 @@ export function parseLaunchLink(text,field){
  if(['twitter','telegram'].includes(field)&&u.pathname==='/')return {action:'error',message:'Include your project’s profile or group in the link.'};
  return {action:'set',field,url:u.href};
 }
+
+export function previewLimitMessage({availableAt,pendingSlot},hasSaved,now=new Date()){
+ const date=new Date(availableAt);
+ const tomorrow=new Date(now);
+ tomorrow.setDate(tomorrow.getDate()+1);
+ const day=date.toDateString()===now.toDateString()?'today':date.toDateString()===tomorrow.toDateString()?'tomorrow':date.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+ const time=date.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit',second:'2-digit'});
+ const message=pendingSlot?'A preview is still being prepared. Check again '+day+' at '+time+'.':'Your next preview opens '+day+' at '+time+'.';
+ return message+(hasSaved?' You can still open or publish your saved preview.':'');
+}

@@ -62,5 +62,14 @@ test('a creator can privately revise, approve and attach a site to their own ver
   const migratedPage=await migrated.published('example');
   assert.match(migratedPage,/Research in Dinn/);
   assert.equal(await migrated.published(legacy),migratedPage);
+  await pg.query("UPDATE dinn_creator_pages SET created_at=now()-interval '25 hours'");
+  await pg.query(`INSERT INTO dinn_creator_pages(id,owner,slug,copy,created_at)
+   SELECT gen_random_uuid(),'alice','limit-'||n,'{}'::jsonb,now()-n*interval '1 hour' FROM generate_series(1,5) n`);
+  const expires=async(sql)=>(await pg.query(sql)).rows[0].expires.toISOString();
+  const limited=()=>pages.handle(owner,'preview',facts);
+  await assert.rejects(limited(),{status:429,pendingSlot:false,availableAt:await expires("SELECT created_at+interval '24 hours' AS expires FROM dinn_creator_pages WHERE slug='limit-5'")});
+  await pg.query("UPDATE dinn_creator_pages SET copy=NULL,created_at=now() WHERE slug='limit-5'");
+  await assert.rejects(limited(),{status:429,pendingSlot:true,availableAt:await expires("SELECT created_at+interval '2 minutes' AS expires FROM dinn_creator_pages WHERE slug='limit-5'")});
+  assert.equal(runs,2);
  }finally{await pg.close();}
 });

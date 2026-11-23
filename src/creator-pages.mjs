@@ -205,7 +205,22 @@ export function createCreatorPages({env=process.env,db,verify,fetcher=fetch}={})
   const id=randomUUID(),slug=(symbol.toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,24)||'token')+'-'+id.slice(0,8);
   // Serialize quota reservations per creator before incurring an inference charge.
   const client=await db.connect();
-  try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[owner]);const usage=await client.query("SELECT count(*) FROM dinn_creator_pages WHERE owner=$1 AND created_at>now()-interval '24 hours' AND (copy IS NOT NULL OR created_at>now()-interval '2 minutes')",[owner]);if(Number(usage.rows[0].count)>=5)throw fail(429,'You have used all five website previews in the past 24 hours. You can still open your saved preview.');await client.query('INSERT INTO dinn_creator_pages(id,owner,slug) VALUES($1,$2,$3)',[id,owner,slug]);await client.query('COMMIT');}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  try{
+   await client.query('BEGIN');
+   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[owner]);
+   const usage=await client.query(`
+    SELECT created_at + CASE WHEN copy IS NULL THEN interval '2 minutes' ELSE interval '24 hours' END AS expires_at,
+           copy IS NULL AS pending
+    FROM dinn_creator_pages WHERE owner=$1 AND created_at>now()-interval '24 hours'
+     AND (copy IS NOT NULL OR created_at>now()-interval '2 minutes')
+    ORDER BY expires_at DESC LIMIT 5`,[owner]);
+   if(usage.rows.length===5){
+    const slot=usage.rows[4];
+    throw Object.assign(fail(429,'Website preview limit reached.'),{availableAt:new Date(slot.expires_at).toISOString(),pendingSlot:slot.pending});
+   }
+   await client.query('INSERT INTO dinn_creator_pages(id,owner,slug) VALUES($1,$2,$3)',[id,owner,slug]);
+   await client.query('COMMIT');
+  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
   let copy,reason,unsupported;
   for(let attempt=0;attempt<2&&!copy;attempt++){
   try{

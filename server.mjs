@@ -129,7 +129,7 @@ const server=createServer(async(req,res)=>{
    const data=await body(req,path==='/api/chat'?100000:16000);
    if(['/api/creator-pages/preview','/api/creator-pages/saved','/api/creator-pages/publish'].includes(path)){
     try{return json(res,200,await creatorPages.handle(req,path.split('/').pop(),data));}
-    catch(e){return json(res,e.status||503,{error:e.status?e.message:'The website service is unavailable.',...(e.needsArtwork?{needsArtwork:true}:{}),...(e.needsDirection?{needsDirection:true}:{}),...(e.retryPreview?{retryPreview:true}:{})});}
+    catch(e){return json(res,e.status||503,{error:e.status?e.message:'The website service is unavailable.',...(e.needsArtwork?{needsArtwork:true}:{}),...(e.needsDirection?{needsDirection:true}:{}),...(e.retryPreview?{retryPreview:true}:{}),...(e.availableAt?{availableAt:e.availableAt,pendingSlot:e.pendingSlot}:{})});}
    }
    if(path==='/api/paid/research'){
     paidResearchStarts=paidResearchStarts.filter(t=>Date.now()-t<60000);

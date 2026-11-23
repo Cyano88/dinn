@@ -3,7 +3,7 @@ import {showFeedbackFeed} from '/feedback-feed.js';
 import {hasLaunchProgress,launchReturnChoice} from './launch-resume.js';
 import {createDraftSync} from './draft-sync.js';
 import {usdTotal} from './purchase-usd.js';
-import {launchLinkSteps,parseLaunchLink} from './launch-link-chat.js';
+import {launchLinkSteps,parseLaunchLink,previewLimitMessage} from './launch-link-chat.js';
 import {mountLogoCreator} from './logo-creator.js';
 
 import {cleanSocials,socialFields,socialLabels} from './launch-metadata.js';
@@ -175,7 +175,8 @@ async function handleWebsiteRequest(text,action,websiteBrief='',designBrief='',a
   const {getAccessToken}=await import('/auth/entry.js');const bearer=await getAccessToken();if(!current())return;if(!bearer)throw Error('Sign in again to continue.');
   const payload=['saved','publish'].includes(action)?{id:previous}:{name:brief.name,symbol:brief.symbol,description,designBrief,artwork,socials:currentSocials(),logo:$('launch-logo').value,previous:action==='revise'?previous:undefined,instruction:action==='revise'?revision||text.slice(text.indexOf(':')+1).trim():''};
   const r=await fetch('/api/creator-pages/'+(action==='revise'?'preview':action),{method:'POST',headers:{authorization:'Bearer '+bearer,'content-type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(65000)});
-  const result=await r.json();if(!current())return;if(result.needsArtwork||result.needsDirection){websiteQuestion={owner,project,description,step:result.needsArtwork?'artwork':'direction',action,designBrief,revision:payload.instruction};say(result.error);return;}if(r.status===503&&result.retryPreview&&['preview','revise'].includes(action)){
+  const result=await r.json();if(!current())return;if(r.status===429&&result.availableAt){say(previewLimitMessage(result,Boolean(previous)));return;}
+  if(result.needsArtwork||result.needsDirection){websiteQuestion={owner,project,description,step:result.needsArtwork?'artwork':'direction',action,designBrief,revision:payload.instruction};say(result.error);return;}if(r.status===503&&result.retryPreview&&['preview','revise'].includes(action)){
    websiteQuestion={owner,project,description,designBrief,artwork,revision:payload.instruction,action,step:'retry'};
    say('I could not prepare that preview. Say "retry" to use the same instructions. This attempt did not use your allowance.');return;
   }
