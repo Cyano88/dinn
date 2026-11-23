@@ -186,7 +186,6 @@ async function handleWebsiteRequest(text,action,websiteBrief='',designBrief='',a
   try{localStorage.setItem(slot,JSON.stringify({project,id:result.id,description}));}catch{throw Error('Allow local storage to keep and approve this preview.');}
   const body=say(result.headline+'\n\n'+result.story+'\n\nProposed URL: '+result.url+'\n\nSay "use this website", "revise website: your change", or "skip".');
   const preview=document.createElement('a');const url=URL.createObjectURL(new Blob([result.html],{type:'text/html;charset=utf-8'}));preview.href=url;preview.target='_blank';preview.rel='noopener noreferrer';preview.textContent='Open private preview';body.append(preview);
-  const custom=document.createElement('p'),sales=document.createElement('a');sales.href='https://x.com/DinnLabs';sales.target='_blank';sales.rel='noopener noreferrer';sales.textContent='Request a quote on X';custom.append('Want a custom site or domain? Priced separately. ',sales);body.append(custom);
   const observer=new MutationObserver(()=>{if(!preview.isConnected){URL.revokeObjectURL(url);observer.disconnect();}});observer.observe($('messages'),{childList:true,subtree:true});
  }catch(e){if(current())say(e.message||'Could not finish the website request.');}finally{
   pending.classList.remove('chat-action-pending');
