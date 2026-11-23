@@ -164,7 +164,10 @@ async function handleWebsiteRequest(text,action,websiteBrief=''){
   recordSetupReply(text,'What should visitors know about your project? Reply with “Website brief:” followed by one sentence, or say “skip”.');return;
  }
  const job={};creatorRequest=job;
- recordSetupReply(text,action==='publish'?'Publishing your approved website.':action==='saved'?'Opening your saved preview.':'Preparing your private editorial website preview with 0G.');
+ const status=recordSetupReply(text,action==='publish'?'Publishing your website…':action==='saved'?'Opening your saved preview…':action==='revise'?'Updating your website preview…':'Preparing your website preview…');
+ const pending=status.querySelector('p')||status;
+ pending.classList.add('chat-action-pending');
+ status.setAttribute('aria-busy','true');
  try{
   const {getAccessToken}=await import('/auth/entry.js');const bearer=await getAccessToken();if(!current())return;if(!bearer)throw Error('Sign in again to continue.');
   const payload=['saved','publish'].includes(action)?{id:previous}:{name:brief.name,symbol:brief.symbol,description,logo:$('launch-logo').value,previous:action==='revise'?previous:undefined,instruction:action==='revise'?text.slice(text.indexOf(':')+1).trim():''};
@@ -175,7 +178,11 @@ async function handleWebsiteRequest(text,action,websiteBrief=''){
   const body=say(result.headline+'\n\n'+result.story+'\n\nProposed URL: '+result.url+'\n\nSay "use this website", "revise website: your change", or "skip".');
   const preview=document.createElement('a');const url=URL.createObjectURL(new Blob([result.html],{type:'text/html;charset=utf-8'}));preview.href=url;preview.target='_blank';preview.rel='noopener noreferrer';preview.textContent='Open private preview';body.append(preview);
   const observer=new MutationObserver(()=>{if(!preview.isConnected){URL.revokeObjectURL(url);observer.disconnect();}});observer.observe($('messages'),{childList:true,subtree:true});
- }catch(e){if(current())say(e.message||'Could not finish the website request.');}finally{if(creatorRequest===job)creatorRequest=null;}
+ }catch(e){if(current())say(e.message||'Could not finish the website request.');}finally{
+  pending.classList.remove('chat-action-pending');
+  status.removeAttribute('aria-busy');
+  if(creatorRequest===job)creatorRequest=null;
+ }
 }
 function handleLaunchReply(text){
  if(launchConversationStep==='links'&&launchLinkSteps[launchLinkIndex]?.field==='website'){
