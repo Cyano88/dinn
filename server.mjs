@@ -56,6 +56,12 @@ const ponsLaunchService=createPonsLaunchService();
 const checkInferenceAccess=inferenceAccess();
 const publicOrigin=process.env.DINN_PUBLIC_URL||process.env.RENDER_EXTERNAL_URL;
 const allowedOrigins=new Set([`http://127.0.0.1:${port}`,`http://localhost:${port}`,...(publicOrigin?[new URL(publicOrigin).origin]:[])]);
+// Both public hostnames route to the same production Dinn workspace.
+if(allowedOrigins.has('https://dinn-pasy.onrender.com')||allowedOrigins.has('https://dinnlabs.com')){
+ allowedOrigins.add('https://dinnlabs.com');
+ allowedOrigins.add('https://dinn-pasy.onrender.com');
+}
+
 const publicDir=resolve('public');
 const authConfig=embeddedAuthConfig({...process.env,DINN_AUTH_CHAIN_ID:'4663'});
 function publicPolicyUrl(value){

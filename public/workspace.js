@@ -770,7 +770,7 @@ function renderAgentAccess(manifest,checking=false){
  cards.replaceChildren();
  function marketCard(title,badge,description,meta,kind){const button=el('button','agent-market-card');button.dataset.market=kind;button.type='button';const icon=el('img','agent-market-icon');icon.src=kind==='base'?'/brand/wallet/base.svg':'/brand/'+kind+'.png';icon.alt='';icon.width=30;icon.height=30;button.append(icon,el('span','agent-market-card-status '+((kind==='near'&&live||kind==='base'&&baseLive)?'live':''),badge),el('strong',null,title),el('span','agent-market-card-description',description),el('span','agent-market-card-meta',meta),el('span','agent-market-card-action','View services  →'));button.onclick=()=>{showDetail(kind);detail.querySelector('button')?.focus();};cards.append(button);}
   marketCard('NEAR AI Agent Market',live?'Listed':checking?'Loading':'Listing details unavailable','Hire Dinn with a token research brief.',live?'$'+market.pricePerCallUsd+' per hire':'Research hires','near');
-  marketCard('Agentic Market on Base',baseLive?'Listed':checking?'Loading':'Listing details unavailable','Buy a research report with USDC on Base.',baseLive?baseEntry.pricePerCallUsdc+' USDC per request':'Pay per request','base');
+  marketCard('Agentic Market on Base',baseLive?'Listed':checking?'Loading':'Listing details unavailable','Buy a token research report with USDC on Base.',baseLive?baseEntry.pricePerCallUsdc+' USDC per request':'Pay per request','base');
   marketCard('OKX AI Marketplace','Coming soon','Planned marketplace access for Dinn services.','Not available yet','okx');if(selectedAgentMarketplace)showDetail(selectedAgentMarketplace);
 }
 
