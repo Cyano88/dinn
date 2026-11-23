@@ -31,9 +31,23 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
  const [error,setError]=useState(''),[working,setWorking]=useState(false),[copied,setCopied]=useState(false);
  const [initTimedOut,setInitTimedOut]=useState(false);
  const [oauthPending,setOAuthPending]=useState(oauthReturn);
- const {initOAuth,loading:oauthLoading}=useLoginWithOAuth({onError:()=>{setOAuthPending(false);setError('Sign-in did not complete. Please try again.');}});
- useEffect(()=>{if(authenticated)setOAuthPending(false);},[authenticated]);
- useEffect(()=>{if(!oauthPending)return;const timer=setTimeout(()=>{setOAuthPending(false);setError('Sign-in is taking longer than expected. Please try again.');},30000);return()=>clearTimeout(timer);},[oauthPending]);
+ const [signInError,setSignInError]=useState('');
+ const activeProvider=useRef('');
+ function signInFailed(problem){
+  const label=activeProvider.current==='twitter'?'X':activeProvider.current==='google'?'Google':'your provider';
+  const code=String(problem?.code||problem?.message||problem||'').toLowerCase();
+  setOAuthPending(false);
+  if(!navigator.onLine)setSignInError('You appear to be offline. Reconnect and choose your sign-in method again.');
+  else if(/cancel|access_denied|user.denied/.test(code))setSignInError('Sign-in was cancelled. Choose your sign-in method when you are ready.');
+  else setSignInError('Sign-in with '+label+' could not finish. Retry with the account you normally use for Dinn.');
+ }
+ const {initOAuth,loading:oauthLoading}=useLoginWithOAuth({onError:signInFailed});
+ async function startSignIn(provider){
+  activeProvider.current=provider;setSignInError('');setWorking(true);
+  try{await initOAuth({provider});}catch(problem){signInFailed(problem);}finally{setWorking(false);}
+ }
+ useEffect(()=>{if(authenticated){setOAuthPending(false);setSignInError('');}},[authenticated]);
+ useEffect(()=>{if(!oauthPending)return;const timer=setTimeout(()=>{setOAuthPending(false);setSignInError('Sign-in is taking longer than expected. Please try again.');},30000);return()=>clearTimeout(timer);},[oauthPending]);
  useEffect(()=>{if(ready||privyError){setInitTimedOut(false);return;}const timer=setTimeout(()=>setInitTimedOut(true),15000);return()=>clearTimeout(timer);},[ready,privyError]);
  const authPending=(!ready&&!initTimedOut)||(!authenticated&&(oauthPending||oauthLoading));
  const menuRef=useRef(null);
@@ -102,7 +116,7 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
  if(privyError)return <AuthRecovery/>;
  if(initTimedOut)return <AuthRecovery message="Sign-in could not finish loading. Reload to try again."/>;
  if(authPending)return null;
- if(!authenticated)return <><div className="signin-actions"><button className="social-login" disabled={!ready||working||oauthLoading} onClick={()=>run(()=>initOAuth({provider:'twitter'}))}><img className="social-symbol" src="/brand/x.svg" alt="" width="20" height="20"/>Continue with X</button><button className="social-login" disabled={!ready||working||oauthLoading} onClick={()=>run(()=>initOAuth({provider:'google'}))}><img className="social-symbol" src="/brand/google.svg" alt="" width="20" height="20"/>Continue with Google</button></div>{!ready&&<p className="auth-status" role="status">Preparing sign-in…</p>}{error&&<p className="auth-error" role="alert">{error}</p>}</>;
+ if(!authenticated)return <><div className="signin-actions"><button className="social-login" disabled={!ready||working||oauthLoading} onClick={()=>startSignIn('twitter')}><img className="social-symbol" src="/brand/x.svg" alt="" width="20" height="20"/>Continue with X</button><button className="social-login" disabled={!ready||working||oauthLoading} onClick={()=>startSignIn('google')}><img className="social-symbol" src="/brand/google.svg" alt="" width="20" height="20"/>Continue with Google</button></div>{!ready&&<p className="auth-status" role="status">Preparing sign-in…</p>}{signInError&&<p className="auth-error" role="alert">{signInError}</p>}</>;
  const label=user?.twitter?.username?'@'+user.twitter.username:user?.google?.name||user?.google?.email||'My account';
  const menu=<details ref={menuRef} className="account-menu"><summary aria-label="Account menu"><span className="account-avatar">{label.replace('@','').slice(0,1).toUpperCase()}</span><span className="account-label">{label}</span><span aria-hidden="true">⌄</span></summary><div className="account-popover"><strong>{label}</strong>{embedded?<><p className="account-address">{embedded.address}</p><button className="subtle" disabled={working} onClick={()=>run(async()=>{await navigator.clipboard.writeText(embedded.address);setCopied(true);})}>{copied?'Address copied':'Copy wallet address'}</button><span className="sr" role="status">{copied?'Wallet address copied to clipboard.':''}</span><p>Dinn wallet &middot; {networkName}</p><button className="subtle" disabled={working} onClick={()=>run(()=>exportWallet({address:embedded.address}))}>Back up wallet</button></>:<div className="wallet-setup"><p>Reconnect your Dinn wallet to use wallet actions.</p><button className="subtle" disabled={working} onClick={()=>run(connectDinn)}>Connect Dinn wallet</button></div>}
  {!user?.google&&<button className="subtle" disabled={working} onClick={()=>run(()=>linkGoogle())}>Link Google account</button>}

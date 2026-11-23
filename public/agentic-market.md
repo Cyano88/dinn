@@ -52,15 +52,17 @@ In Dinn's November 22, 2026 NVDAc report, a holder with **12.15% of total supply
 
 | Research question | Service | Input |
 | --- | --- | --- |
+| Which Robinhood stock token is this? | `pons.stock.research` | Stock ticker or contract in `query` |
+| Which stock is this Pons launch paired with? | `pons.stock-paired.research` | Launch contract in `address` |
 | Which Coinbase stock token is this on Base? | `base.stock.research` | Exact ticker, company name or contract in `query` |
 | What backs this Bankr stock-paired launch on Base? | `base.stock-paired.research` | Launch token contract in `address` |
 | Which sampled Bankr stock pairs have the most liquidity or trading volume? | `base.stock-paired.discover` | `metric` set to `liquidity` or `volume` |
 | What do the curve, holders and available lock records show for this Pons token on Robinhood Chain? | `token.research` | Token contract in `address` |
 
-All four reports use the same Base payment flow. Coverage depends on the token and available sources. Trading decisions stay with the buyer.
+All six services use the same Base payment flow. Coverage depends on the token and available sources. Trading decisions stay with the buyer.
 
 ## Robinhood stock tokens and Pons stock pairs
 
 Use `pons.stock.research` with `{"query":"NVDA"}` for the Robinhood stock token. An exact Robinhood Chain stock contract also works.
 
-Use `pons.stock-paired.research` with `{"address":"0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4"}` for a Pons launch. Dinn checks the launch?s actual pairing contract against the Robinhood registry and reports the launch and stock separately. Available lock dates belong to the asset named in each section. Use `token.research` for a general Robinhood token report.
+Use `pons.stock-paired.research` with `{"address":"0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4"}` for a Pons launch. Dinn checks the pairing contract of the launch against the Robinhood registry and reports the launch and stock separately. Available lock dates belong to the asset named in each section. Use `token.research` for a general Robinhood token report.
