@@ -195,3 +195,5 @@ select{font:inherit;border:1px solid #dce3dd;border-radius:8px;padding:12px;back
 #wallet-view .wallet-action-title,#wallet-operation h2{font-size:1.35rem;line-height:1.35;margin:.5rem 0 1.25rem}
 #wallet-operation .wallet-action-form{max-width:30rem}
 #wallet-view [hidden]{display:none!important}
+
+#prompt::placeholder{color:#788079;opacity:1}

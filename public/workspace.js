@@ -102,9 +102,14 @@ document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>view(b.dataset
 $('chat-review').onclick=()=>{$('review-launch').click();};
 
 const promptExamples=['Launch a token on Pons','Research a token or contract','Research a Base token paired with a stock','Check my wallet balances','Swap or bridge assets','Check and claim Pons fees'];
-const prompt=$('prompt'),suggestion=$('prompt-suggestion'),composer=prompt.closest('.composer-input'),reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');let exampleIndex=0;
-function showPromptExample(){const show=!prompt.value.trim();suggestion.hidden=!show;composer.classList.toggle('is-suggesting',show);if(show)suggestion.textContent=promptExamples[exampleIndex];}
-prompt.addEventListener('input',showPromptExample);$('chat').addEventListener('submit',()=>setTimeout(showPromptExample,0));showPromptExample();setInterval(()=>{if(prompt.value.trim()||document.hidden||reducedMotion.matches)return;suggestion.classList.add('is-changing');setTimeout(()=>{exampleIndex=(exampleIndex+1)%promptExamples.length;showPromptExample();suggestion.classList.remove('is-changing');},180);},4000);
+const prompt=$('prompt'),reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
+let exampleIndex=0;
+prompt.placeholder=promptExamples[exampleIndex];
+setInterval(()=>{
+ if(prompt.value||document.hidden||reducedMotion.matches)return;
+ exampleIndex=(exampleIndex+1)%promptExamples.length;
+ prompt.placeholder=promptExamples[exampleIndex];
+},4000);
 
 $('prompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('chat').requestSubmit();}});
 
