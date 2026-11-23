@@ -33,20 +33,29 @@ function Account({accountHost,networkName,networkId,walletConnectProjectId}){
  const [oauthPending,setOAuthPending]=useState(oauthReturn);
  const [signInError,setSignInError]=useState('');
  const activeProvider=useRef('');
+ const returningFromSignIn=oauthReturn||new URLSearchParams(window.location.search).has('privy_oauth_state');
+ function clearProvider(){try{sessionStorage.removeItem('dinn.signin.provider');}catch{}}
+
  function signInFailed(problem){
-  const label=activeProvider.current==='twitter'?'X':activeProvider.current==='google'?'Google':'your provider';
+  if(!activeProvider.current&&!returningFromSignIn)return;
+  let provider=activeProvider.current;
+  if(!provider&&returningFromSignIn){try{provider=sessionStorage.getItem('dinn.signin.provider');}catch{}}
+  const label=provider==='twitter'?'X':provider==='google'?'Google':'';
+  if(label)activeProvider.current=provider;
+  clearProvider();
   const code=String(problem?.code||problem?.message||problem||'').toLowerCase();
   setOAuthPending(false);
   if(!navigator.onLine)setSignInError('You appear to be offline. Reconnect and choose your sign-in method again.');
   else if(/cancel|access_denied|user.denied/.test(code))setSignInError('Sign-in was cancelled. Choose your sign-in method when you are ready.');
-  else setSignInError('Sign-in with '+label+' could not finish. Retry with the account you normally use for Dinn.');
+  else setSignInError(label?'Sign-in did not finish. Select Continue with '+label+' to try again.':'Sign-in did not finish. Choose X or Google to try again.');
  }
  const {initOAuth,loading:oauthLoading}=useLoginWithOAuth({onError:signInFailed});
  async function startSignIn(provider){
-  activeProvider.current=provider;setSignInError('');setWorking(true);
+  activeProvider.current=provider;try{sessionStorage.setItem('dinn.signin.provider',provider);}catch{}
+  setSignInError('');setWorking(true);
   try{await initOAuth({provider});}catch(problem){signInFailed(problem);}finally{setWorking(false);}
  }
- useEffect(()=>{if(authenticated){setOAuthPending(false);setSignInError('');}},[authenticated]);
+ useEffect(()=>{if(authenticated){clearProvider();activeProvider.current='';setOAuthPending(false);setSignInError('');}},[authenticated]);
  useEffect(()=>{if(!oauthPending)return;const timer=setTimeout(()=>{setOAuthPending(false);setSignInError('Sign-in is taking longer than expected. Please try again.');},30000);return()=>clearTimeout(timer);},[oauthPending]);
  useEffect(()=>{if(ready||privyError){setInitTimedOut(false);return;}const timer=setTimeout(()=>setInitTimedOut(true),15000);return()=>clearTimeout(timer);},[ready,privyError]);
  const authPending=(!ready&&!initTimedOut)||(!authenticated&&(oauthPending||oauthLoading));
