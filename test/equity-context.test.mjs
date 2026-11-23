@@ -41,3 +41,7 @@ test('a token comparison cannot borrow the underlying stock percentage',()=>{
  assert.match(result.message,/needs token prices at both/);
  assert.deepEqual(result.actions,[]);
 });
+
+test('Tesla move questions use the equity tool with a saved launch',()=>{
+ assert.deepEqual(directProductIntent('Why did Tesla move today?',{ponsSetup:{active:true,field:'description'}}),{name:'equity_market_context',args:{ticker:'TSLA'}});
+});

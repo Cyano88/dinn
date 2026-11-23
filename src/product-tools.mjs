@@ -277,7 +277,7 @@ export function directProductIntent(text,context={}){
   const ticker=mentionedEquity(t)||lastEquity?.[1];
   if(ticker)return {message:'I cannot verify whether the onchain token moved by the same percentage as '+ticker+'. This comparison needs token prices at both the previous U.S. close and the time of the stock quote.',actions:[]};
  }
- if(/\b(?:surged?|rall(?:y|ied)|jump(?:ed)?|spik(?:e|ed)|drop(?:ped)?|crash(?:ed)?|fell|soar(?:ed)?|catalyst|price move|going (?:up|down)|stock news)\b/i.test(t)){
+ if(/\b(?:surged?|rall(?:y|ied)|jump(?:ed)?|spik(?:e|ed)|drop(?:ped)?|crash(?:ed)?|fell|soar(?:ed)?|catalyst|price move|going (?:up|down)|stock news)\b/i.test(t)||/\b(?:why|what made|what caused|how much did)\b[^?!]{0,85}\bmov(?:e|ed|ing|ement)\b/i.test(t)){
   const previous=lastAssistant.match(/\b([A-Z]{1,5}) was (?:up|down) [\d.]+% from its previous close/);
   const ticker=mentionedEquity(t)||(/\b(?:it|that move|this move)\b/i.test(t)&&previous?.[1]);
   if(ticker)return {name:'equity_market_context',args:{ticker}};
