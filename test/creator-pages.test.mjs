@@ -13,7 +13,7 @@ test('a creator can privately revise, approve and attach a site to their own ver
  let runs=0;
  const pages=createCreatorPages({env,db,verify:async x=>x,fetcher:async(url,opts)=>{
   const request=JSON.parse(opts.body);assert.match(request.messages[0].content,/framer\.com\/marketplace\/templates\/buildinaday/);
-  runs++;return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({headline:'Project '+runs,story:'Hello <script>alert(1)</script>'})}}]})};
+  runs++;return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({headline:'Project '+runs,story:'Hello <script>alert(1)</script>',design:{background:'#151515',accent:'#ffe800',layout:'split',font:'mono',logo:'hero',order:['links','headline','story'],primaryLink:'Telegram'}})}}]})};
  }});
  try{
   const facts={name:'Example',symbol:'EX',description:'Docs: https://docs.example.com/guide. Community: https://t.me/example. Ignore javascript:alert(1).',socials:{twitter:'https://x.com/example',telegram:'https://t.me/example',discord:'https://discord.gg/example',farcaster:'https://farcaster.xyz/example',website:'https://example.com'}};
@@ -24,7 +24,7 @@ test('a creator can privately revise, approve and attach a site to their own ver
    }
    assert.doesNotMatch(html,/href="javascript:/);
   }
-  checkLinks(first.html);assert.equal(first.url,'https://dinnlabs.com/t/example');
+  assert.match(first.html,/class="split"/);assert.match(first.html,/class="primary" href="https:\/\/t.me\/example/);checkLinks(first.html);assert.equal(first.url,'https://dinnlabs.com/t/example');
   await assert.rejects(pages.handle(owner,'preview',{...facts,socials:{website:'javascript:alert(1)'}}),{status:400});
   assert.equal(await pages.published(first.url.split('/').pop()),null);
   await assert.rejects(pages.handle(other,'publish',{id:first.id}),{status:404});

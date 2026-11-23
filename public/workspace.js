@@ -125,6 +125,7 @@ function say(text){if(!text)return null;return message('assistant',text);}
 function sayLaunch(text){return say(text);}
 
 function showLaunchStage(step,persist=true){
+ if(step!=='links')websiteQuestion=null;
 
  const changed=launchConversationStep!==step;launchConversationStep=step;
  for(const id of Object.values(conversationStages))$(id).hidden=true;
@@ -152,16 +153,18 @@ async function feedbackChat(body,token){
 const actionHistoryText=new WeakMap();
 function recordSetupReply(text,reply){const state=appendChatState(history,chatResults,text,reply,{});history=state.messages;chatResults=state.results;save('chat',state);message('user',text);const body=message('assistant',reply);actionHistoryText.set(body,reply);return body;}
 
-let creatorRequest=null;
-async function handleWebsiteRequest(text,action,websiteBrief=''){
+let creatorRequest=null,websiteQuestion=null;
+async function handleWebsiteRequest(text,action,websiteBrief='',designBrief=''){
  if(creatorRequest){say('Your website request is still in progress.');return;}
  const owner=user,session=epoch,project=JSON.stringify([brief.name,brief.symbol,brief.description]);
  const current=()=>owner===user&&session===epoch&&project===JSON.stringify([brief.name,brief.symbol,brief.description])&&launchConversationStep==='links'&&launchLinkSteps[launchLinkIndex]?.field==='website';
  const slot=key('creator-preview');let previous,description=websiteBrief||brief.description;
  try{const saved=JSON.parse(localStorage.getItem(slot));if(saved?.project===project){previous=saved.id;description=description||saved.description;}}catch{}
  if(action!=='preview'&&!previous){say('Say "create a website" to see a preview first.');return;}
- if(['preview','revise'].includes(action)&&!description){
-  recordSetupReply(text,'What should visitors know about your project? Reply with “Website brief:” followed by one sentence, or say “skip”.');return;
+ if(action==='preview'&&(!description||!designBrief)){
+  websiteQuestion={owner,project,description,step:description?'design':'facts'};
+  recordSetupReply(text,description?'What should your website look and feel like? Tell me what visitors should see first, or say ?surprise me?.':'What should visitors know about your project? A sentence is enough.');
+  return;
  }
  const job={};creatorRequest=job;
  const status=recordSetupReply(text,action==='publish'?'Publishing your website…':action==='saved'?'Opening your saved preview…':action==='revise'?'Updating your website preview…':'Preparing your website preview…');
@@ -170,7 +173,7 @@ async function handleWebsiteRequest(text,action,websiteBrief=''){
  status.setAttribute('aria-busy','true');
  try{
   const {getAccessToken}=await import('/auth/entry.js');const bearer=await getAccessToken();if(!current())return;if(!bearer)throw Error('Sign in again to continue.');
-  const payload=['saved','publish'].includes(action)?{id:previous}:{name:brief.name,symbol:brief.symbol,description,socials:currentSocials(),logo:$('launch-logo').value,previous:action==='revise'?previous:undefined,instruction:action==='revise'?text.slice(text.indexOf(':')+1).trim():''};
+  const payload=['saved','publish'].includes(action)?{id:previous}:{name:brief.name,symbol:brief.symbol,description,designBrief,socials:currentSocials(),logo:$('launch-logo').value,previous:action==='revise'?previous:undefined,instruction:action==='revise'?text.slice(text.indexOf(':')+1).trim():''};
   const r=await fetch('/api/creator-pages/'+(action==='revise'?'preview':action),{method:'POST',headers:{authorization:'Bearer '+bearer,'content-type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(65000)});
   const result=await r.json();if(!current())return;if(!r.ok)throw Error(result.error||'Website request failed.');
   if(action==='publish'){applyLinkReply({action:'set',field:'website',url:result.url},'Use the published website');return;}
@@ -186,6 +189,18 @@ async function handleWebsiteRequest(text,action,websiteBrief=''){
 }
 function handleLaunchReply(text){
  if(launchConversationStep==='links'&&launchLinkSteps[launchLinkIndex]?.field==='website'){
+  if(websiteQuestion){
+   const q=websiteQuestion;
+   websiteQuestion=null;
+   const reply=text.trim();
+   const command=/^(?:skip|keep|pause|cancel|continue|show preview|use this website|create one|create a website)[.!]?$/i.test(reply)||/^https?:\/\//i.test(reply);
+   if(q.owner===user&&q.project===JSON.stringify([brief.name,brief.symbol,brief.description])&&!command){
+    const answer=reply.replace(/^website brief:\s*/i,'');
+    if(answer.length>(q.step==='design'?1000:2000)){websiteQuestion=q;say('Please shorten that to '+(q.step==='design'?1000:2000)+' characters.');return true;}
+    void handleWebsiteRequest(text,'preview',q.step==='facts'?answer:q.description,q.step==='design'?answer:'');
+    return true;
+   }
+  }
   const supplied=text.trim().match(/^website brief:\s*(\S[\s\S]*)$/i);
   if(supplied){void handleWebsiteRequest(text,'preview',supplied[1]);return true;}
  }
@@ -225,7 +240,7 @@ function handleLaunchReply(text){
    const referenceUrl=command.match(/https?:\/\/\S+/i)?.[0];
    if(referenceUrl&&/^(?:create|build|generate|revise)\b/i.test(command)){
     if(referenceUrl.replace(/\/$/,'')!=='https://www.framer.com/marketplace/templates/buildinaday'){
-     say('Dinn has not reviewed that design yet. Say "create a website" to preview the editorial design, or paste your existing website.');return true;
+     say('I can use your description for the design. Say "create one", then tell me what you like about that reference.');return true;
     }
     if(!/^revise/i.test(command)){void handleWebsiteRequest(command,'preview');return true;}
    }
