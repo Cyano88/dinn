@@ -84,7 +84,7 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 
 async function api(path,data,signal){const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data),signal});const v=await r.json();if(!r.ok)throw Error(v.error||'Could not complete the request.');return v;}
 
-function view(name){if(name!=='wallet')walletUI?.leaveAction();showFeedbackFeed(name==='feedback-feed');if(name==='tools'&&activeToolNetwork){activeToolNetwork=null;renderToolDirectory(toolCapabilities);}for(const n of ['assistant','launches','tools','agent-access','feedback-feed','drafts','wallet'])$(n+'-view').hidden=n!==name;document.querySelectorAll('[data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===name);if(b.dataset.view===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$('view-name').textContent=name==='feedback-feed'?'Feedback':name==='tools'?'Dinn tools':name==='agent-access'?'Agent access':name[0].toUpperCase()+name.slice(1);if(name==='wallet')void walletUI?.refresh();if(name==='launches'){launchesView?.activate();void registerSavedLaunch();}else launchesView?.deactivate();}
+function view(name){if(name!=='wallet')walletUI?.leaveAction();showFeedbackFeed(name==='feedback-feed');if(name==='tools'&&activeToolNetwork){activeToolNetwork=null;renderToolDirectory(toolCapabilities);}for(const n of ['assistant','launches','tools','agent-access','integrate','feedback-feed','drafts','wallet'])$(n+'-view').hidden=n!==name;document.querySelectorAll('[data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===name);if(b.dataset.view===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$('view-name').textContent=name==='feedback-feed'?'Feedback':name==='tools'?'Dinn tools':name==='agent-access'?'Agent access':name==='integrate'?'Integrate Dinn':name[0].toUpperCase()+name.slice(1);if(name==='wallet')void walletUI?.refresh();if(name==='launches'){launchesView?.activate();void registerSavedLaunch();}else launchesView?.deactivate();}
 
 function scrollChat(){requestAnimationFrame(()=>$('chat-thread').scrollTop=$('chat-thread').scrollHeight);}
 
@@ -186,6 +186,7 @@ async function handleWebsiteRequest(text,action,websiteBrief='',designBrief='',a
   try{localStorage.setItem(slot,JSON.stringify({project,id:result.id,description}));}catch{throw Error('Allow local storage to keep and approve this preview.');}
   const body=say(result.headline+'\n\n'+result.story+'\n\nProposed URL: '+result.url+'\n\nSay "use this website", "revise website: your change", or "skip".');
   const preview=document.createElement('a');const url=URL.createObjectURL(new Blob([result.html],{type:'text/html;charset=utf-8'}));preview.href=url;preview.target='_blank';preview.rel='noopener noreferrer';preview.textContent='Open private preview';body.append(preview);
+  const custom=document.createElement('p'),sales=document.createElement('a');sales.href='https://x.com/DinnLabs';sales.target='_blank';sales.rel='noopener noreferrer';sales.textContent='Request a quote on X';custom.append('Want a custom site or domain? Priced separately. ',sales);body.append(custom);
   const observer=new MutationObserver(()=>{if(!preview.isConnected){URL.revokeObjectURL(url);observer.disconnect();}});observer.observe($('messages'),{childList:true,subtree:true});
  }catch(e){if(current())say(e.message||'Could not finish the website request.');}finally{
   pending.classList.remove('chat-action-pending');
@@ -892,3 +893,34 @@ const researchTarget=new URLSearchParams(location.search).get('research');
 if(/^0x[0-9a-f]{40}$/i.test(researchTarget||'')&&!$('prompt').value){
  $('prompt').value='Research '+researchTarget+' on Robinhood Chain';$('prompt').dispatchEvent(new Event('input'));
 }
+
+const integrationExamples={
+ base:{service:'base.stock.research',input:{query:'0xb20000000000000000000078ee7ce2fe4908108c'}},
+ robinhood:{service:'pons.stock.research',input:{query:'0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec'}}
+};
+let integrationRequest=null;
+function selectIntegrationExample(){
+ integrationRequest?.abort();integrationRequest=null;
+ const body=JSON.stringify(integrationExamples[$('integrate-network').value]);
+ $('integrate-code').textContent=["curl 'https://dinnlabs.com/api/agent/request'", "  -H 'Content-Type: application/json'", "  -d '"+body+"'"].join(' \\\n');
+ $('integrate-result').hidden=true;$('integrate-result').open=false;$('integrate-json').textContent='';$('integrate-status').textContent='';$('integrate-run').disabled=false;$('integrate-copy').textContent='Copy request';
+}
+$('integrate-network').onchange=selectIntegrationExample;
+$('integrate-copy').onclick=async()=>{
+ try{await navigator.clipboard.writeText($('integrate-code').textContent);$('integrate-copy').textContent='Copied';}
+ catch{$('integrate-status').textContent='Select the request above to copy it.';}
+};
+$('integrate-run').onclick=async()=>{
+ if(integrationRequest)return;
+ const request=new AbortController();integrationRequest=request;
+ const timeout=setTimeout(()=>request.abort(),120000);
+ $('integrate-run').disabled=true;$('integrate-status').textContent='Checking sources...';$('integrate-result').hidden=true;
+ try{
+  const response=await fetch('/api/agent/request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(integrationExamples[$('integrate-network').value]),signal:request.signal});
+  const report=await response.json();if(integrationRequest!==request)return;
+  if(!response.ok||report.status!=='completed')throw Error(report.error||'The report could not be completed. Try again.');
+  $('integrate-json').textContent=JSON.stringify(report,null,2);$('integrate-status').textContent='Report received.';$('integrate-result').hidden=false;$('integrate-result').open=true;
+ }catch(error){if(integrationRequest===request)$('integrate-status').textContent=request.signal.aborted?'Request timed out. Try again.':error.message||'Request failed. Try again.';}
+ finally{clearTimeout(timeout);if(integrationRequest===request){integrationRequest=null;$('integrate-run').disabled=false;}}
+};
+selectIntegrationExample();
