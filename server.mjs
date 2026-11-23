@@ -101,7 +101,7 @@ const server=createServer(async(req,res)=>{
   }
   if(isPausedRoute(path)||path==='/execution/entry.js')return json(res,410,{error:pausedMessage,code:'COMING_SOON'});
   if(req.method==='HEAD' && path==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});return res.end();}
-  if(req.method==='GET' && /^\/t\/[a-z0-9-]{1,33}$/.test(path)){
+  if(req.method==='GET' && /^\/t\/[a-z0-9-]{1,80}$/.test(path)){
    try{const html=await creatorPages.published(path.slice(3));if(!html)return json(res,404,{error:'Website has not been published.'});
     res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; img-src https://dinnlabs.com https://dinn-pasy.onrender.com https://gateway.pinata.cloud; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"});return res.end(html);
    }catch{return json(res,503,{error:'Website temporarily unavailable.'});}

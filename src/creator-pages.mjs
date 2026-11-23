@@ -70,14 +70,35 @@ export function renderCreatorPage(page,token){
  const verified=/^0x[0-9a-f]{40}$/i.test(token||'');
  const links=(page.copy.links||[]).map(({url,label})=>`<a href="${esc(url)}" rel="noopener noreferrer">${esc(label)}</a>`).join(' ');
  const navigation=links?`<nav aria-label="Project links" style="display:flex;flex-wrap:wrap;gap:8px 20px">${links}</nav>`:'';
- return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(name)} ($${esc(symbol)})</title><style>*{box-sizing:border-box}body{margin:0;background:#f5f3eb;color:#172f28;font:17px/1.55 system-ui}main{max-width:840px;margin:auto;padding:clamp(24px,8vw,90px);overflow-wrap:anywhere}header,footer{border-top:1px solid #84978a;padding-top:14px}h1{font:normal clamp(3rem,10vw,6rem)/1 Georgia,serif;margin:.7em 0 .2em}h2{font:normal clamp(1.5rem,4vw,2.6rem)/1.2 Georgia,serif}p{max-width:58ch}footer{margin-top:3rem}a{color:inherit;text-underline-offset:4px}code{font-size:.85em}</style><main><header>${projectLogo(page.copy.logo)?`<img width="72" height="72" style="object-fit:contain;vertical-align:middle;margin-right:16px" src="${esc(projectLogo(page.copy.logo))}" alt="">`:''}$${esc(symbol)}</header><h1>${esc(name)}</h1><h2>${esc(headline)}</h2><p>${esc(story)}</p>${navigation}<footer>${verified?`Robinhood Chain Â· Pons<p><code>${esc(token)}</code></p><a href="https://ponsfamily.com/launchpad/${token}">Open on Pons</a> Â· <a href="/?research=${token}">Research in Dinn</a>`:'Launch confirmation pending.'}</footer></main></html>`;
+ return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(name)} ($${esc(symbol)})</title><style>*{box-sizing:border-box}body{margin:0;background:#f5f3eb;color:#172f28;font:17px/1.55 system-ui}main{max-width:840px;margin:auto;padding:clamp(24px,8vw,90px);overflow-wrap:anywhere}header,footer{border-top:1px solid #84978a;padding-top:14px}h1{font:normal clamp(3rem,10vw,6rem)/1 Georgia,serif;margin:.7em 0 .2em}h2{font:normal clamp(1.5rem,4vw,2.6rem)/1.2 Georgia,serif}p{max-width:58ch}footer{margin-top:3rem}a{color:inherit;text-underline-offset:4px}code{font-size:.85em}</style><main><header>${projectLogo(page.copy.logo)?`<img width="72" height="72" style="object-fit:contain;vertical-align:middle;margin-right:16px" src="${esc(projectLogo(page.copy.logo))}" alt="">`:''}$${esc(symbol)}</header><h1>${esc(name)}</h1><h2>${esc(headline)}</h2><p>${esc(story)}</p>${navigation}${verified?`<footer>Robinhood Chain Â· Pons<p><code>${esc(token)}</code></p><a href="https://ponsfamily.com/launchpad/${token}">Open on Pons</a> Â· <a href="/?research=${token}">Research in Dinn</a></footer>`:''}</main></html>`;
+}
+
+// Original ticker URLs end in eight hex digits. Keep that namespace for shared links.
+function pageName(name,symbol){
+ const normalize=value=>value.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,48).replace(/^-+|-+$/g,'');
+ const base=normalize(name)||normalize(symbol)||'token';
+ return /-[0-9a-f]{8}$/.test(base)?base+'-token':base;
+}
+async function reserveAlias(db,page){
+ const base=pageName(page.copy.name,page.copy.symbol);
+ for(let index=1;;index++){
+  const alias=index===1?base:base+'-'+index;
+  const result=await db.query('INSERT INTO dinn_creator_aliases (page_id,alias) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING alias',[page.id,alias]);
+  if(result.rows.length)return alias;
+  const existing=await db.query('SELECT alias FROM dinn_creator_aliases WHERE page_id=$1',[page.id]);
+  if(existing.rows.length)return existing.rows[0].alias;
+ }
 }
 
 export function createCreatorPages({env=process.env,db,verify,fetcher=fetch}={}){
  let ready,privy;
  async function store(){
   if(!db){if(!env.DATABASE_URL)throw fail(503,'Website storage is unavailable.');db=new Pool({connectionString:env.DATABASE_URL,max:2});}
-  ready||=db.query('CREATE TABLE IF NOT EXISTS dinn_creator_pages(id uuid PRIMARY KEY,owner text NOT NULL,slug text UNIQUE NOT NULL,copy jsonb,created_at timestamptz NOT NULL DEFAULT now(),published boolean NOT NULL DEFAULT false)').catch(e=>{ready=null;throw e;});
+  ready||=db.query('CREATE TABLE IF NOT EXISTS dinn_creator_pages(id uuid PRIMARY KEY,owner text NOT NULL,slug text UNIQUE NOT NULL,copy jsonb,created_at timestamptz NOT NULL DEFAULT now(),published boolean NOT NULL DEFAULT false)').then(async()=>{
+   await db.query('CREATE TABLE IF NOT EXISTS dinn_creator_aliases(page_id uuid PRIMARY KEY REFERENCES dinn_creator_pages(id) ON DELETE CASCADE,alias text UNIQUE NOT NULL)');
+   const legacy=await db.query('SELECT p.id,p.copy FROM dinn_creator_pages p LEFT JOIN dinn_creator_aliases a ON a.page_id=p.id WHERE p.published AND a.page_id IS NULL ORDER BY p.created_at,p.id');
+   for(const page of legacy.rows)await reserveAlias(db,page);
+  }).catch(e=>{ready=null;throw e;});
   await ready;return db;
  }
  async function ownerFor(req){
@@ -91,12 +112,12 @@ export function createCreatorPages({env=process.env,db,verify,fetcher=fetch}={})
    if(!uuid.test(data?.id||''))throw fail(400,'Choose a website preview.');
    const saved=(await db.query('SELECT copy,slug FROM dinn_creator_pages WHERE owner=$1 AND id=$2 AND copy IS NOT NULL',[owner,data.id])).rows[0];
    if(!saved)throw fail(404,'Preview unavailable.');
-   return {id:data.id,url:origin+'/t/'+saved.slug,html:renderCreatorPage(saved),headline:saved.copy.headline,story:saved.copy.story};
+   return {id:data.id,url:origin+'/t/'+await reserveAlias(db,{id:data.id,copy:saved.copy}),html:renderCreatorPage(saved),headline:saved.copy.headline,story:saved.copy.story};
   }
   if(action==='publish'){
    if(!uuid.test(data?.id||''))throw fail(400,'Choose a website preview.');
-   const result=await db.query('UPDATE dinn_creator_pages SET published=true WHERE id=$1 AND owner=$2 AND copy IS NOT NULL RETURNING slug',[data.id,owner]);
-   if(!result.rowCount)throw fail(404,'Preview unavailable.');return {url:origin+'/t/'+result.rows[0].slug};
+   const result=await db.query('UPDATE dinn_creator_pages SET published=true WHERE id=$1 AND owner=$2 AND copy IS NOT NULL RETURNING id,copy',[data.id,owner]);
+   if(!result.rowCount)throw fail(404,'Preview unavailable.');return {url:origin+'/t/'+await reserveAlias(db,result.rows[0])};
   }
   if(action!=='preview')throw fail(404,'Unknown website action.');
   if(!env.OG_API_KEY||!env.OG_MODEL)throw fail(503,'Website generation is unavailable.');
@@ -132,12 +153,12 @@ export function createCreatorPages({env=process.env,db,verify,fetcher=fetch}={})
    throw fail(503,'Website generation is temporarily unavailable ('+reason+'). Please retry. This attempt did not use a preview.');
   }
   await db.query('UPDATE dinn_creator_pages SET copy=$2 WHERE id=$1',[id,JSON.stringify(copy)]);
-  return {id,url:origin+'/t/'+slug,html:renderCreatorPage({copy}),headline:copy.headline,story:copy.story};
+  return {id,url:origin+'/t/'+await reserveAlias(db,{id,copy}),html:renderCreatorPage({copy}),headline:copy.headline,story:copy.story};
  }
  async function published(slug){
-  const db=await store(),page=(await db.query('SELECT owner,copy FROM dinn_creator_pages WHERE slug=$1 AND published=true',[slug])).rows[0];
+  const db=await store(),page=(await db.query('SELECT p.owner,p.copy,p.slug,a.alias FROM dinn_creator_pages p LEFT JOIN dinn_creator_aliases a ON a.page_id=p.id WHERE (p.slug=$1 OR a.alias=$1) AND p.published=true',[slug])).rows[0];
   if(!page)return null;
-  let token=null;try{const result=await db.query('SELECT token_address FROM dinn_pons_launches WHERE owner=$1 AND website=$2 ORDER BY launched_at LIMIT 1',[page.owner,origin+'/t/'+slug]);token=result.rows[0]?.token_address;}catch(e){if(!['42P01','42703'].includes(e.code))throw e;}
+  let token=null;try{const result=await db.query('SELECT token_address FROM dinn_pons_launches WHERE owner=$1 AND website IN ($2,$3) ORDER BY launched_at LIMIT 1',[page.owner,origin+'/t/'+page.slug,origin+'/t/'+page.alias]);token=result.rows[0]?.token_address;}catch(e){if(!['42P01','42703'].includes(e.code))throw e;}
   return renderCreatorPage(page,token);
  }
  return {handle,published};
