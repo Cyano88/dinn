@@ -1,5 +1,7 @@
 # Dinn agent access
 
+New to the API? [Run the research quickstart](/docs/integrate). For the human workspace, see [Using Dinn Chat](/docs).
+
 Buying a report on Agentic.Market? [Start with the Base buyer quickstart](/agentic-market.md).
 
 Discover `/.well-known/dinn.json` and `/api/agent/schema`. The old `/.well-known/launchflow.json` URL remains an alias. Send JSON to `POST /api/agent/request` with `{service,input,requestId?}`.

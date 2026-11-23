@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Integrate Dinn research | Dinn Docs</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/docs.css"></head>
+<body><header><a class="brand" href="/docs"><img src="/brand/dinn-mark-dark.svg" width="26" height="26" alt="">Dinn Docs</a><a href="/">Open Dinn</a></header><div class="layout"><nav aria-label="Documentation"><a href="/docs">Using Dinn</a><a href="/docs/integrate" aria-current="page">Developers</a></nav><main><h1>Integrate Dinn research</h1>
+<p class="lead">Add research to a token page or request it from another agent. Start with the public API to verify the request and response before adding payments.</p>
+<h2>Run a public request</h2>
+<p>Send this from your server or shell. The public preview needs no wallet or API key. In the Dinn workspace, <strong>Integrate Dinn</strong> runs a Base or Robinhood example in your browser.</p>
+<pre><code>curl 'https://dinnlabs.com/api/agent/request' \
+  -H 'Content-Type: application/json' \
+  -d '{"service":"base.stock.research","requestId":"docs-quickstart","input":{"query":"NVDAc"}}'</code></pre>
+<p>Selected fields from a verified response:</p>
+<pre><code>{
+  "service": "base.stock.research",
+  "status": "completed",
+  "charged": false,
+  "result": {
+    "chainId": 8453,
+    "address": "0xb20000000000000000000078ee7ce2fe4908108c"
+  }
+}</code></pre>
+<p>Read <code>result</code> for structured evidence and <code>deliverableMarkdown</code> for the report. Display the network, checked time, source links and coverage notes beside the figures. Sanitize Markdown before displaying it as HTML.</p>
+<h2>Choose the service</h2>
+<dl>
+<dt>Coinbase stock token on Base</dt><dd><code>base.stock.research</code> with <code>input.query</code>, such as <code>NVDAc</code> or its contract address.</dd>
+<dt>Bankr stock-paired launch on Base</dt><dd><code>base.stock-paired.research</code> with the launch token in <code>input.address</code>. For discovery use <code>base.stock-paired.discover</code> with <code>input.metric</code> set to <code>liquidity</code> or <code>volume</code>. The shortlist covers a sample.</dd>
+<dt>Robinhood stock token</dt><dd><code>pons.stock.research</code> with the stock ticker or contract in <code>input.query</code>.</dd>
+<dt>Pons launch on Robinhood Chain</dt><dd><code>token.research</code> with <code>input.address</code>. For a launch paired with a stock token, use <code>pons.stock-paired.research</code> with the launch token's address.</dd>
+</dl>
+<h2>Handle incomplete results</h2>
+<p>Check the HTTP status and the response's <code>status</code>. Omitting <code>query</code> in the example returns HTTP 200 with <code>status: "needs_input"</code> and <code>missingFields: ["query"]</code>. Supply the missing field before retrying. When the service returns HTTP 429, back off. A completed report can still have unavailable prices, partial holder coverage, or no verified lock record. Keep those states distinct from zero.</p>
+<h2>Buy a report</h2>
+<ul><li><strong>NEAR AI Agent Market.</strong> Send the whole brief in the hire, for example <em>Research NVDAc on Base</em>. For a launch, include its chain and contract address. Check the listing for the current price and delivery terms. <a href="https://market.near.ai/a/dinn">Hire Dinn on NEAR</a>.</li>
+<li><strong>Agentic Market on Base.</strong> Use the paid endpoint and payment client described in the buyer guide. Review the x402 price and USDC network before paying. Keep the same request ID and payload when retrying the same payment. <a href="/agentic-market.md">Base buyer guide</a>.</li></ul>
+<p>The public preview skips paid holder lookups. Paid reports can still have gaps when a provider lacks coverage. A research purchase grants no wallet signing authority.</p>
+<p><a href="/api/agent/schema">Live request schema</a> &middot; <a href="/agent-guide.md">Technical reference</a> &middot; <a href="https://x.com/DinnLabs">Contact sales</a></p></main></div></body></html>

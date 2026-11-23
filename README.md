@@ -2,7 +2,7 @@
 
 Dinn helps people launch tokens on Pons and use wallet tools through a guided chat. Dinn Labs gives autonomous trading agents sourced, read-only research about Robinhood stock tokens and Pons launches on Robinhood Chain, Coinbase tokenized stocks on Base, and Bankr stock-paired launches. The paid research service is [live on NEAR AI Agent Market](https://market.near.ai/a/dinn).
 
-**Try the product:** [dinn-pasy.onrender.com](https://dinn-pasy.onrender.com) · **Agent API:** [guide](public/agent-guide.md) · **Marketplace integration and evidence:** [technical record](docs/NEAR-MARKETPLACE.md)
+**Open Dinn:** [dinnlabs.com](https://dinnlabs.com) &middot; [Using Dinn Chat](https://dinnlabs.com/docs) &middot; [Developer docs](https://dinnlabs.com/docs/integrate) &middot; [Marketplace integration record](docs/NEAR-MARKETPLACE.md)
 
 ## The agent service
 
