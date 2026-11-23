@@ -69,3 +69,12 @@ export function conversationTask(text){
  if(/\s+(?:and|then)\s+(?:change|set|update|add)\b/i.test(value))return {kind:'clarify'};
  return {kind:'edit',key,value,profile:['description','website','twitter','telegram'].includes(key)};
 }
+
+// Explicit task switches take precedence over pending launch fields and short replies.
+export function newChatTask(text){
+ const request=text.trim().replace(/^(?:please\s+)?(?:(?:i (?:want|need|would like|would love) to|i['\u2019]d like to|can you|could you|help me(?: to)?)\s+)?(?:please\s+)?/i,'');
+ if(/^(?:withdraw|send|transfer)\b/i.test(request))return 'send';
+ if(/^(?:bridge|swap|research|inspect|analy[sz]e|look up|buy|sell|burn|claim)\b/i.test(request))return request.split(/\s/)[0].toLowerCase();
+ if(/^(?:(?:check|show|read|get)\s+(?:my\s+|the\s+)?|my\s+)?(?:(?:base|robinhood(?: chain)?|arbitrum|eth|usdc|usdt|wallet)\s+)*(?:balance[s]?|portfolio|transaction status)\b/i.test(request))return 'read';
+ return null;
+}

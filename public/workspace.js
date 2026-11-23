@@ -1,3 +1,4 @@
+import {newChatTask} from './flow.js';
 import {firstLockPreview,lockCoverageText} from './token-report.js';
 import {showFeedbackFeed} from '/feedback-feed.js';
 import {hasLaunchProgress,launchReturnChoice} from './launch-resume.js';
@@ -193,6 +194,10 @@ async function handleWebsiteRequest(text,action,websiteBrief='',designBrief='',a
  }
 }
 function handleLaunchReply(text){
+ if(newChatTask(text)&&!(launchConversationStep==='purchase'&&/^buy\s+\d+(?:\.\d+)?(?:\s+\w+)?$/i.test(text.trim()))){
+  if(launchConversationStep)showLaunchStage(null,false);
+  return false;
+ }
  if(launchConversationStep==='links'&&launchLinkSteps[launchLinkIndex]?.field==='website'){
   if(websiteQuestion){
    const q=websiteQuestion;
@@ -234,7 +239,7 @@ function handleLaunchReply(text){
   pauseLaunchConversation();
   return false;
  }
- if(launchConversationStep==='wallet'){if(/^(?:use )?(?:dinn|dinn wallet|embedded wallet)$/i.test(text)){$('use-dinn-wallet')?.click();return true;}if(/^(?:connect |use )?(?:external|external wallet)$/i.test(text)){$('connect-launch-wallet')?.click();return true;}say('Say “Dinn wallet” to use your Dinn wallet, or “external wallet” to connect one. The wallet you choose pays the launch cost and receives any buy at launch.');return true;}
+ if(launchConversationStep==='wallet'){if(/^(?:use )?(?:dinn|dinn wallet|embedded wallet)$/i.test(text)){$('use-dinn-wallet')?.click();return true;}if(/^(?:connect |use )?(?:external|external wallet)$/i.test(text)){$('connect-launch-wallet')?.click();return true;}return false;}
  if(launchConversationStep==='profile'){
 
   if(/^(skip|skip logo|no logo)$/i.test(text)){$('skip-launch-logo').click();return true;}
@@ -264,7 +269,7 @@ function handleLaunchReply(text){
   }
   const parsed=parseLaunchLink(text,launchLinkSteps[launchLinkIndex].field);
   if(parsed){applyLinkReply(parsed,text);return true;}
-  say('Please send '+launchLinkSteps[launchLinkIndex].label+' as a valid link, say “keep” to retain the saved link, or say “skip”.');return true;
+  return false;
  }
  if(launchConversationStep==='purchase'){
 
@@ -380,6 +385,7 @@ $('chat').onsubmit=async e=>{
     result.message=takeaway&&takeaway.length+overview.length<5400?overview+'\n\n'+takeaway:overview;
    }
   }
+  if(launchConversationStep&&result.toolsUsed?.some(name=>['open_wallet_action','wallet_balance','wallet_portfolio','transaction_status','inspect_token','research_base_stock','research_base_stock_paired_token','research_pons_stock','research_pons_stock_pair','pons_trade','base_stock_trade'].includes(name)))showLaunchStage(null,false);
   if(result.tradeQuoteOffer)tradeQuoteOffer={...result.tradeQuoteOffer,user,epoch,turn:result.message};
   const walletAction=result.actions?.find(action=>action.id==='wallet_approve');if(walletAction)result.message+='\n\nDo you accept these exact terms? Reply “yes” or “approve” to send, or “cancel” to stop. Nothing has been sent yet.';
   const researchTarget=result.inspection?.address||result.data?.address;

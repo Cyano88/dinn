@@ -204,3 +204,20 @@ test('Pons chat distinguishes a direct pool estimate from a rejected Relay route
  const failure=await executeProductTool('pons_trade_quote',args,{walletAccount:account},dependencies);
  assert.match(failure.message,/more than 3%/);assert.match(failure.message,/cannot offer this swap/);
 });
+
+test('an active Pons setup cannot consume an onchain withdrawal or overwrite the stated network',async()=>{
+ const message='I want to withdraw eth on base',context={message,walletAccount:account,ponsSetup:{active:true,field:'description'}};
+ const events=[];
+ for await(const event of streamProductChat(context,[],{env:{}}))events.push(event);
+ const result=events.at(-1).result;
+ assert.deepEqual(result.toolsUsed,['open_wallet_action']);
+ assert.match(result.message,/address.*ETH on Base/i);assert.deepEqual(result.actions,[]);assert.equal(result.launchDraft,undefined);
+ assert.match(directProductIntent('withdraw ETH on Arbitrum',context).message,/paused/);
+ assert.match(directProductIntent('withdraw ETH to my bank',context).message,/bank withdrawal/);
+});
+test('0G can identify a wallet request in prose while a launch question is pending',async()=>{
+ const context={message:'I would like some of my ETH moved from Base to my other wallet',history:[],walletAccount:account,ponsSetup:{active:true,field:'description'}};
+ const fetchImpl=async(url,options)=>{const body=JSON.parse(options.body);assert.match(body.messages[0].content,/Classify/);return Response.json({choices:[{message:{content:'send'}}]});};
+ let result;for await(const event of streamProductChat(context,[],{env:{OG_API_KEY:'test',OG_MODEL:'test'},fetchImpl}))if(event.type==='done')result=event.result;
+ assert.deepEqual(result.toolsUsed,['open_wallet_action']);assert.match(result.message,/ETH on Base/);assert.equal(result.launchDraft,undefined);
+});
