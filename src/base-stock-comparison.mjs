@@ -9,7 +9,22 @@ async function readJson(url,fetchImpl){
  return response.json();
 }
 
-export async function compareBaseStock({token,symbol,equity,market},fetchImpl=fetch){
+const recent=new Map();
+export async function compareBaseStock(input,fetchImpl=fetch){
+ if(fetchImpl!==fetch||!input.equity?.quote)return readComparison(input,fetchImpl);
+ const key=JSON.stringify([input.token,input.equity.quote.asOf,input.equity.quote.priceUsd,input.market?.pairs?.[0]?.pairAddress]);
+ const now=Date.now();
+ for(const [id,entry] of recent)if(entry.expires<=now)recent.delete(id);
+ if(!recent.has(key)){
+  const work=readComparison(input,fetchImpl).then(result=>{
+   if(result.status!=='available')recent.delete(key);
+   return result;
+  },error=>{recent.delete(key);throw error;});
+  recent.set(key,{expires:now+60000,work});
+ }
+ return recent.get(key).work;
+}
+async function readComparison({token,symbol,equity,market},fetchImpl){
  const quote=equity?.quote;
  const base={network:'Base',token,symbol,ticker:equity?.ticker,checkedAt:new Date().toISOString()};
  const unavailable=reason=>({...base,status:'unavailable',reason});
@@ -55,4 +70,4 @@ export function comparisonMessage(result){
  const change=n=>(n>=0?'+':'')+n.toFixed(2)+'%';
  const time=s=>s.slice(0,16).replace('T',' ');
  return result.ticker+' '+change(result.stockChangePercent)+' since the previous U.S. close. '+result.symbol+' on Base '+change(result.tokenChangePercent)+' over approximately the same hours.\n\n'+time(result.window.from)+' to '+time(result.window.to)+' UTC. Token prices use the last completed one-minute candles with trades near each endpoint ($'+result.opening.closeUsd.toFixed(4)+' to $'+result.latest.closeUsd.toFixed(4)+'). Reported pool liquidity: $'+Math.round(result.liquidityUsd).toLocaleString('en-US')+'. [Base pool]('+result.poolUrl+') | [Stock quote]('+result.stockSource+')';
-}
+}
