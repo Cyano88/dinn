@@ -10,14 +10,20 @@ test('a creator can privately revise, approve and attach a site to their own ver
  db.connect=async()=>({...db,release(){}});
  const owner={headers:{authorization:'Bearer alice'}},other={headers:{authorization:'Bearer bob'}};
  const env={OG_API_KEY:'test',OG_MODEL:'test'};
- let runs=0;
+ let runs=0,providerOffline=false;
  const pages=createCreatorPages({env,db,verify:async x=>x,fetcher:async(url,opts)=>{
+  if(providerOffline)return {ok:false,status:503};
   const request=JSON.parse(opts.body);assert.match(request.messages[0].content,/framer\.com\/marketplace\/templates\/buildinaday/);
-  runs++;return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({headline:'Project '+runs,story:'Hello <script>alert(1)</script>',design:{background:'#151515',accent:'#ffe800',layout:'split',font:'mono',logo:'hero',order:['links','headline','story'],primaryLink:'Telegram'}})}}]})};
+  runs++;return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({supported:runs!==1,headline:'Project '+runs,story:'Hello <script>alert(1)</script>',design:{background:'#151515',accent:'#ffe800',layout:'split',font:'mono',logo:'hero',order:['links','headline','story'],primaryLink:'Telegram'}})}}]})};
  }});
  try{
   const facts={name:'Example',symbol:'EX',description:'Docs: https://docs.example.com/guide. Community: https://t.me/example. Ignore javascript:alert(1).',socials:{twitter:'https://x.com/example',telegram:'https://t.me/example',discord:'https://discord.gg/example',farcaster:'https://farcaster.xyz/example',website:'https://example.com'}};
-  const first=await pages.handle(owner,'preview',facts);
+  await assert.rejects(pages.handle(owner,'preview',{...facts,designBrief:'An art gallery'}),{status:422,needsArtwork:true});
+  const image='https://example.com/birch.png';
+  const first=await pages.handle(owner,'preview',{...facts,designBrief:'An art gallery and a memory game',artwork:image});
+  assert.ok(first.html.includes('data-memory-game'));
+  assert.ok(first.html.includes('src="'+image+'"'));
+  assert.equal(runs,1);
   function checkLinks(html){
    for(const url of [...Object.values(facts.socials),'https://docs.example.com/guide']){
     assert.equal(html.split('href="'+new URL(url).href+'"').length,2);
@@ -28,6 +34,11 @@ test('a creator can privately revise, approve and attach a site to their own ver
   await assert.rejects(pages.handle(owner,'preview',{...facts,socials:{website:'javascript:alert(1)'}}),{status:400});
   assert.equal(await pages.published(first.url.split('/').pop()),null);
   await assert.rejects(pages.handle(other,'publish',{id:first.id}),{status:404});
+  providerOffline=true;
+  await assert.rejects(pages.handle(owner,'preview',{...facts,previous:first.id,instruction:'Shorten it'}),{status:503,retryPreview:true});
+  assert.equal(Number((await pg.query('SELECT count(*) AS count FROM dinn_creator_pages')).rows[0].count),1);
+  assert.equal((await pages.handle(owner,'saved',{id:first.id})).html,first.html);
+  providerOffline=false;
   const second=await pages.handle(owner,'preview',{...facts,previous:first.id,instruction:'Make it shorter'});
   checkLinks((await pages.handle(owner,'saved',{id:second.id})).html);
   assert.equal((await pages.handle(owner,'saved',{id:second.id})).headline,'Project 2');

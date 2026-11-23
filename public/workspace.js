@@ -154,7 +154,7 @@ const actionHistoryText=new WeakMap();
 function recordSetupReply(text,reply){const state=appendChatState(history,chatResults,text,reply,{});history=state.messages;chatResults=state.results;save('chat',state);message('user',text);const body=message('assistant',reply);actionHistoryText.set(body,reply);return body;}
 
 let creatorRequest=null,websiteQuestion=null;
-async function handleWebsiteRequest(text,action,websiteBrief='',designBrief=''){
+async function handleWebsiteRequest(text,action,websiteBrief='',designBrief='',artwork='',revision=''){
  if(creatorRequest){say('Your website request is still in progress.');return;}
  const owner=user,session=epoch,project=JSON.stringify([brief.name,brief.symbol,brief.description]);
  const current=()=>owner===user&&session===epoch&&project===JSON.stringify([brief.name,brief.symbol,brief.description])&&launchConversationStep==='links'&&launchLinkSteps[launchLinkIndex]?.field==='website';
@@ -163,7 +163,7 @@ async function handleWebsiteRequest(text,action,websiteBrief='',designBrief=''){
  if(action!=='preview'&&!previous){say('Say "create a website" to see a preview first.');return;}
  if(action==='preview'&&(!description||!designBrief)){
   websiteQuestion={owner,project,description,step:description?'design':'facts'};
-  recordSetupReply(text,description?'What should your website look and feel like? Tell me what visitors should see first, or say ?surprise me?.':'What should visitors know about your project? A sentence is enough.');
+  recordSetupReply(text,description?'What should visitors see or do? Describe the style, add a memory game or an art gallery, or say "surprise me".':'What should visitors know about your project? A sentence is enough.');
   return;
  }
  const job={};creatorRequest=job;
@@ -173,9 +173,13 @@ async function handleWebsiteRequest(text,action,websiteBrief='',designBrief=''){
  status.setAttribute('aria-busy','true');
  try{
   const {getAccessToken}=await import('/auth/entry.js');const bearer=await getAccessToken();if(!current())return;if(!bearer)throw Error('Sign in again to continue.');
-  const payload=['saved','publish'].includes(action)?{id:previous}:{name:brief.name,symbol:brief.symbol,description,designBrief,socials:currentSocials(),logo:$('launch-logo').value,previous:action==='revise'?previous:undefined,instruction:action==='revise'?text.slice(text.indexOf(':')+1).trim():''};
+  const payload=['saved','publish'].includes(action)?{id:previous}:{name:brief.name,symbol:brief.symbol,description,designBrief,artwork,socials:currentSocials(),logo:$('launch-logo').value,previous:action==='revise'?previous:undefined,instruction:action==='revise'?revision||text.slice(text.indexOf(':')+1).trim():''};
   const r=await fetch('/api/creator-pages/'+(action==='revise'?'preview':action),{method:'POST',headers:{authorization:'Bearer '+bearer,'content-type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(65000)});
-  const result=await r.json();if(!current())return;if(!r.ok)throw Error(result.error||'Website request failed.');
+  const result=await r.json();if(!current())return;if(result.needsArtwork||result.needsDirection){websiteQuestion={owner,project,description,step:result.needsArtwork?'artwork':'direction',action,designBrief,revision:payload.instruction};say(result.error);return;}if(r.status===503&&result.retryPreview&&['preview','revise'].includes(action)){
+   websiteQuestion={owner,project,description,designBrief,artwork,revision:payload.instruction,action,step:'retry'};
+   say('I could not prepare that preview. Say "retry" to use the same instructions. This attempt did not use your allowance.');return;
+  }
+  if(!r.ok)throw Error(result.error||'Website request failed.');
   if(action==='publish'){applyLinkReply({action:'set',field:'website',url:result.url},'Use the published website');return;}
   try{localStorage.setItem(slot,JSON.stringify({project,id:result.id,description}));}catch{throw Error('Allow local storage to keep and approve this preview.');}
   const body=say(result.headline+'\n\n'+result.story+'\n\nProposed URL: '+result.url+'\n\nSay "use this website", "revise website: your change", or "skip".');
@@ -193,8 +197,18 @@ function handleLaunchReply(text){
    const q=websiteQuestion;
    websiteQuestion=null;
    const reply=text.trim();
-   const command=/^(?:skip|keep|pause|cancel|continue|show preview|use this website|create one|create a website)[.!]?$/i.test(reply)||/^https?:\/\//i.test(reply);
-   if(q.owner===user&&q.project===JSON.stringify([brief.name,brief.symbol,brief.description])&&!command){
+   const leaveQuestion=/^(?:skip(?: all(?: links)?)?|keep|cancel|pause(?: setup)?|continue|(?:show|open) (?:my |the )?(?:website )?preview|(?:use|publish) (?:this|my|the) (?:website|site|page)|create one|create a website)[.!]?$/i.test(reply);
+   if(q.step==='retry'&&q.owner===user&&q.project===JSON.stringify([brief.name,brief.symbol,brief.description])&&/^(?:retry|try again)(?: please)?[.!]?$/i.test(reply)){
+    void handleWebsiteRequest(text,q.action,q.description,q.designBrief,q.artwork,q.revision);return true;
+   }
+   if(q.step==='direction'&&q.owner===user&&q.project===JSON.stringify([brief.name,brief.symbol,brief.description])&&!leaveQuestion){
+    void handleWebsiteRequest(text,q.action,q.description,reply,'',reply);return true;
+   }
+   if(q.step==='artwork'&&q.owner===user&&q.project===JSON.stringify([brief.name,brief.symbol,brief.description])&&!leaveQuestion){
+    void handleWebsiteRequest(text,q.action,q.description,q.designBrief,reply,q.revision);return true;
+   }
+   const command=leaveQuestion||/^https?:\/\//i.test(reply);
+   if(['facts','design'].includes(q.step)&&q.owner===user&&q.project===JSON.stringify([brief.name,brief.symbol,brief.description])&&!command){
     const answer=reply.replace(/^website brief:\s*/i,'');
     if(answer.length>(q.step==='design'?1000:2000)){websiteQuestion=q;say('Please shorten that to '+(q.step==='design'?1000:2000)+' characters.');return true;}
     void handleWebsiteRequest(text,'preview',q.step==='facts'?answer:q.description,q.step==='design'?answer:'');
