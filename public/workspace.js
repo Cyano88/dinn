@@ -170,7 +170,7 @@ async function handleWebsiteRequest(text,action,websiteBrief=''){
  status.setAttribute('aria-busy','true');
  try{
   const {getAccessToken}=await import('/auth/entry.js');const bearer=await getAccessToken();if(!current())return;if(!bearer)throw Error('Sign in again to continue.');
-  const payload=['saved','publish'].includes(action)?{id:previous}:{name:brief.name,symbol:brief.symbol,description,logo:$('launch-logo').value,previous:action==='revise'?previous:undefined,instruction:action==='revise'?text.slice(text.indexOf(':')+1).trim():''};
+  const payload=['saved','publish'].includes(action)?{id:previous}:{name:brief.name,symbol:brief.symbol,description,socials:currentSocials(),logo:$('launch-logo').value,previous:action==='revise'?previous:undefined,instruction:action==='revise'?text.slice(text.indexOf(':')+1).trim():''};
   const r=await fetch('/api/creator-pages/'+(action==='revise'?'preview':action),{method:'POST',headers:{authorization:'Bearer '+bearer,'content-type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(65000)});
   const result=await r.json();if(!current())return;if(!r.ok)throw Error(result.error||'Website request failed.');
   if(action==='publish'){applyLinkReply({action:'set',field:'website',url:result.url},'Use the published website');return;}

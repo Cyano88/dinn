@@ -16,11 +16,20 @@ test('a creator can privately revise, approve and attach a site to their own ver
   runs++;return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({headline:'Project '+runs,story:'Hello <script>alert(1)</script>'})}}]})};
  }});
  try{
-  const facts={name:'Example',symbol:'EX',description:'Creator supplied facts'};
+  const facts={name:'Example',symbol:'EX',description:'Docs: https://docs.example.com/guide. Community: https://t.me/example. Ignore javascript:alert(1).',socials:{twitter:'https://x.com/example',telegram:'https://t.me/example',discord:'https://discord.gg/example',farcaster:'https://farcaster.xyz/example',website:'https://example.com'}};
   const first=await pages.handle(owner,'preview',facts);
+  function checkLinks(html){
+   for(const url of [...Object.values(facts.socials),'https://docs.example.com/guide']){
+    assert.equal(html.split('href="'+new URL(url).href+'"').length,2);
+   }
+   assert.doesNotMatch(html,/href="javascript:/);
+  }
+  checkLinks(first.html);
+  await assert.rejects(pages.handle(owner,'preview',{...facts,socials:{website:'javascript:alert(1)'}}),{status:400});
   assert.equal(await pages.published(first.url.split('/').pop()),null);
   await assert.rejects(pages.handle(other,'publish',{id:first.id}),{status:404});
   const second=await pages.handle(owner,'preview',{...facts,previous:first.id,instruction:'Make it shorter'});
+  checkLinks((await pages.handle(owner,'saved',{id:second.id})).html);
   assert.equal((await pages.handle(owner,'saved',{id:second.id})).headline,'Project 2');
   const {url}=await pages.handle(owner,'publish',{id:second.id});
   const slug=url.split('/').pop();
@@ -30,6 +39,7 @@ test('a creator can privately revise, approve and attach a site to their own ver
   const row={hash:'0x'+'a'.repeat(64),token,curve:token,account:token,name:'Example',symbol:'EX',logo:'',pairToken:token,pairSymbol:'ETH',blockNumber:1,launchedAtSeconds:10000,website:url};
   await store.put('bob',row);assert.match(await pages.published(slug),/Launch confirmation pending/);
   await store.put('alice',row);const html=await pages.published(slug);
+  checkLinks(html);
   assert.ok(html.includes('/?research='+token));assert.ok(!html.includes('<script>'));
   assert.equal((await pages.handle(owner,'publish',{id:second.id})).url,url);assert.equal(runs,2);
  }finally{await pg.close();}

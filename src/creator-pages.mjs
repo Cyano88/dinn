@@ -1,4 +1,5 @@
 import {readLines} from '../public/chat.js';
+import {cleanSocials,socialLabels} from '../public/launch-metadata.js';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {PrivyClient} from '@privy-io/node';
@@ -51,10 +52,25 @@ async function websiteCopy(response){
  if(!headline||!story)throw Error('Invalid page fields');
  return {headline,story};
 }
+function projectLinks(socials,description){
+ const links=new Map();
+ function add(raw,label){
+  let url;try{url=new URL(raw);}catch{return;}
+  if(url.protocol!=='https:'||url.username||url.password||url.href.length>300||links.has(url.href))return;
+  const host=url.hostname.replace(/^www\./,'');
+  const platform=({'x.com':'X','twitter.com':'X','t.me':'Telegram','telegram.me':'Telegram','discord.gg':'Discord','discord.com':'Discord','warpcast.com':'Farcaster','farcaster.xyz':'Farcaster'})[host];
+  links.set(url.href,{url:url.href,label:typeof platform==='string'?platform:label||host});
+ }
+ for(const [field,url] of Object.entries(socials))if(url)add(url,socialLabels[field]);
+ for(const match of description.matchAll(/https:\/\/[^\s<>"'\x60]+/gi))add(match[0].replace(/[.,;:!?\]}]+$/g,'').replace(/\)+$/,s=>match[0].includes('(')?s:''));
+ return [...links.values()];
+}
 export function renderCreatorPage(page,token){
  const {name,symbol,headline,story}=page.copy;
  const verified=/^0x[0-9a-f]{40}$/i.test(token||'');
- return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(name)} ($${esc(symbol)})</title><style>*{box-sizing:border-box}body{margin:0;background:#f5f3eb;color:#172f28;font:17px/1.55 system-ui}main{max-width:840px;margin:auto;padding:clamp(24px,8vw,90px);overflow-wrap:anywhere}header,footer{border-top:1px solid #84978a;padding-top:14px}h1{font:normal clamp(3rem,10vw,6rem)/1 Georgia,serif;margin:.7em 0 .2em}h2{font:normal clamp(1.5rem,4vw,2.6rem)/1.2 Georgia,serif}p{max-width:58ch}footer{margin-top:3rem}a{color:inherit;text-underline-offset:4px}code{font-size:.85em}</style><main><header>${projectLogo(page.copy.logo)?`<img width="72" height="72" style="object-fit:contain;vertical-align:middle;margin-right:16px" src="${esc(projectLogo(page.copy.logo))}" alt="">`:''}$${esc(symbol)}</header><h1>${esc(name)}</h1><h2>${esc(headline)}</h2><p>${esc(story)}</p><footer>${verified?`Robinhood Chain Â· Pons<p><code>${esc(token)}</code></p><a href="https://ponsfamily.com/launchpad/${token}">Open on Pons</a> Â· <a href="/?research=${token}">Research in Dinn</a>`:'Launch confirmation pending.'}</footer></main></html>`;
+ const links=(page.copy.links||[]).map(({url,label})=>`<a href="${esc(url)}" rel="noopener noreferrer">${esc(label)}</a>`).join(' ');
+ const navigation=links?`<nav aria-label="Project links" style="display:flex;flex-wrap:wrap;gap:8px 20px">${links}</nav>`:'';
+ return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(name)} ($${esc(symbol)})</title><style>*{box-sizing:border-box}body{margin:0;background:#f5f3eb;color:#172f28;font:17px/1.55 system-ui}main{max-width:840px;margin:auto;padding:clamp(24px,8vw,90px);overflow-wrap:anywhere}header,footer{border-top:1px solid #84978a;padding-top:14px}h1{font:normal clamp(3rem,10vw,6rem)/1 Georgia,serif;margin:.7em 0 .2em}h2{font:normal clamp(1.5rem,4vw,2.6rem)/1.2 Georgia,serif}p{max-width:58ch}footer{margin-top:3rem}a{color:inherit;text-underline-offset:4px}code{font-size:.85em}</style><main><header>${projectLogo(page.copy.logo)?`<img width="72" height="72" style="object-fit:contain;vertical-align:middle;margin-right:16px" src="${esc(projectLogo(page.copy.logo))}" alt="">`:''}$${esc(symbol)}</header><h1>${esc(name)}</h1><h2>${esc(headline)}</h2><p>${esc(story)}</p>${navigation}<footer>${verified?`Robinhood Chain Â· Pons<p><code>${esc(token)}</code></p><a href="https://ponsfamily.com/launchpad/${token}">Open on Pons</a> Â· <a href="/?research=${token}">Research in Dinn</a>`:'Launch confirmation pending.'}</footer></main></html>`;
 }
 
 export function createCreatorPages({env=process.env,db,verify,fetcher=fetch}={}){
@@ -88,6 +104,11 @@ export function createCreatorPages({env=process.env,db,verify,fetcher=fetch}={})
   if(!name||!symbol||!description)throw fail(400,'Add a token name, ticker and description first.');
   let prior=null;
   if(data.previous){if(!uuid.test(data.previous))throw fail(400,'Invalid preview.');prior=(await db.query('SELECT copy FROM dinn_creator_pages WHERE owner=$1 AND id=$2',[owner,data.previous])).rows[0]?.copy;if(!prior||prior.name!==name||prior.symbol!==symbol)throw fail(404,'Preview unavailable.');}
+  let socials;try{socials=cleanSocials(data.socials);}catch(e){throw fail(400,e.message);}
+ const links=projectLinks(socials,description);
+ if(data.socials===undefined&&prior?.links){
+  for(const link of prior.links)if(!links.some(item=>item.url===link.url))links.push(link);
+ }
   const id=randomUUID(),slug=(symbol.toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,24)||'token')+'-'+id.slice(0,8);
   // Serialize quota reservations per creator before incurring an inference charge.
   const client=await db.connect();
@@ -102,7 +123,7 @@ export function createCreatorPages({env=process.env,db,verify,fetcher=fetch}={})
     break;
    }
    reason='incomplete reply';
-   const fields=await websiteCopy(response);copy={name,symbol,...fields,logo:projectLogo(data.logo),reference:reference.id};
+   const fields=await websiteCopy(response);copy={name,symbol,...fields,links,logo:projectLogo(data.logo),reference:reference.id};
   }catch(e){reason=e?.name==='TimeoutError'?'provider timeout':reason||'connection failed';}
   }
   if(!copy){
