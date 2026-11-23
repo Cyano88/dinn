@@ -46,7 +46,7 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
    const query=data.query===undefined?'':data.query;if(typeof query!=='string'||query.length>64||/[\x00-\x1f\x7f]/.test(query))return {status:400,body:{error:'Search must be 64 characters or fewer.'}};
    const limit=data.limit===undefined?10:data.limit,offset=data.offset===undefined?0:data.offset;if(!Number.isInteger(limit)||limit<1||limit>10||!Number.isInteger(offset)||offset<0||offset>10000)return {status:400,body:{error:'Invalid launch history page.'}};
    const rows=await (await getStore()).list({query:query.trim(),limit,offset});
-   const items=await mapLimit(rows.items,3,async item=>{try{const key=item.token.toLowerCase(),cached=metricsCache.get(key);let metrics;if(cached&&now()-cached.at<60000)metrics=cached.value;else{metrics=publicMetrics(await readMetrics({address:item.token}));metricsCache.set(key,{at:now(),value:metrics});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);}return {...publicLaunch(item),metrics};}catch{return {...publicLaunch(item),metrics:null};}});
+   const items=await mapLimit(rows.items,3,async item=>{try{const key=item.token.toLowerCase(),cached=metricsCache.get(key);let metrics,logo=cached?.logo;if(cached&&now()-cached.at<60000)metrics=cached.value;else{const state=await readMetrics({address:item.token},{includeLogo:!item.logo});metrics=publicMetrics(state);logo=state.logo;metricsCache.set(key,{at:now(),value:metrics,logo});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);}return {...publicLaunch(item),logo:item.logo||logo||null,metrics};}catch{return {...publicLaunch(item),metrics:null};}});
    const external=[];
    let searchNotice='';
    const term=query.trim().replace(/^\$/,'');
@@ -66,8 +66,8 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
      }
      const matches=await mapLimit(addresses,2,async token=>{
       try{
-       const state=await readMetrics({address:token});
-       return {token,name:state.name,symbol:state.symbol,origin:'pons',metrics:publicMetrics(state)};
+       const state=await readMetrics({address:token},{includeLogo:true});
+       return {token,name:state.name,symbol:state.symbol,logo:state.logo||null,origin:'pons',metrics:publicMetrics(state)};
       }catch(error){
        if(!error.message.includes('not registered in the supported Pons'))searchNotice='Some Pons launches could not be checked. Try again.';
        return null;

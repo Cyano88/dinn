@@ -149,7 +149,8 @@ async function feedbackChat(body,token){
  const response=await fetch('/api/feedback/chat',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify(body),signal:AbortSignal.timeout(4000)});
  if(!response.ok)throw Error('Feedback unavailable.');return response.json();
 }
-function recordSetupReply(text,reply){const state=appendChatState(history,chatResults,text,reply,{});history=state.messages;chatResults=state.results;save('chat',state);message('user',text);return message('assistant',reply);}
+const actionHistoryText=new WeakMap();
+function recordSetupReply(text,reply){const state=appendChatState(history,chatResults,text,reply,{});history=state.messages;chatResults=state.results;save('chat',state);message('user',text);const body=message('assistant',reply);actionHistoryText.set(body,reply);return body;}
 
 function handleLaunchReply(text){
  const trimmed=text.trim(),explicitLaunchReply=/^(?:set|change|update|add|use|skip|continue|next|resume|pause|cancel)\b/i.test(trimmed),question=/^(?:what|why|how|explain|suggest|recommend|should|is|are|does|do)\b/i.test(trimmed)||/\?$/.test(trimmed)&&!explicitLaunchReply;
@@ -615,8 +616,10 @@ function applyLaunchDraft(d){
 
 function appendChatActionNote(body,text,{success=false,pending=false,hash,chainId=4663}={}){
  const p=document.createElement('p');p.textContent=text;if(success)p.className='operation-success';if(pending)p.classList.add('chat-action-pending');body.append(p);
- const explorers={4663:'https://robinhoodchain.blockscout.com',8453:'https://basescan.org',42161:'https://arbiscan.io'};if(hash&&/^0x[0-9a-f]{64}$/i.test(hash)&&explorers[chainId]){const a=document.createElement('a');a.href=explorers[chainId]+'/tx/'+hash;a.target='_blank';a.rel='noopener noreferrer';a.textContent='View transaction';body.append(a);}
- const i=history.findLastIndex(m=>m.role==='assistant');if(i>=0){history[i].content+='\n\n'+text;try{save('chat',{messages:history,results:chatResults});}catch{}}
+ const explorers={4663:'https://robinhoodchain.blockscout.com',8453:'https://basescan.org',42161:'https://arbiscan.io'};if(hash&&/^0x[0-9a-f]{64}$/i.test(hash)&&explorers[chainId]){const a=document.createElement('a');a.href=explorers[chainId]+'/tx/'+hash;a.target='_blank';a.rel='noopener noreferrer';a.textContent='View transaction';body.append(a);text+=' [View transaction]('+a.href+')';}
+ const previous=actionHistoryText.get(body);
+ const matches=history.filter(m=>m.role==='assistant'&&m.content===previous);
+ if(matches.length===1){const reply=matches[0];reply.content+='\n\n'+text;actionHistoryText.set(body,reply.content);try{save('chat',{messages:history,results:chatResults});}catch{}}
  scrollChat();return p;
 }
 async function approveWalletFromChat(action,body){

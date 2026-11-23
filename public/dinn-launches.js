@@ -1,5 +1,16 @@
 const address=value=>typeof value==='string'&&/^0x[0-9a-f]{40}$/i.test(value);
-function imageSource(value){if(typeof value!=='string'||!value)return null;if(/^https:\/\//i.test(value))return value;if(value.startsWith('ipfs://')){const path=value.slice(7).replace(/^ipfs\//,'');return path?`https://ipfs.io/ipfs/${path}`:null;}return null;}
+function imageSource(value){
+ if(typeof value!=='string'||!value||value.length>2048)return null;
+ try{
+  const url=new URL(value);
+  if(url.username||url.password)return null;
+  const gateway='https://gateway.pinata.cloud/ipfs/';
+  if(url.protocol==='ipfs:')return gateway+value.slice(7).replace(/^ipfs\//,'');
+  if(url.protocol!=='https:')return null;
+  if(['ipfs.io','ipfs.filebase.io','gateway.pinata.cloud'].includes(url.hostname)&&url.pathname.startsWith('/ipfs/'))return gateway+url.pathname.slice(6);
+  return url.href;
+ }catch{return null;}
+}
 function formatUsd(value){const number=typeof value==='string'?Number(value):NaN;if(!Number.isFinite(number)||number<0)return 'Unavailable';return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:number>0&&number<0.01?8:2}).format(number);}
 function ago(value){if(!value)return 'Launch date unavailable';const date=new Date(value);if(!Number.isFinite(date.getTime()))return 'Launch date unavailable';const seconds=Math.max(0,Math.floor((Date.now()-date.getTime())/1000));if(seconds<60)return 'just launched';if(seconds<3600)return `${Math.floor(seconds/60)}m ago`;if(seconds<86400)return `${Math.floor(seconds/3600)}h ago`;const days=Math.floor(seconds/86400);return days<30?`${days}d ago`:`${Math.floor(days/30)}mo ago`;}
 function addressShort(value){return address(value)?`${value.slice(0,6)}…${value.slice(-4)}`:'Token address unavailable';}
