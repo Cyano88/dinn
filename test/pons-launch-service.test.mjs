@@ -36,3 +36,15 @@ test('external search outages leave the verified directory available',async()=>{
  assert.equal(result.body.items.length,1);
  assert.match(result.body.searchNotice,/contract address/);
 });
+
+test('curve valuation uses supply outside the curve and keeps reported cap separate',async()=>{
+ const f=fixture({readMetrics:async(address,options)=>{
+  assert.equal(options.launchValuation,true);
+  return {phase:0,curve:{outsideSupply:'12.5',priceQuote:'0.5',fdvQuote:'500'},quoteUsd:{available:true,unitPriceUsd:'4'}};
+ }});
+ const result=await f.service.handle(f.req,'/api/dinn/launches/list',{});
+ const {metrics}=result.body.items[0];
+ assert.equal(metrics.market.marketCapUsd,null);
+ assert.equal(metrics.outsideValueUsd,'25.00');
+ assert.equal(metrics.curveFdvUsd,'2000.00');
+});

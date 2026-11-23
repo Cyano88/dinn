@@ -6,7 +6,7 @@ import {purchaseUsdReference} from './purchase-usd.mjs';
 const same=(a,b)=>typeof a==='string'&&typeof b==='string'&&a.toLowerCase()===b.toLowerCase();
 const address=v=>typeof v==='string'&&/^0x[0-9a-f]{40}$/i.test(v)&&!same(v,zeroAddress);
 const clean=v=>String(v).replace(/[\x00-\x1f\x7f]/g,'').slice(0,80);
-const tokenAbi=parseAbi(['function name() view returns(string)','function symbol() view returns(string)','function decimals() view returns(uint8)','function totalSupply() view returns(uint256)']);
+const tokenAbi=parseAbi(['function balanceOf(address) view returns(uint256)','function name() view returns(string)','function symbol() view returns(string)','function decimals() view returns(uint8)','function totalSupply() view returns(uint256)']);
 const curveAbi=parseAbi(['function factory() view returns(address)','function token() view returns(address)','function pairToken() view returns(address)','function getReserves() view returns(uint256,uint256)','function realQuoteReserve() view returns(uint256)','function sellableTokens() view returns(uint256)','function readyToGraduate() view returns(bool)','function quoteFeeBalance() view returns(uint256)','function creatorTaxBalance() view returns(uint256)']);
 const hookAbi=parseAbi(['function pendingFees(bytes32,address) view returns(uint256)','function pendingCreatorTax(bytes32,address) view returns(uint256)']);
 export function creatorShare(fee,tax,policy,buyback){const protocol=fee*BigInt(policy.protocolFeeShareBps)/10000n,after=fee-protocol;return after-(buyback?after*BigInt(policy.buybackBurnBps)/10000n:0n)+tax;}
@@ -42,11 +42,15 @@ export async function ponsTokenState(input,o={}){
  if(Number(launch.phase)===0){const [fee,tax]=await Promise.all(['quoteFeeBalance','creatorTaxBalance'].map(fn=>read(launch.curve,curveAbi,fn)));unswept={quote:formatUnits(creatorShare(fee,tax,policy,launch.buybackEnabled),x.pairDecimals),launchTokens:'0',estimate:true};}
  else if(Number(launch.phase)===2){const currencies=[input.address,launch.pairToken].sort((a,b)=>a.toLowerCase().localeCompare(b.toLowerCase()));const poolId=keccak256(encodeAbiParameters([{type:'address'},{type:'address'},{type:'uint24'},{type:'int24'},{type:'address'}],[...currencies,launch.poolFee,launch.tickSpacing,hook]));const [q,t]=await Promise.all([launch.pairToken,input.address].map(async asset=>{const [fee,tax]=await Promise.all(['pendingFees','pendingCreatorTax'].map(fn=>read(hook,hookAbi,fn,[poolId,asset])));return creatorShare(fee,tax,policy,launch.buybackEnabled);}));unswept={quote:formatUnits(q,x.pairDecimals),launchTokens:formatUnits(t,x.decimals),estimate:true};}
  }catch{feeReadError=true;}
- const [market,usd,logo]=await Promise.all([
+ const [market,usd,logo,curveBalance]=await Promise.all([
   (o.market||marketReference)(input.address,o.fetcher),
   (o.usd||purchaseUsdReference)({pairToken:launch.pairToken}),
-  o.includeLogo?read(input.address,[{type:'function',name:'logo',stateMutability:'view',inputs:[],outputs:[{type:'string'}]}],'logo').catch(()=>null):null
+  o.includeLogo?read(input.address,[{type:'function',name:'logo',stateMutability:'view',inputs:[],outputs:[{type:'string'}]}],'logo').catch(()=>null):null,
+  o.launchValuation&&curve?read(input.address,tokenAbi,'balanceOf',[launch.curve]).catch(()=>null):null
  ]);
+ if(curve&&typeof curveBalance==='bigint'&&curveBalance>=0n&&curveBalance<=x.supply){
+  curve.outsideSupply=formatUnits(x.supply-curveBalance,x.decimals);
+ }
  if((await c.getBlock({blockNumber:b.number})).hash!==b.hash)throw Error('The chain snapshot changed. Check again.');
  return {...(o.includeLogo?{logo:typeof logo==="string"&&logo.length<=2048?logo:null}:{}),address:input.address,name:x.name,symbol:x.symbol,chainId:4663,phase:Number(launch.phase),status:['On bonding curve','Curve complete; pool pending','Graduated; Uniswap v4 pool','Recovery path'][Number(launch.phase)],curve,market,quoteUsd:usd,feeRecipient:launch.creatorFeeRecipient,viewerAccount:account,accountSource:x.accountSource,pair:{address:launch.pairToken,symbol:x.pairSymbol,decimals:x.pairDecimals},escrow,claimable:formatUnits(claimable,x.pairDecimals),claimableWei:String(claimable),claimScope:'Entire wallet balance for this asset in this Pons escrow; may include several launches.',unswept,feeReadError,unsweptRecipient:launch.creatorFeeRecipient,blockNumber:String(b.number),checkedAt:new Date(Number(b.timestamp)*1000).toISOString(),lifetimeEarnings:null};
 }
