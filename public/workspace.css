@@ -214,4 +214,6 @@ select{font:inherit;border:1px solid #dce3dd;border-radius:8px;padding:12px;back
 #integrate-result summary::after{content:'';display:inline-block;width:6px;height:6px;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:rotate(-45deg);margin-left:8px}#integrate-result[open] summary::after{transform:rotate(45deg)}
 #integrate-json{margin-top:10px;max-height:320px;overflow:auto;background:#f6f8f6;padding:12px;border-radius:6px}
 #integrate-status,.integrate-note{font-size:12px}#integrate-status{margin-left:8px}
-.integrate-sales,.integrate-note a{color:#314d39;text-underline-offset:3px}
+.integrate-sales{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-height:44px;padding:10px 20px;text-decoration:none}
+.integrate-sales:focus-visible{outline:2px solid #314d39;outline-offset:3px}
+.integrate-note a{color:#314d39;text-underline-offset:3px}
