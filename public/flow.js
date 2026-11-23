@@ -72,7 +72,8 @@ export function conversationTask(text){
 
 // Explicit task switches take precedence over pending launch fields and short replies.
 export function newChatTask(text){
- const request=text.trim().replace(/^(?:please\s+)?(?:(?:i (?:want|need|would like|would love) to|i['\u2019]d like to|can you|could you|help me(?: to)?)\s+)?(?:please\s+)?/i,'');
+ const request=text.trim().replace(/^(?:actually[, ]+|instead[, ]+|just\s+)+/i,'').replace(/^(?:please\s+)?(?:(?:i (?:want|need|would like|would love) to|i['\u2019]d like to|can you|could you|help me(?: to)?)\s+)?(?:please\s+)?/i,'');
+ if(/^move\b/i.test(request)&&/\b(?:to|into)\b/i.test(request)&&/\b(?:wallet|address)\b/i.test(request)&&!/\b(?:across|between|bridge)\b/i.test(request)&&!(/\bbase\b/i.test(request)&&/\brobinhood\b/i.test(request)))return 'send';
  if(/^(?:withdraw|send|transfer)\b/i.test(request))return 'send';
  if(/^(?:bridge|swap|research|inspect|analy[sz]e|look up|buy|sell|burn|claim)\b/i.test(request))return request.split(/\s/)[0].toLowerCase();
  if(/^(?:(?:check|show|read|get)\s+(?:my\s+|the\s+)?|my\s+)?(?:(?:base|robinhood(?: chain)?|arbitrum|eth|usdc|usdt|wallet)\s+)*(?:balance[s]?|portfolio|transaction status)\b/i.test(request))return 'read';

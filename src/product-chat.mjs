@@ -59,6 +59,9 @@ export async function* streamProductChat(context,messages,{env=process.env,fetch
   if(['send','bridge','swap'].includes(meaning))direct={name:'open_wallet_action',args:{kind:meaning}};
   else if(meaning!=='launch'){direct=null;excludeLaunchTool=true;}
  }
+ if(direct?.name==='open_wallet_action'&&direct.args.recipient&&/^To send this, which address should receive your /i.test(lastAssistant)){
+  const r=await run(direct.name,direct.args);yield {type:'delta',text:r.message};yield {type:'done',result:{...r,toolsUsed,mode:'chat-wallet-action'}};return;
+ }
  if(direct?.name==='open_wallet_action'&&direct.args.kind==='send'&&!context.message.match(/0x[0-9a-f]{40}/i)&&!/^To send this,/i.test(lastAssistant)){
   const networks=[[/\bbase\b/i,'8453'],[/\brobinhood(?: chain)?\b/i,'4663']].filter(([pattern])=>pattern.test(context.message));
   const r=await run('open_wallet_action',{kind:'send',...(networks.length===1?{network:networks[0][1]}:{})});
