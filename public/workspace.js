@@ -445,8 +445,22 @@ copyWalletButton.onclick=async()=>{
 };
 $('wallet-use-dinn').onclick=()=>window.dispatchEvent(new CustomEvent('dinn:use-dinn-wallet'));
 
-function clearAuthBootTimer(){if(authBootTimer)clearTimeout(authBootTimer);authBootTimer=null;authBootTimedOut=false;$('auth-timeout-notice')?.remove();}
-function startAuthBootTimer(){if(authBootResolved||authBootTimer||authBootTimedOut)return;authBootTimer=setTimeout(()=>{authBootTimer=null;if(authBootTimedOut||authBootResolved)return;authBootTimedOut=true;$('session-loading').hidden=true;$('auth-gate').hidden=false;$('workspace').hidden=true;$('workspace').inert=true;const card=document.querySelector('.signin-card');if(card&&!$('auth-timeout-notice')){const note=document.createElement('div');note.id='auth-timeout-notice';const message=document.createElement('p');message.className='auth-error';message.textContent='Sign-in is taking longer than expected. Reload to retry.';const retry=document.createElement('button');retry.className='social-login';retry.type='button';retry.textContent='Retry sign-in';retry.onclick=()=>location.reload();note.append(message,retry);card.append(note);}},25000);}
+function clearAuthBootTimer(){
+ clearTimeout(authBootTimer);authBootTimer=null;authBootTimedOut=false;
+ $('auth-recovery').hidden=true;$('embedded-auth').hidden=false;
+}
+function showAuthRecovery(message){
+ $('auth-recovery-message').textContent=message;$('embedded-auth').hidden=true;$('auth-recovery').hidden=false;
+ $('session-loading').hidden=true;$('auth-gate').hidden=false;$('workspace').hidden=true;$('workspace').inert=true;
+}
+$('auth-retry').onclick=()=>location.reload();
+function startAuthBootTimer(){
+ if(authBootResolved||authBootTimer||authBootTimedOut)return;
+ authBootTimer=setTimeout(()=>{
+  authBootTimer=null;if(authBootResolved)return;authBootTimedOut=true;
+  showAuthRecovery('Sign-in is still loading. You can wait here or try again.');
+ },25000);
+}
 window.addEventListener('launchflow:auth',e=>{const d=e.detail;if(d.state==='loading'){if(authBootResolved||authBootTimedOut)return;startAuthBootTimer();}else{clearAuthBootTimer();authBootResolved=true;}const nextUser=d.authenticated?(d.userId||d.address):null;
 // Wallet/provider refreshes are not account changes: preserve the current chat and stage.
 if(user&&((nextUser===user)||d.state==='loading'&&!nextUser)){
@@ -858,7 +872,17 @@ function renderAgentAccess(manifest,checking=false){
   marketCard('OKX AI Marketplace','Coming soon','Planned marketplace access for Dinn services.','Not available yet','okx');if(selectedAgentMarketplace)showDetail(selectedAgentMarketplace);
 }
 
-startAuthBootTimer();try{const [config,status]=await Promise.all([fetch('/api/auth/config').then(r=>r.json()),fetch('/api/status').then(r=>r.json())]);draftSync.configure(status.draftSyncEnabled);renderToolDirectory(status.capabilities);renderAgentAccess(null,true);fetch('/.well-known/dinn.json').then(r=>r.ok?r.json():null).then(data=>renderAgentAccess(data,false)).catch(()=>renderAgentAccess(null,false));if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}const {mountRobinhoodWallet}=await import('/pons/entry.js');walletUI=mountRobinhoodWallet({api,getAccount:()=>account,getProvider:()=>provider,getSendTransaction:()=>walletSource==='embedded'?walletSendTransaction:null,getWalletSource:()=>walletSource,getEpoch:()=>epoch,onSwitch:(value,restored)=>{walletNetworkBusy=value;if(!value&&restored)window.dispatchEvent(new CustomEvent('dinn:wallet-network-restored'));}});const {mountEmbeddedAuth}=await import('/auth/entry.js');mountEmbeddedAuth($('embedded-auth'),config,$('account-controls'));}catch{clearAuthBootTimer();authBootResolved=true;$('session-loading').hidden=true;$('auth-gate').hidden=false;$('embedded-auth').replaceChildren();const note=document.createElement('p');note.textContent='Sign-in could not connect. Your saved drafts are still here.';const retry=document.createElement('button');retry.className='social-login';retry.textContent='Retry sign-in';retry.onclick=()=>location.reload();$('embedded-auth').append(note,retry);}
+startAuthBootTimer();
+async function startSignIn(){
+ try{
+  const [config,auth]=await Promise.all([fetch('/api/auth/config').then(r=>{if(!r.ok)throw Error();return r.json();}),import('/auth/entry.js')]);
+  auth.mountEmbeddedAuth($('embedded-auth'),config,$('account-controls'));
+ }catch{clearAuthBootTimer();authBootResolved=true;showAuthRecovery('Sign-in could not load. Try again.');}
+}
+void startSignIn();
+void fetch('/api/status').then(r=>{if(!r.ok)throw Error();return r.json();}).then(status=>{draftSync.configure(status.draftSyncEnabled);renderToolDirectory(status.capabilities);renderAgentAccess(null,true);fetch('/.well-known/dinn.json').then(r=>r.ok?r.json():null).then(data=>renderAgentAccess(data,false)).catch(()=>renderAgentAccess(null,false));if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}}).catch(()=>renderAgentAccess(null,false));
+void (async()=>{const {mountRobinhoodWallet}=await import('/pons/entry.js');walletUI=mountRobinhoodWallet({api,getAccount:()=>account,getProvider:()=>provider,getSendTransaction:()=>walletSource==='embedded'?walletSendTransaction:null,getWalletSource:()=>walletSource,getEpoch:()=>epoch,onSwitch:(value,restored)=>{walletNetworkBusy=value;if(!value&&restored)window.dispatchEvent(new CustomEvent('dinn:wallet-network-restored'));}});if(account)walletUI.changed('',false);})().catch(()=>{$('wallet-status').textContent='Wallet tools could not load. Reload to try again.';});
+
 
 
 launchesView=mountDinnLaunches({host:$('launches-view'),getAccessToken:async()=>{const {getAccessToken}=await import('/auth/entry.js');return getAccessToken();},onStart:()=>{view('assistant');submitChoice('create a token');},onResearch:address=>{selectedToken=address;view('assistant');submitChoice('Research '+address+' on Robinhood Chain');}});

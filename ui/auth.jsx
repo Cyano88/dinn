@@ -10,7 +10,7 @@ import {createPortal} from 'react-dom';
 import {PrivyProvider,usePrivy,useWallets,useUser,useCreateWallet,useSignTransaction,useSendTransaction,useConnectWallet,useLoginWithOAuth} from '@privy-io/react-auth';
 const oauthReturn=new URLSearchParams(window.location.search).has('privy_oauth_code');
 const emit=detail=>window.dispatchEvent(new CustomEvent('launchflow:auth',{detail}));
-function AuthRecovery({message='Sign-in could not connect. Your saved drafts are still here.'}){return <><p className="auth-error" role="alert">{message}</p><button className="social-login" onClick={()=>window.location.reload()}>Retry sign-in</button></>;}
+function AuthRecovery({message='Sign-in could not connect. Your saved drafts are still here.'}){return <div className="signin-actions"><p className="auth-error" role="alert">{message}</p><button className="social-login" onClick={()=>window.location.reload()}>Retry sign-in</button></div>;}
 class Boundary extends Component{
  state={failed:false};
  static getDerivedStateFromError(){return {failed:true};}
