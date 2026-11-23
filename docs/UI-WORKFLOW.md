@@ -1,5 +1,11 @@
 ﻿# UI workflow — 6 November 2026
 
+## Creator token pages
+
+At the website step of a Pons launch, the creator can paste a URL, skip, or say `create a website`. Dinn sends the editorial design brief and its [reviewed Framer reference](https://www.framer.com/marketplace/templates/buildinaday/) with each 0G generation. Dinn supplies its own responsive layout. Additional template references require review.
+
+Use `show preview` to reopen the saved version, `revise website: <change>` to generate a revision, and `use this website` to publish the chosen version at its proposed dinnlabs.com URL and include it in launch metadata. Each account can request five generations per rolling 24 hours. Published pages show the token contract and links to Pons and Dinn research once the matching receipt is verified and registered. The research link fills in the token address for the visitor.
+
 ## Current product flow
 
 X or Google sign-in -> Assistant -> seven-setting draft -> editable review -> read-only simulation -> wallet approval (release-gated) -> receipt verification -> Launches.

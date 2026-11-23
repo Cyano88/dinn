@@ -152,6 +152,28 @@ async function feedbackChat(body,token){
 const actionHistoryText=new WeakMap();
 function recordSetupReply(text,reply){const state=appendChatState(history,chatResults,text,reply,{});history=state.messages;chatResults=state.results;save('chat',state);message('user',text);const body=message('assistant',reply);actionHistoryText.set(body,reply);return body;}
 
+let creatorRequest=null;
+async function handleWebsiteRequest(text,action){
+ if(creatorRequest){say('Your website request is still in progress.');return;}
+ const owner=user,session=epoch,project=JSON.stringify([brief.name,brief.symbol,brief.description]);
+ const current=()=>owner===user&&session===epoch&&project===JSON.stringify([brief.name,brief.symbol,brief.description])&&launchConversationStep==='links'&&launchLinkSteps[launchLinkIndex]?.field==='website';
+ const slot=key('creator-preview');let previous;
+ try{const saved=JSON.parse(localStorage.getItem(slot));if(saved?.project===project)previous=saved.id;}catch{}
+ if(action!=='preview'&&!previous){say('Say "create a website" to see a preview first.');return;}
+ const job={};creatorRequest=job;
+ recordSetupReply(text,action==='publish'?'Publishing your approved website.':action==='saved'?'Opening your saved preview.':'Preparing your private editorial website preview with 0G.');
+ try{
+  const {getAccessToken}=await import('/auth/entry.js');const bearer=await getAccessToken();if(!current())return;if(!bearer)throw Error('Sign in again to continue.');
+  const payload=['saved','publish'].includes(action)?{id:previous}:{name:brief.name,symbol:brief.symbol,description:brief.description,logo:$('launch-logo').value,previous:action==='revise'?previous:undefined,instruction:action==='revise'?text.slice(text.indexOf(':')+1).trim():''};
+  const r=await fetch('/api/creator-pages/'+(action==='revise'?'preview':action),{method:'POST',headers:{authorization:'Bearer '+bearer,'content-type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(65000)});
+  const result=await r.json();if(!current())return;if(!r.ok)throw Error(result.error||'Website request failed.');
+  if(action==='publish'){applyLinkReply({action:'set',field:'website',url:result.url},'Use the published website');return;}
+  try{localStorage.setItem(slot,JSON.stringify({project,id:result.id}));}catch{throw Error('Allow local storage to keep and approve this preview.');}
+  const body=say(result.headline+'\n\n'+result.story+'\n\nProposed URL: '+result.url+'\n\nSay "use this website", "revise website: your change", or "skip".');
+  const preview=document.createElement('a');const url=URL.createObjectURL(new Blob([result.html],{type:'text/html;charset=utf-8'}));preview.href=url;preview.target='_blank';preview.rel='noopener noreferrer';preview.textContent='Open private preview';body.append(preview);
+  const observer=new MutationObserver(()=>{if(!preview.isConnected){URL.revokeObjectURL(url);observer.disconnect();}});observer.observe($('messages'),{childList:true,subtree:true});
+ }catch(e){if(current())say(e.message||'Could not finish the website request.');}finally{if(creatorRequest===job)creatorRequest=null;}
+}
 function handleLaunchReply(text){
  const trimmed=text.trim(),explicitLaunchReply=/^(?:set|change|update|add|use|skip|continue|next|resume|pause|cancel)\b/i.test(trimmed),question=/^(?:what|why|how|explain|suggest|recommend|should|is|are|does|do)\b/i.test(trimmed)||/\?$/.test(trimmed)&&!explicitLaunchReply;
  if(question||/\b(?:balance|balances|portfolio|wallet assets|bridge|swap|send tokens|send|transfer)\b/i.test(trimmed))return false;
@@ -184,6 +206,18 @@ function handleLaunchReply(text){
  }
 
  if(launchConversationStep==='links'){
+  if(launchLinkSteps[launchLinkIndex].field==='website'){
+   const command=text.trim();
+   const referenceUrl=command.match(/https?:\/\/\S+/i)?.[0];
+   if(referenceUrl&&/^(?:create|build|generate|revise)\b/i.test(command)){
+    if(referenceUrl.replace(/\/$/,'')!=='https://www.framer.com/marketplace/templates/buildinaday'){
+     say('Dinn has not reviewed that design yet. Say "create a website" to preview the editorial design, or paste your existing website.');return true;
+    }
+    if(!/^revise/i.test(command)){void handleWebsiteRequest(command,'preview');return true;}
+   }
+   const action=/^(?:create|build|generate)(?: me)? (?:a |my )?(?:website|web page|site)[.!]?$/i.test(command)?'preview':/^(?:use|publish) (?:this|my|the) (?:website|site|page)[.!]?$/i.test(command)?'publish':/^(?:show|open) (?:my |the )?(?:website )?preview[.!]?$/i.test(command)?'saved':/^revise (?:website|site|page):\s*\S/i.test(command)?'revise':null;
+   if(action){void handleWebsiteRequest(command,action);return true;}
+  }
   const parsed=parseLaunchLink(text,launchLinkSteps[launchLinkIndex].field);
   if(parsed){applyLinkReply(parsed,text);return true;}
   say('Please send '+launchLinkSteps[launchLinkIndex].label+' as a valid link, say “keep” to retain the saved link, or say “skip”.');return true;
@@ -779,3 +813,8 @@ startAuthBootTimer();try{const [config,status]=await Promise.all([fetch('/api/au
 
 launchesView=mountDinnLaunches({host:$('launches-view'),getAccessToken:async()=>{const {getAccessToken}=await import('/auth/entry.js');return getAccessToken();},onStart:()=>{view('assistant');submitChoice('create a token');},onResearch:address=>{selectedToken=address;view('assistant');submitChoice('Research '+address+' on Robinhood Chain');}});
 let launchesOwner=user;window.addEventListener('launchflow:auth',event=>{const detail=event.detail||{},next=detail.authenticated?(detail.userId||detail.address):null;if(next!==launchesOwner){launchesView?.reset();launchesOwner=next;}});
+
+const researchTarget=new URLSearchParams(location.search).get('research');
+if(/^0x[0-9a-f]{40}$/i.test(researchTarget||'')&&!$('prompt').value){
+ $('prompt').value='Research '+researchTarget+' on Robinhood Chain';$('prompt').dispatchEvent(new Event('input'));
+}

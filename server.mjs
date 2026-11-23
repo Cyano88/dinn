@@ -1,3 +1,4 @@
+import {createCreatorPages} from './src/creator-pages.mjs';
 import {discoverStockPairs} from './src/base-stock-paired-research.mjs';
 import {feedbackFeed,feedbackRequest} from './src/research-feedback.mjs';
 import {createNearMarketClient} from './src/near-market-client.mjs';
@@ -51,6 +52,7 @@ import {simulateLaunch} from './src/ascend.mjs';
 try{process.loadEnvFile(new URL('./.env',import.meta.url));}catch(error){if(error.code!=='ENOENT')throw error;}
 const port=Number(process.env.PORT||4317), host=process.env.RENDER?'0.0.0.0':'127.0.0.1';
 const logoService=createLogoService();
+const creatorPages=createCreatorPages();
 const draftService=createDraftService();
 const ponsLaunchService=createPonsLaunchService();
 const checkInferenceAccess=inferenceAccess();
@@ -99,6 +101,11 @@ const server=createServer(async(req,res)=>{
   }
   if(isPausedRoute(path)||path==='/execution/entry.js')return json(res,410,{error:pausedMessage,code:'COMING_SOON'});
   if(req.method==='HEAD' && path==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});return res.end();}
+  if(req.method==='GET' && /^\/t\/[a-z0-9-]{1,33}$/.test(path)){
+   try{const html=await creatorPages.published(path.slice(3));if(!html)return json(res,404,{error:'Website has not been published.'});
+    res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; img-src https://dinnlabs.com https://dinn-pasy.onrender.com https://gateway.pinata.cloud; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"});return res.end(html);
+   }catch{return json(res,503,{error:'Website temporarily unavailable.'});}
+  }
   if(req.method==='GET' && path==='/api/tools')return json(res,200,{tools:productTools,capabilities:productCapabilities,chainId:4663,canSign:false});
   if(req.method==='GET' && path==='/api/auth/config')return json(res,200,authConfig);
   if(req.method==='GET' && path==='/api/status')return json(res,200,{...productStatus(),legalLinks,draftSyncEnabled:draftService.enabled(),aiConfigured:!!(process.env.OG_API_KEY&&process.env.OG_MODEL)});
@@ -120,6 +127,10 @@ const server=createServer(async(req,res)=>{
     return json(res,415,{error:'JSON required.'});
    }
    const data=await body(req,path==='/api/chat'?100000:16000);
+   if(['/api/creator-pages/preview','/api/creator-pages/saved','/api/creator-pages/publish'].includes(path)){
+    try{return json(res,200,await creatorPages.handle(req,path.split('/').pop(),data));}
+    catch(e){return json(res,e.status||503,{error:e.status?e.message:'The website service is unavailable.'});}
+   }
    if(path==='/api/paid/research'){
     paidResearchStarts=paidResearchStarts.filter(t=>Date.now()-t<60000);
     if(paidResearchStarts.length>=60)return json(res,429,{error:'Research requests are busy. Retry shortly.'});

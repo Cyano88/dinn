@@ -87,7 +87,7 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
   let result;try{result=await verifyReceipt({hash:data.hash,configuration,quote:data.quote});}catch{return {status:400,body:{error:'Dinn could not verify this exact Pons launch receipt.'}};}
   if(result?.state!=='verified'||result.chainId!==4663||!validAddress(result.token)||!validAddress(result.curve)||!Number.isSafeInteger(Number(result.blockNumber)))return {status:409,body:{error:'This launch is not yet verified. Dinn did not add it to Launches.'}};
   if(!validAddress(configuration.account)||!Number.isFinite(Number(result.blockTimestamp)))return {status:400,body:{error:'Verified launch details are incomplete.'}};
-  const item={hash:data.hash,token:result.token,curve:result.curve,account:configuration.account,name:configuration.name,symbol:configuration.symbol,logo:configuration.logo||'',pairToken:configuration.pairToken,pairSymbol:configuration.pairToken.toLowerCase()==='0x'+'0'.repeat(40)?'ETH':'Pair token',blockNumber:Number(result.blockNumber),launchedAtSeconds:Number(result.blockTimestamp)};
+  const item={website:configuration.socials?.website||'',hash:data.hash,token:result.token,curve:result.curve,account:configuration.account,name:configuration.name,symbol:configuration.symbol,logo:configuration.logo||'',pairToken:configuration.pairToken,pairSymbol:configuration.pairToken.toLowerCase()==='0x'+'0'.repeat(40)?'ETH':'Pair token',blockNumber:Number(result.blockNumber),launchedAtSeconds:Number(result.blockTimestamp)};
   const saved=await (await getStore()).put(owner,item);
   return {status:200,body:{saved:true,item:saved,source:'Dinn verified Pons launch receipt'}};
  }};
