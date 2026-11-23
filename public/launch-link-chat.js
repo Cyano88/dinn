@@ -1,4 +1,4 @@
-﻿export const launchLinkSteps=[{field:'twitter',label:'X',prompt:'What is your project’s X link? Paste the URL or @handle, or say skip.'},{field:'telegram',label:'Telegram',prompt:'What is your project’s Telegram link? Paste the t.me link or @handle, or say skip.'},{field:'website',label:'website',prompt:'Want a website for your token? Share your link, say "create one", or skip.'}];
+﻿export const launchLinkSteps=[{field:'twitter',label:'X',prompt:'What is your project’s X link? Paste the URL or @handle, or say skip.'},{field:'telegram',label:'Telegram',prompt:'What is your project’s Telegram link? Paste the t.me link or @handle, or say skip.'},{field:'website',label:'website',prompt:'Already have a project website? Paste your link. If you don’t have one, say “create one” and I’ll make it for you. You can also skip.'}];
 export function parseLaunchLink(text,field){
  const value=text.trim();
  if(/^(skip all|skip all links|no links)$/i.test(value))return {action:'skip-all'};
