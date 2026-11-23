@@ -1,3 +1,4 @@
+import {equityContext,equityMessage} from './equity-context.mjs';
 import {leadWithLockFinding} from './research-finding.mjs';
 import {titanLines} from './titan-robinhood.mjs';
 import {hoodLines} from './hoodlock-robinhood.mjs';
@@ -229,7 +230,7 @@ export async function agentAccessRequest(request,dependencies={}){
   if(stockReport.result.symbol!==stock.symbol||stockReport.result.decimals!==stock.decimals)throw Error('Robinhood registry and onchain stock details could not be matched.');
   const reference=await (dependencies.stockReference||purchaseUsdReference)({pairToken:stock.address},{fetcher:dependencies.fetchImpl});
   const primary=launch||stockReport;
-  result={...primary.result,classification:paired?'verified-pons-stock-pair':'verified-robinhood-stock',stock,reference,...(paired?{stockInspection:stockReport.result}:{})};
+  result={...primary.result,equityContext:await equityContext(stock.symbol,{fetchImpl:dependencies.fetchImpl,env}),classification:paired?'verified-pons-stock-pair':'verified-robinhood-stock',stock,reference,...(paired?{stockInspection:stockReport.result}:{})};
   const price=reference.available?'Robinhood reference price $'+safeLine(reference.unitPriceUsd)+' at '+new Date(reference.asOf).toISOString()+'.':'A current Robinhood reference price is unavailable.';
   deliverable=[paired?'# Pons stock-paired launch':'# Robinhood stock token',safeLine(stock.name)+' ('+safeLine(stock.symbol)+') ? '+stock.address,price,'Source: '+stock.source,...(paired?['## Launch token',launch.deliverableMarkdown,'## Pairing stock token']:[]),stockReport.deliverableMarkdown].join('\n\n');
  }else if(request.service==='token.research'){
@@ -278,6 +279,7 @@ export async function agentAccessRequest(request,dependencies={}){
   const stockToken=/^0x[0-9a-f]{40}$/i.test(quote.baseStockPair?.tokenAddress||'')?quote.baseStockPair.tokenAddress.toLowerCase():null;
   result={kind:quote.kind,chainId:quote.chainId,destinationChainId:quote.destinationChainId,account:quote.account,amount:quote.amount,asset:{address:quote.asset.address,symbol:quote.asset.symbol,decimals:quote.asset.decimals},outputAsset:{address:quote.outputAsset.address,symbol:quote.outputAsset.symbol,decimals:quote.outputAsset.decimals},expectedAmount:quote.expectedAmount,minimumAmount:quote.minimumAmount,fee:quote.fee,impactPercent:quote.impactPercent,provider:quote.provider,expiresAt:quote.quoteExpiresAt||quote.expiresAt,...(quote.quoteBlockNumber?{quoteBlockNumber:quote.quoteBlockNumber}:{}),...(stockToken?{baseStockPair:{tokenAddress:stockToken,stockAddress:quote.baseStockPair.stockAddress,bankrPoolId:quote.baseStockPair.bankrPoolId,checkedAt:quote.baseStockPair.checkedAt,classification:quote.baseStockPair.classification},bankrTradeUrl:'https://bankr.bot/trade/'+stockToken,executionNote:'Reference quote only. Bankr must provide its executable quote and verify location eligibility.'}:{})};
  }
+ if(result.equityContext)deliverable=[deliverable,'## Underlying U.S. stock',equityMessage(result.equityContext)].join('\n\n');
  deliverable=leadWithLockFinding(result,focus,deliverable);
  const evidence={service:request.service,input:request.input,result,...(deliverable?{deliverableMarkdown:deliverable}:{})};
  const content=JSON.stringify(evidence),sha256=createHash('sha256').update(content).digest('hex');

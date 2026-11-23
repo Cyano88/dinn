@@ -332,6 +332,8 @@ function startFreshTokenSetup(){
 function savedSetupWasLaunched(){try{const record=JSON.parse(localStorage.getItem(launchKey())||'null');return record?.phase==='verified'&&record.result?.state==='verified'&&record.configuration?.name===brief.name&&record.configuration?.symbol===brief.symbol;}catch{return false;}}
 $('chat').onsubmit=async e=>{
  e.preventDefault();if(!user)return;const text=$('prompt').value.trim();if(!text)return;if(chatApprovalBusy||claimBusy){say('Dinn is still checking or processing the current wallet action. Please wait before starting another one.');$('prompt').value='';return;}
+ if(handlePendingChatApproval(text)){$('prompt').value='';return;}
+ if(chatPendingApproval){const pending=chatPendingApproval;chatPendingApproval=null;if(pending.action)forgetWalletApproval(pending.action);say('I cleared the earlier approval review before handling this request. Ask me to check the current terms again before proceeding.');}
  if(/^remove my latest feedback[.!]?$/i.test(text)){
   const owner=user,session=epoch;
   try{const {getAccessToken}=await import('/auth/entry.js');const result=await feedbackChat({action:'removeLatest'},await getAccessToken());if(owner===user && session===epoch){$('prompt').value='';recordSetupReply(text,result.removed?'Removed your latest public feedback.':'You have no public feedback to remove.');}}
@@ -352,7 +354,7 @@ $('chat').onsubmit=async e=>{
   if(/^(?:yes|proceed|continue|review|accept)[.!]?$/i.test(text))requestText=offer.kind+' '+offer.amount+' '+offer.unit+' '+offer.token;
  }
  const command=workspaceCommand(requestText);
- const launchEntry=command==='start-launch'||/^(?:resume(?: setup| launch)?|continue (?:my |the |saved )?(?:token launch|launch|setup))[.!]?$/i.test(text);
+ const launchEntry=command==='start-launch'||/^(?:back to (?:my |the )?(?:token )?launch|resume(?: setup| launch)?|continue (?:my |the |saved )?(?:token launch|launch|setup))[.!]?$/i.test(text);
  if(requestText===text&&launchReturnPending){const choice=launchReturnChoice(text);launchReturnPending=false;if(choice==='cancel'){recordSetupReply(text,'Your launch progress is saved. Come back whenever you are ready.');$('prompt').value='';return;}if(choice==='continue'){if(restoreLaunchConversation(()=>recordSetupReply(text,'Continuing your saved launch setup.'))){$('prompt').value='';return;}requestText='resume setup';}else if(choice==='new'){startFreshTokenSetup();requestText='create a token';}}
  else if(launchEntry&&hasLaunchProgress(brief,currentSettings())){if(controller||setupBusy||launchBusy){$('feedback').textContent='Please wait for the current action to finish.';return;}if(savedSetupWasLaunched()){startFreshTokenSetup();requestText='create a token';}else{launchReturnPending=true;showLaunchStage(null,false);const label=brief.name?(brief.name+(brief.symbol?' ('+brief.symbol+')':'')):'your saved token';recordSetupReply(text,'You have a launch in progress for '+label+'. Would you like to continue with it or start a new token? Starting a new token replaces this unfinished setup.');$('prompt').value='';return;}}
  if(command==='clear-chat'){clearConversation();return;}
@@ -366,8 +368,6 @@ $('chat').onsubmit=async e=>{
  }
  if(requestText===text&&conversationalLaunchStatus(text)){$('prompt').value='';return;}
  if(requestText===text&&handleLaunchReply(text)){$('prompt').value='';return;}
- if(requestText===text&&handlePendingChatApproval(text)){$('prompt').value='';return;}
- if(chatPendingApproval&&!/^(?:what|why|how|explain|can you explain)\b/i.test(text)){const pending=chatPendingApproval;chatPendingApproval=null;if(pending.action)forgetWalletApproval(pending.action);say('I cleared the earlier approval review before handling this request. Ask me to check the current terms again before proceeding.');}
  if(controller||setupBusy)return;
  const requestUser=user,generation=epoch,draftRevision=launchRevision;controller=new AbortController();const request=controller;let advanceLaunchProfile=false;$('prompt').value='';$('send').disabled=true;$('stop-response').hidden=false;$('feedback').textContent='';message('user',text);const reply=message('assistant','');reply.textContent='Thinking';reply.classList.add('thinking');reply.setAttribute('aria-label','Dinn is thinking');for(let i=0;i<3;i++){const dot=document.createElement('span');dot.className='thinking-dot';dot.textContent='.';dot.setAttribute('aria-hidden','true');reply.append(dot);}let received=false;
  try{

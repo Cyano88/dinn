@@ -1,3 +1,4 @@
+import {equityContext,equityMessage,mentionedEquity} from './equity-context.mjs';
 import {newChatTask} from '../public/flow.js';
 import {leadWithLockFinding,requestedLockFocus} from './research-finding.mjs';
 import {chatLockEvidence} from './base-lock-evidence.mjs';
@@ -176,6 +177,7 @@ export async function transactionStatus({hash},o={}){
 }
 async function executeTool(name,args={},context={},dependencies={}){
  const def=productTools.find(t=>t.function.name===name)?.function;if(!def)throw Error('Unknown product tool.');if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).some(k=>!Object.hasOwn(def.parameters.properties,k)))throw Error('Unexpected tool arguments.');for(const key of def.parameters.required)if(args[key]===undefined)throw Error('Missing '+key+'.');
+ if(name==='equity_market_context'){const data=await equityContext(args.ticker,{env:context.env||process.env,fetchImpl:dependencies.fetchImpl});return {data,message:equityMessage(data),actions:[]};}
  if(name==='manage_launch_draft'){if(context.signal?.aborted)throw Error('Tool cancelled.');return manageLaunchDraft(args,context,dependencies);}
  for(const [key,v]of Object.entries(args)){const p=def.parameters.properties[key];if(typeof v!=='string'||p.pattern&&!new RegExp(p.pattern).test(v)||p.enum&&!p.enum.includes(v))throw Error('Invalid '+key+'.');}
  if(context.signal?.aborted)throw Error('Tool cancelled.');const account=args.account||context.walletAccount;
@@ -189,11 +191,11 @@ async function executeTool(name,args={},context={},dependencies={}){
   const data=report.result;
   const price=data.reference.available?'Robinhood reference price $'+data.reference.unitPriceUsd+' at '+new Date(data.reference.asOf).toISOString()+'.':'A current Robinhood reference price is unavailable.';
   const title=data.stockInspection?data.symbol+' trades against '+data.stock.symbol+' on Pons.':data.stock.name+' ('+data.stock.symbol+') on Robinhood Chain.';
-  const message=[title,price,inspectionSummary(data,context.message||'overview'),'Robinhood stock contract: '+data.stock.address].join('\n\n');
+  const message=[title,price,equityMessage(data.equityContext),inspectionSummary(data,context.message||'overview'),'Robinhood stock contract: '+data.stock.address].join('\n\n');
   return {message,data,inspection:data,actions:[]};
  }
- if(name==='research_base_stock_paired_token'){const data=await (dependencies.baseStockResearch||researchBaseStockPairedToken)(args,{fetchImpl:dependencies.fetchImpl,env:context.env||process.env,holderSnapshotEnabled:context.holderSnapshotEnabled!==false});return {message:leadWithLockFinding(data,requestedLockFocus(context.message),baseStockResearchMessage(data)),data,actions:[]};}
- if(name==='research_base_stock'){const data=await (dependencies.baseStockAssetResearch||researchBaseStock)({query:args.query},{fetchImpl:dependencies.fetchImpl,env:context.env||process.env,holderSnapshotEnabled:context.holderSnapshotEnabled!==false});return {message:leadWithLockFinding(data,requestedLockFocus(context.message),baseStockAssetMessage(data)),data,actions:[]};}
+ if(name==='research_base_stock_paired_token'){const data=await (dependencies.baseStockResearch||researchBaseStockPairedToken)(args,{fetchImpl:dependencies.fetchImpl,env:context.env||process.env,holderSnapshotEnabled:context.holderSnapshotEnabled!==false});return {message:leadWithLockFinding(data,requestedLockFocus(context.message),[equityMessage(data.equityContext),baseStockResearchMessage(data)].filter(Boolean).join('\n\n')),data,actions:[]};}
+ if(name==='research_base_stock'){const data=await (dependencies.baseStockAssetResearch||researchBaseStock)({query:args.query},{fetchImpl:dependencies.fetchImpl,env:context.env||process.env,holderSnapshotEnabled:context.holderSnapshotEnabled!==false});return {message:leadWithLockFinding(data,requestedLockFocus(context.message),[equityMessage(data.equityContext),baseStockAssetMessage(data)].filter(Boolean).join('\n\n')),data,actions:[]};}
  if(name==='dex_service_status'){const data=await (dependencies.dexStatus||dexStatus)(args);return {message:(data.indexed?'Token is indexed. ':'No indexed token pair was found. ')+data.orders.length+' public profile orders returned'+(data.orders.length?': '+data.orders.map(o=>o.status||'unknown').join(', '):'')+'. '+data.note,data,actions:[{id:'dex',title:actionTitles.dex,address:args.address}]};}
  if(name==='open_dex_profile'){const address=args.address||context.tokenAddress;if(address&&!addr(address))throw Error('Use a nonzero token address.');if(!address)return {message:'I can help prepare your DEX Screener profile and checkout link. Send the token contract address on Robinhood Chain. I will look up its identity and available project information, then prepare a profile for your review. You will complete payment on DEX Screener.',data:{state:'needs-token-address',service:'DEX Screener Enhanced Token Info',chain:'Robinhood Chain',requiredField:'token contract address',checkout:'external',paymentAvailableInDinn:false},actions:[]};const preparation=await (dependencies.prepareDexProfile||prepareDexProfile)({address},{env:context.env||process.env});const p=preparation.profile;return {message:`I found ${p.name} (${p.symbol}) on Robinhood Chain. ${preparation.inference==='generated'?'I drafted':'I prepared'} a description from the available information${p.twitter?', and found its X profile':''}${p.logo?' and logo':''}.\n\n${p.description}\n\n${preparation.missing.length?'Still missing: '+preparation.missing.join(', ')+'. You can add these during review.':'Review the details before continuing.'} Checkout will prefill the network and address; copy the description and links on DEX Screener.`,data:preparation,actions:[{id:'dex',title:'Review '+p.name+' profile',address,preparation}]};}
  const action={open_launch_setup:'launch',open_launch_review:'review',open_wallet:'wallet',open_launchpads:'launchpads'}[name];if(action)return {message:'Use the '+actionTitles[action].toLowerCase()+' button to continue. No transaction was requested.',actions:[{id:action,title:actionTitles[action]}]};
@@ -263,6 +265,16 @@ export function directProductIntent(text,context={}){
  const lastAssistant=[...(context.history||[])].reverse().find(m=>m.role==='assistant')?.content||'';
  const t=text.trim(),addresses=t.match(/0x[0-9a-f]{40}(?![0-9a-f])/gi)||[],hash=t.match(/0x[0-9a-f]{64}(?![0-9a-f])/i)?.[0];
  if(/\b(?:arbitrum|42161)\b/i.test(t)&&(/\b(?:send|transfer|swap|bridge|balance|portfolio|wallet)\b/i.test(t)||/^To (?:send|swap|bridge) this,/i.test(lastAssistant)))return {message:'Arbitrum is paused in Dinn wallet. Choose Base or Robinhood Chain.',actions:[]};
+ const lastEquity=lastAssistant.match(/\b([A-Z]{1,5}) was (?:up|down) [\d.]+% from its previous close/);
+ if(/\b(?:same (?:amount|move|percentage)|move (?:too|as much)|match(?:ed)? the (?:move|stock)|track(?:ed)? the (?:move|stock))\b/i.test(t)&&(/\b(?:token|onchain|base|robinhood)\b/i.test(t)||lastEquity)){
+  const ticker=mentionedEquity(t)||lastEquity?.[1];
+  if(ticker)return {message:'I cannot verify whether the onchain token moved by the same percentage as '+ticker+'. This comparison needs token prices at both the previous U.S. close and the time of the stock quote.',actions:[]};
+ }
+ if(/\b(?:surged?|rall(?:y|ied)|jump(?:ed)?|spik(?:e|ed)|drop(?:ped)?|crash(?:ed)?|fell|soar(?:ed)?|catalyst|price move|going (?:up|down)|stock news)\b/i.test(t)){
+  const previous=lastAssistant.match(/\b([A-Z]{1,5}) was (?:up|down) [\d.]+% from its previous close/);
+  const ticker=mentionedEquity(t)||(/\b(?:it|that move|this move)\b/i.test(t)&&previous?.[1]);
+  if(ticker)return {name:'equity_market_context',args:{ticker}};
+ }
  const task=newChatTask(t);
  if(task==='send'&&/\bwithdraw\b/i.test(t)&&!/\b(?:fees?|vesting|vault|staking|locker|locked|liquidity|pool)\b/i.test(t)){
   if(/\b(?:bank|cash|fiat|off.?ramp)\b/i.test(t))return {message:'Dinn supports onchain transfers. Are you sending to a wallet address or asking about a bank withdrawal?',actions:[]};
