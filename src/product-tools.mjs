@@ -272,14 +272,17 @@ export function directProductIntent(text,context={}){
  const t=text.trim(),addresses=t.match(/0x[0-9a-f]{40}(?![0-9a-f])/gi)||[],hash=t.match(/0x[0-9a-f]{64}(?![0-9a-f])/i)?.[0];
  if(/\b(?:arbitrum|42161)\b/i.test(t)&&(/\b(?:send|transfer|swap|bridge|balance|portfolio|wallet)\b/i.test(t)||/^To (?:send|swap|bridge) this,/i.test(lastAssistant)))return {message:'Arbitrum is paused in Dinn wallet. Choose Base or Robinhood Chain.',actions:[]};
  if(/^is (?:that|it|this)(?: address| holder)? a (?:trading )?pool[?.!]*$/i.test(t)&&lastAssistant.startsWith('Largest holder in the returned sample:'))return {message:lastAssistant.split('\n')[0],actions:[]};
- const lastEquity=lastAssistant.match(/\b([A-Z]{1,5}) was (?:up|down) [\d.]+% from its previous close/);
- if(/\b(?:same (?:amount|move|percentage)|move (?:too|as much)|match(?:ed)? the (?:move|stock)|track(?:ed)? the (?:move|stock))\b/i.test(t)&&(/\b(?:token|onchain|base|robinhood)\b/i.test(t)||lastEquity)){
-  const ticker=mentionedEquity(t)||lastEquity?.[1];
+ const lastEquity=lastAssistant.match(/\b([A-Z]{1,5}) was (?:up|down) [\d.]+% from its previous close/)?.[1];
+ const company=mentionedEquity(t);
+ const comparison=/\b(?:same (?:amount|move|percentage|way)|as much as|move (?:too|as much)|(?:follow|mirror|match|track)(?:ed|s)? (?:it|suit|that|the (?:move|stock|shares))|keep up with|(?:up|down) too)\b/i.test(t);
+ if(comparison&&(/\b(?:token|onchain|base|robinhood)\b/i.test(t)||lastEquity)){
+  const ticker=company||(/\b(?:its? token|the token|that token|it|that move)\b/i.test(t)&&lastEquity);
   if(ticker)return {message:'I cannot verify whether the onchain token moved by the same percentage as '+ticker+'. This comparison needs token prices at both the previous U.S. close and the time of the stock quote.',actions:[]};
  }
- if(/\b(?:surged?|rall(?:y|ied)|jump(?:ed)?|spik(?:e|ed)|drop(?:ped)?|crash(?:ed)?|fell|soar(?:ed)?|catalyst|price move|going (?:up|down)|stock news)\b/i.test(t)||/\b(?:why|what made|what caused|how much did)\b[^?!]{0,85}\bmov(?:e|ed|ing|ement)\b/i.test(t)){
-  const previous=lastAssistant.match(/\b([A-Z]{1,5}) was (?:up|down) [\d.]+% from its previous close/);
-  const ticker=mentionedEquity(t)||(/\b(?:it|that move|this move)\b/i.test(t)&&previous?.[1]);
+ const asksAboutMove=/\b(?:surged?|rall(?:y|ied)|jump(?:ed)?|spik(?:e|ed)|drop(?:ped)?|crash(?:ed)?|fell|soar(?:ed)?|catalyst|price move|going (?:up|down)|stock news)\b/i.test(t)||/\b(?:why|what made|what caused|how much did)\b[^?!]{0,85}\b(?:mov(?:e|ed|ing|ement)|up|down|rise|fall|climb)\b/i.test(t);
+ const nextCompany=company&&lastEquity&&!/\b(?:base|robinhood|token|holders?|trade|buy|sell)\b/i.test(t)&&/^(?:and\b|(?:how|what) about\b)/i.test(t)&&t.trim().split(/\s+/).length<=5;
+ if(asksAboutMove||nextCompany){
+  const ticker=company||(/\b(?:it|that move|this move)\b/i.test(t)&&lastEquity);
   if(ticker)return {name:'equity_market_context',args:{ticker}};
  }
  const task=newChatTask(t);

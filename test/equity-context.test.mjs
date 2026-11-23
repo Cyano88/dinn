@@ -45,3 +45,12 @@ test('a token comparison cannot borrow the underlying stock percentage',()=>{
 test('Tesla move questions use the equity tool with a saved launch',()=>{
  assert.deepEqual(directProductIntent('Why did Tesla move today?',{ponsSetup:{active:true,field:'description'}}),{name:'equity_market_context',args:{ticker:'TSLA'}});
 });
+
+test('company names and immediate follow-ups retain the stock context',()=>{
+ const context={history:[{role:'assistant',content:'TSLA was up 12.07% from its previous close'}]};
+ for(const question of ["Did Tesla's token on Base go up as much as the stock?",'Did the token follow it?']){
+  assert.match(directProductIntent(question,context).message,/same percentage as TSLA/);
+ }
+ assert.deepEqual(directProductIntent('What about Nvidia?',context),{name:'equity_market_context',args:{ticker:'NVDA'}});
+ assert.deepEqual(directProductIntent('Why is Tesla up today?'),{name:'equity_market_context',args:{ticker:'TSLA'}});
+});
