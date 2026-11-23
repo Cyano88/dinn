@@ -1,3 +1,4 @@
+import {comparisonMessage} from './base-stock-comparison.mjs';
 import {equityContext,equityMessage,mentionedEquity} from './equity-context.mjs';
 import {newChatTask} from '../public/flow.js';
 import {leadWithLockFinding,requestedLockFocus} from './research-finding.mjs';
@@ -195,13 +196,14 @@ async function executeTool(name,args={},context={},dependencies={}){
   return {message,data,inspection:data,actions:[]};
  }
  if(name==='research_base_stock_paired_token'){const data=await (dependencies.baseStockResearch||researchBaseStockPairedToken)(args,{fetchImpl:dependencies.fetchImpl,env:context.env||process.env,holderSnapshotEnabled:context.holderSnapshotEnabled!==false});return {message:leadWithLockFinding(data,requestedLockFocus(context.message),[equityMessage(data.equityContext),baseStockResearchMessage(data)].filter(Boolean).join('\n\n')),data,actions:[]};}
- if(name==='research_base_stock'){const data=await (dependencies.baseStockAssetResearch||researchBaseStock)({query:args.query},{fetchImpl:dependencies.fetchImpl,env:context.env||process.env,holderSnapshotEnabled:context.holderSnapshotEnabled!==false});const first=data.holders?.largestBalancesInSample?.[0];
+ if(name==='research_base_stock'){const data=await (dependencies.baseStockAssetResearch||researchBaseStock)({query:args.query},{fetchImpl:dependencies.fetchImpl,env:context.env||process.env,holderSnapshotEnabled:context.holderSnapshotEnabled!==false});if(asksForStockComparison(context.message||''))return {message:comparisonMessage(data.comparison)||'I could not verify the token and stock prices for this comparison.',data,actions:[]};
+  const first=data.holders?.largestBalancesInSample?.[0];
   let holderLead='';
   if(/\b(?:who holds|largest holder|top holder)\b/i.test(context.message||'')){
    const pool=first&&data.market?.pairs?.find(p=>same(p.pairAddress,first.address));
    holderLead=first?'Largest holder in the returned sample: '+first.address+' holds '+first.balance+' '+data.identity.symbol+(first.percentOfSupply==null?'':' ('+first.percentOfSupply+'% of supply)')+'. '+(pool?'This address matches the '+(pool.dex||'DEX')+' trading pool.':'I could not verify that this address is a trading pool.'):'I could not verify the largest holder from this sample.';
   }
-  return {message:leadWithLockFinding(data,requestedLockFocus(context.message),[holderLead,equityMessage(data.equityContext),baseStockAssetMessage(data)].filter(Boolean).join('\n\n')),data,actions:[]};}
+  return {message:leadWithLockFinding(data,requestedLockFocus(context.message),[holderLead,comparisonMessage(data.comparison),equityMessage(data.equityContext),baseStockAssetMessage(data)].filter(Boolean).join('\n\n')),data,actions:[]};}
  if(name==='dex_service_status'){const data=await (dependencies.dexStatus||dexStatus)(args);return {message:(data.indexed?'Token is indexed. ':'No indexed token pair was found. ')+data.orders.length+' public profile orders returned'+(data.orders.length?': '+data.orders.map(o=>o.status||'unknown').join(', '):'')+'. '+data.note,data,actions:[{id:'dex',title:actionTitles.dex,address:args.address}]};}
  if(name==='open_dex_profile'){const address=args.address||context.tokenAddress;if(address&&!addr(address))throw Error('Use a nonzero token address.');if(!address)return {message:'I can help prepare your DEX Screener profile and checkout link. Send the token contract address on Robinhood Chain. I will look up its identity and available project information, then prepare a profile for your review. You will complete payment on DEX Screener.',data:{state:'needs-token-address',service:'DEX Screener Enhanced Token Info',chain:'Robinhood Chain',requiredField:'token contract address',checkout:'external',paymentAvailableInDinn:false},actions:[]};const preparation=await (dependencies.prepareDexProfile||prepareDexProfile)({address},{env:context.env||process.env});const p=preparation.profile;return {message:`I found ${p.name} (${p.symbol}) on Robinhood Chain. ${preparation.inference==='generated'?'I drafted':'I prepared'} a description from the available information${p.twitter?', and found its X profile':''}${p.logo?' and logo':''}.\n\n${p.description}\n\n${preparation.missing.length?'Still missing: '+preparation.missing.join(', ')+'. You can add these during review.':'Review the details before continuing.'} Checkout will prefill the network and address; copy the description and links on DEX Screener.`,data:preparation,actions:[{id:'dex',title:'Review '+p.name+' profile',address,preparation}]};}
  const action={open_launch_setup:'launch',open_launch_review:'review',open_wallet:'wallet',open_launchpads:'launchpads'}[name];if(action)return {message:'Use the '+actionTitles[action].toLowerCase()+' button to continue. No transaction was requested.',actions:[{id:action,title:actionTitles[action]}]};
@@ -267,6 +269,7 @@ async function executeTool(name,args={},context={},dependencies={}){
 }
 function previousDexAddress(history=[]){for(let i=history.length-1;i>=0;i--){const m=history[i];if(m.role!=='user')continue;const found=m.content.match(/0x[0-9a-f]{40}(?![0-9a-f])/gi)||[];if(found.length){if(found.length!==1)return undefined;return /dex\s*screener|\bdex\b/i.test(m.content)||/^0x[0-9a-f]{40}$/i.test(m.content.trim())&&/DEX Screener/i.test(history[i-1]?.content||'')?found[0]:undefined;}}}
 const conversationalQuestion=text=>/^(?:what|why|how|who|which|where|when|whether|can|could|would|will|do|does|did|is|are|should|explain|suggest|recommend)\b/i.test(text.trim());
+function asksForStockComparison(text){return /\b(?:same (?:amount|move|percentage|way)|as much as|move (?:too|as much)|(?:follow|mirror|match|track)(?:ed|s)? (?:it|suit|that|the (?:move|stock|shares))|keep up with|(?:up|down) too)\b/i.test(text);}
 export function directProductIntent(text,context={}){
  const lastAssistant=[...(context.history||[])].reverse().find(m=>m.role==='assistant')?.content||'';
  const t=text.trim(),addresses=t.match(/0x[0-9a-f]{40}(?![0-9a-f])/gi)||[],hash=t.match(/0x[0-9a-f]{64}(?![0-9a-f])/i)?.[0];
@@ -274,9 +277,10 @@ export function directProductIntent(text,context={}){
  if(/^is (?:that|it|this)(?: address| holder)? a (?:trading )?pool[?.!]*$/i.test(t)&&lastAssistant.startsWith('Largest holder in the returned sample:'))return {message:lastAssistant.split('\n')[0],actions:[]};
  const lastEquity=lastAssistant.match(/\b([A-Z]{1,5}) was (?:up|down) [\d.]+% from its previous close/)?.[1];
  const company=mentionedEquity(t);
- const comparison=/\b(?:same (?:amount|move|percentage|way)|as much as|move (?:too|as much)|(?:follow|mirror|match|track)(?:ed|s)? (?:it|suit|that|the (?:move|stock|shares))|keep up with|(?:up|down) too)\b/i.test(t);
+ const comparison=asksForStockComparison(t);
  if(comparison&&(/\b(?:token|onchain|base|robinhood)\b/i.test(t)||lastEquity)){
   const ticker=company||(/\b(?:its? token|the token|that token|it|that move)\b/i.test(t)&&lastEquity);
+  if(ticker&&!(lastAssistant.includes('on Robinhood Chain')&&!/\bbase\b/i.test(t))&&!/\b(?:robinhood|bankr|pons|ethereum|arbitrum|solana|paired|launch)\b/i.test(t))return {name:'research_base_stock',args:{query:ticker+'c'}};
   if(ticker)return {message:'I cannot verify whether the onchain token moved by the same percentage as '+ticker+'. This comparison needs token prices at both the previous U.S. close and the time of the stock quote.',actions:[]};
  }
  const asksAboutMove=/\b(?:surged?|rall(?:y|ied)|jump(?:ed)?|spik(?:e|ed)|drop(?:ped)?|crash(?:ed)?|fell|soar(?:ed)?|catalyst|price move|going (?:up|down)|stock news)\b/i.test(t)||/\b(?:why|what made|what caused|how much did)\b[^?!]{0,85}\b(?:mov(?:e|ed|ing|ement)|up|down|rise|fall|climb)\b/i.test(t);

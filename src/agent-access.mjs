@@ -1,3 +1,4 @@
+import {comparisonMessage} from './base-stock-comparison.mjs';
 import {equityContext,equityMessage} from './equity-context.mjs';
 import {leadWithLockFinding} from './research-finding.mjs';
 import {titanLines} from './titan-robinhood.mjs';
@@ -257,7 +258,7 @@ export async function agentAccessRequest(request,dependencies={}){
   result=await (dependencies.baseStockAssetResearch||researchBaseStock)({query:i.query},{fetchImpl:dependencies.fetchImpl||fetch,env,holderSnapshotEnabled:dependencies.paidMarketplaceHire===true||dependencies.paidResearch===true});
   if(!result||result.chainId!==8453||!Number.isFinite(Date.parse(result.checkedAt))||!/^0x[0-9a-f]{40}$/i.test(result.address||'')||!['matched','mismatch'].includes(result.identity?.status)||result.contract?.address?.toLowerCase()!==result.address.toLowerCase()||!/^\d+$/.test(result.contract?.blockNumber||'')||!/^0x[0-9a-f]{64}$/i.test(result.contract?.blockHash||''))throw Error('Coinbase stock evidence does not match the requested Base token or checked block.');
   if(/^0x[0-9a-f]{40}$/i.test(i.query)&&i.query.toLowerCase()!==result.address.toLowerCase())throw Error('Coinbase stock result does not match the requested token address.');
-  deliverable=baseStockDeliverable(result);
+  deliverable=[baseStockDeliverable(result),comparisonMessage(result.comparison)].filter(Boolean).join('\n\n');
   }else if(request.service==='token.inspect'){
    const env=dependencies.env||process.env;
    result=await (dependencies.inspect||inspectCachedToken)(i.address,{chainId:i.chainId,rpc:serverRpcUrl(i.chainId,env),fetchImpl:dependencies.fetchImpl||fetch,fresh:true});
