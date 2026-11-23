@@ -229,7 +229,7 @@ function handleLaunchReply(text){
     }
     if(!/^revise/i.test(command)){void handleWebsiteRequest(command,'preview');return true;}
    }
-   const action=/^(?:create|build|generate)(?: me)? (?:a |my )?(?:website|web page|site)[.!]?$/i.test(command)?'preview':/^(?:use|publish) (?:this|my|the) (?:website|site|page)[.!]?$/i.test(command)?'publish':/^(?:show|open) (?:my |the )?(?:website )?preview[.!]?$/i.test(command)?'saved':/^revise (?:website|site|page):\s*\S/i.test(command)?'revise':null;
+   const action=/^(?:create|build|generate)(?: me)? (?:one|(?:a |my )?(?:website|web page|site))[.!]?$/i.test(command)?'preview':/^(?:use|publish) (?:this|my|the) (?:website|site|page)[.!]?$/i.test(command)?'publish':/^(?:show|open) (?:my |the )?(?:website )?preview[.!]?$/i.test(command)?'saved':/^revise (?:website|site|page):\s*\S/i.test(command)?'revise':null;
    if(action){void handleWebsiteRequest(command,action);return true;}
   }
   const parsed=parseLaunchLink(text,launchLinkSteps[launchLinkIndex].field);
