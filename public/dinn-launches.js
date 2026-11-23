@@ -24,7 +24,11 @@ export function mountDinnLaunches({host,apiBase='/api/dinn/launches',getAccessTo
   const reported=metrics?.market?.fdvUsd,curveEstimate=metrics?.curveFdvUsd,fdv=reported||curveEstimate,fdvLabel=reported?'FDV':'Curve FDV estimate',marketCap=metrics?.market?.marketCapUsd,market=node('div','dinn-launch-market');market.append(node('span','metric-label',fdvLabel),node('strong','',fdv?formatUsd(fdv):'Unavailable'),node('small','',reported?'Reported by GeckoTerminal':curveEstimate?'Estimated from curve and pair price':'No verified FDV'));row.append(market);
   const cap=node('div','dinn-launch-market');
   const outsideUsd=metrics?.outsideValueUsd, outsideQuote=metrics?.outsideValueQuote;
-  if(marketCap){
+  if(metrics?.launchCap?.usd!=null||metrics?.launchCap?.quote!=null){
+   const valuation=metrics.launchCap;
+   const value=valuation.usd!=null?formatUsd(valuation.usd):Number(valuation.quote).toLocaleString(undefined,{maximumSignificantDigits:5})+' '+pairSymbol;
+   cap.append(node('span','metric-label','Market cap'),node('strong','',value),node('small','','Reported by Pons'));
+  }else if(marketCap){
    cap.append(node('span','metric-label','Market cap'),node('strong','',formatUsd(marketCap)),node('small','','Reported by GeckoTerminal'));
   }else if(outsideQuote!=null){
    const value=outsideUsd!=null?formatUsd(outsideUsd):Number(outsideQuote).toLocaleString(undefined,{maximumSignificantDigits:5})+' '+pairSymbol;

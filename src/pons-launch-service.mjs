@@ -19,7 +19,7 @@ function publicMetrics(state){
  const outside=state.phase===0?state.curve?.outsideSupply:null;
  const outsideValueQuote=outside!=null&&curve?usdProduct(outside,curve.priceQuote,8):null;
  const outsideValueUsd=outsideValueQuote!==null&&pairUsd?usdProduct(outsideValueQuote,pairUsd.unitPriceUsd):null;
- return {outsideValueUsd,outsideValueQuote,status:state.status,phase:state.phase,pair:{symbol:state.pair?.symbol||null,address:state.pair?.address||null},curve,market:{priceUsd:state.market?.priceUsd||null,marketCapUsd:state.market?.marketCapUsd||null,fdvUsd:state.market?.fdvUsd||null,source:state.market?.source||'Unavailable',checkedAt:state.market?.checkedAt||null},curvePriceUsd,curveFdvUsd,curveUsdSource:pairUsd?.source||pairUsd?.basis||null,blockNumber:state.blockNumber,checkedAt:state.checkedAt};
+ return {launchCap:state.launchCap||null,outsideValueUsd,outsideValueQuote,status:state.status,phase:state.phase,pair:{symbol:state.pair?.symbol||null,address:state.pair?.address||null},curve,market:{priceUsd:state.market?.priceUsd||null,marketCapUsd:state.market?.marketCapUsd||null,fdvUsd:state.market?.fdvUsd||null,source:state.market?.source||'Unavailable',checkedAt:state.market?.checkedAt||null},curvePriceUsd,curveFdvUsd,curveUsdSource:pairUsd?.source||pairUsd?.basis||null,blockNumber:state.blockNumber,checkedAt:state.checkedAt};
 }
 async function mapLimit(items,limit,fn){const out=new Array(items.length);let next=0;await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{while(next<items.length){const index=next++;try{out[index]=await fn(items[index]);}catch{out[index]=null;}}}));return out;}
 

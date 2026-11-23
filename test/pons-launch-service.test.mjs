@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createPonsLaunchService} from '../src/pons-launch-service.mjs';
+import {ponsLaunchValuation} from '../src/pons-token-state.mjs';
 import {createPonsLaunchStore} from '../src/pons-launch-store.mjs';
 
 const hash='0x'+'a'.repeat(64),token='0x'+'1'.repeat(40),curve='0x'+'2'.repeat(40),account='0x'+'3'.repeat(40),zero='0x'+'0'.repeat(40);
@@ -47,4 +48,13 @@ test('curve valuation uses supply outside the curve and keeps reported cap separ
  assert.equal(metrics.market.marketCapUsd,null);
  assert.equal(metrics.outsideValueUsd,'25.00');
  assert.equal(metrics.curveFdvUsd,'2000.00');
+});
+
+test('first-party Pons valuation binds to the token and preserves missing or zero USD',async()=>{
+ const read=row=>ponsLaunchValuation(token,async()=>({ok:true,json:async()=>row}));
+ assert.deepEqual(await read({address:token,marketCapUsd:123.45,marketCapQuote:1}),{usd:'123.45',quote:'1'});
+ assert.deepEqual(await read({address:token,marketCapUsd:null,marketCapQuote:2}),{usd:null,quote:'2'});
+ assert.deepEqual(await read({address:token,marketCapUsd:0}),{usd:'0',quote:null});
+ assert.equal(await read({address:curve,marketCapUsd:99}),null);
+ assert.equal(await read({address:token,marketCapUsd:null}),null);
 });

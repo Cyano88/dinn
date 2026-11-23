@@ -33,6 +33,18 @@ export async function feeContext(input,o={}){
  return {c,b,read,launch,escrow,hook,policy,name:clean(name),symbol:clean(symbol),decimals,supply,pairSymbol:clean(pairSymbol),pairDecimals,account:input.account||launch.creatorFeeRecipient,accountSource:input.account?'queried wallet':'creator fee recipient'};
 }
 async function marketReference(address,fetcher=fetch){try{const r=await fetcher('https://api.geckoterminal.com/api/v2/networks/robinhood/tokens/'+address,{signal:AbortSignal.timeout(8000),redirect:'error'});if(!r.ok)throw Error();const raw=await r.text();if(raw.length>150000)throw Error();const a=JSON.parse(raw)?.data?.attributes;if(!same(a?.address,address))throw Error();const amount=v=>typeof v==='string'&&/^\d+(\.\d+)?$/.test(v)&&Number.isFinite(Number(v))?v:null;return {marketCapUsd:amount(a.market_cap_usd),priceUsd:amount(a.price_usd),fdvUsd:amount(a.fdv_usd),source:'GeckoTerminal reported',checkedAt:new Date().toISOString()};}catch{return {marketCapUsd:null,priceUsd:null,fdvUsd:null,source:'Unavailable'};}}
+export async function ponsLaunchValuation(address,fetcher=fetch){
+ if(!/^0x[0-9a-f]{40}$/i.test(address))return null;
+ try{
+  const response=await fetcher('https://ponsfamily.com/api/launches/'+address,{signal:AbortSignal.timeout(4500),redirect:'error'});
+  if(!response.ok)return null;
+  const row=await response.json();
+  if(!same(row.address,address))return null;
+  const amount=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0?String(value):null;
+  const usd=amount(row.marketCapUsd),quote=amount(row.marketCapQuote);
+  return usd!==null||quote!==null?{usd,quote}:null;
+ }catch{return null;}
+}
 export async function ponsTokenState(input,o={}){
  const x=await feeContext(input,o),{c,b,read,launch,escrow,hook,policy,account}=x;
  const claimable=await read(escrow,escrowAbi,same(launch.pairToken,zeroAddress)?'balanceOf':'balanceOfToken',same(launch.pairToken,zeroAddress)?[account]:[account,launch.pairToken]);
@@ -42,17 +54,18 @@ export async function ponsTokenState(input,o={}){
  if(Number(launch.phase)===0){const [fee,tax]=await Promise.all(['quoteFeeBalance','creatorTaxBalance'].map(fn=>read(launch.curve,curveAbi,fn)));unswept={quote:formatUnits(creatorShare(fee,tax,policy,launch.buybackEnabled),x.pairDecimals),launchTokens:'0',estimate:true};}
  else if(Number(launch.phase)===2){const currencies=[input.address,launch.pairToken].sort((a,b)=>a.toLowerCase().localeCompare(b.toLowerCase()));const poolId=keccak256(encodeAbiParameters([{type:'address'},{type:'address'},{type:'uint24'},{type:'int24'},{type:'address'}],[...currencies,launch.poolFee,launch.tickSpacing,hook]));const [q,t]=await Promise.all([launch.pairToken,input.address].map(async asset=>{const [fee,tax]=await Promise.all(['pendingFees','pendingCreatorTax'].map(fn=>read(hook,hookAbi,fn,[poolId,asset])));return creatorShare(fee,tax,policy,launch.buybackEnabled);}));unswept={quote:formatUnits(q,x.pairDecimals),launchTokens:formatUnits(t,x.decimals),estimate:true};}
  }catch{feeReadError=true;}
- const [market,usd,logo,curveBalance]=await Promise.all([
+ const [market,usd,logo,curveBalance,launchCap]=await Promise.all([
   (o.market||marketReference)(input.address,o.fetcher),
   (o.usd||purchaseUsdReference)({pairToken:launch.pairToken}),
   o.includeLogo?read(input.address,[{type:'function',name:'logo',stateMutability:'view',inputs:[],outputs:[{type:'string'}]}],'logo').catch(()=>null):null,
-  o.launchValuation&&curve?read(input.address,tokenAbi,'balanceOf',[launch.curve]).catch(()=>null):null
+  o.launchValuation&&curve?read(input.address,tokenAbi,'balanceOf',[launch.curve]).catch(()=>null):null,
+  o.launchValuation?ponsLaunchValuation(input.address,o.fetcher):null
  ]);
  if(curve&&typeof curveBalance==='bigint'&&curveBalance>=0n&&curveBalance<=x.supply){
   curve.outsideSupply=formatUnits(x.supply-curveBalance,x.decimals);
  }
  if((await c.getBlock({blockNumber:b.number})).hash!==b.hash)throw Error('The chain snapshot changed. Check again.');
- return {...(o.includeLogo?{logo:typeof logo==="string"&&logo.length<=2048?logo:null}:{}),address:input.address,name:x.name,symbol:x.symbol,chainId:4663,phase:Number(launch.phase),status:['On bonding curve','Curve complete; pool pending','Graduated; Uniswap v4 pool','Recovery path'][Number(launch.phase)],curve,market,quoteUsd:usd,feeRecipient:launch.creatorFeeRecipient,viewerAccount:account,accountSource:x.accountSource,pair:{address:launch.pairToken,symbol:x.pairSymbol,decimals:x.pairDecimals},escrow,claimable:formatUnits(claimable,x.pairDecimals),claimableWei:String(claimable),claimScope:'Entire wallet balance for this asset in this Pons escrow; may include several launches.',unswept,feeReadError,unsweptRecipient:launch.creatorFeeRecipient,blockNumber:String(b.number),checkedAt:new Date(Number(b.timestamp)*1000).toISOString(),lifetimeEarnings:null};
+ return {...(launchCap?{launchCap}:{}),...(o.includeLogo?{logo:typeof logo==="string"&&logo.length<=2048?logo:null}:{}),address:input.address,name:x.name,symbol:x.symbol,chainId:4663,phase:Number(launch.phase),status:['On bonding curve','Curve complete; pool pending','Graduated; Uniswap v4 pool','Recovery path'][Number(launch.phase)],curve,market,quoteUsd:usd,feeRecipient:launch.creatorFeeRecipient,viewerAccount:account,accountSource:x.accountSource,pair:{address:launch.pairToken,symbol:x.pairSymbol,decimals:x.pairDecimals},escrow,claimable:formatUnits(claimable,x.pairDecimals),claimableWei:String(claimable),claimScope:'Entire wallet balance for this asset in this Pons escrow; may include several launches.',unswept,feeReadError,unsweptRecipient:launch.creatorFeeRecipient,blockNumber:String(b.number),checkedAt:new Date(Number(b.timestamp)*1000).toISOString(),lifetimeEarnings:null};
 }
 export function tokenStateMessage(s,focus='overview'){
  const lines=[`${s.name} (${s.symbol}) - ${s.status}`];
