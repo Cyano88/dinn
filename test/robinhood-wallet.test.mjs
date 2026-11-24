@@ -60,3 +60,21 @@ test('Base and Robinhood same-chain swaps return high impact for review and reta
   assert.throws(()=>validateRobinhoodRoute(q,i),/minimum receive/);
  }
 });
+test('Base native factory sweeps must bind the exact funded address, depositor and amount',async()=>{
+ const f=statusFixture(),{q,i}=quote(8453,'ETH'),review=validateRobinhoodRoute(q,i);
+ f.input.review={...review,transaction:walletTransaction(review)};
+ const sweep='0x'+'d'.repeat(64),orderId='0x'+'e'.repeat(64),wei=10000000000000000n;
+ const factory='0x1df43ab501f8b0d604f9a58a41a51744f2f8cd22',depository='0x4cd00e387622c35bddb9b4c962c136462338bc31';
+ const types=[{type:'address'},{type:'uint256'},{type:'bytes32'}];
+ const event={address:depository,topics:['0x8032066556caf3967d8fec4ad22a2d9e1e9576556b2903a0fcd5b1fd201e3477'],data:encodeAbiParameters(types,[account,wei,orderId])};
+ f.status.inTxHashes=[sweep];
+ f.o.client.getTransaction=async({hash:h})=>h===sweep?{to:factory,from:recipient,value:0n}:{from:account,to:deposit,input:'0x',value:wei,blockHash};
+ f.o.client.getTransactionReceipt=async({hash:h})=>({status:'success',blockNumber:11n,blockHash,transactionHash:h,logs:h===sweep?[event]:[]});
+ f.o.client.readContract=async({address,args,blockNumber})=>{assert.equal(address,factory);assert.deepEqual(args,[orderId,account]);assert.equal(blockNumber,11n);return deposit;};
+ const status=async()=>(await robinhoodRouteStatus(f.input,f.o)).state;
+ assert.equal(await status(),'verified');
+ event.data=encodeAbiParameters(types,[recipient,wei,orderId]);assert.equal(await status(),'pending');
+ event.data=encodeAbiParameters(types,[account,wei-1n,orderId]);assert.equal(await status(),'pending');
+ event.data=encodeAbiParameters(types,[account,wei,orderId]);event.address=recipient;assert.equal(await status(),'pending');
+ event.address=depository;f.o.client.readContract=async()=>recipient;assert.equal(await status(),'pending');
+});

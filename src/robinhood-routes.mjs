@@ -1,5 +1,5 @@
 import {blockscoutRead} from './blockscout.mjs';
-﻿import {formatUnits,decodeEventLog} from 'viem';
+﻿import {formatUnits,decodeEventLog,parseAbi} from 'viem';
 import {networks,assets,ZERO,address,same,hash,units,erc20,walletTransaction} from './robinhood-wallet-call.mjs';
 import {walletClient,walletSnapshot,walletAsset,readJson,prepareWalletCall,walletSourceReceipt} from './robinhood-wallet.mjs';
 import {researchBaseStockPairedToken} from './base-stock-paired-research.mjs';
@@ -57,11 +57,27 @@ async function payoutProof(txHash,q,o,chainId=q.destinationChainId||4663){const 
  else{const tx=await c.getTransaction({hash:txHash});if(same(tx.to,q.account))amount+=tx.value;if(amount>=BigInt(q.minimumRaw))return true;const directAmount=amount;try{const trace=await c.request({method:'debug_traceTransaction',params:[txHash,{tracer:'callTracer'}]});const walk=(t,root=false)=>{if(t.error)return;if(!root&&['CALL','SELFDESTRUCT'].includes(t.type)&&same(t.to,q.account)&&/^0x[0-9a-f]+$/i.test(t.value||''))amount+=BigInt(t.value);for(const child of t.calls||[])walk(child);};walk(trace,true);}catch{amount=directAmount;try{const traces=await (o.traceRead||blockscoutRead)('transactions/'+txHash+'/internal-transactions',{chainId,fetchImpl:o.fetcher||fetch});if(!Array.isArray(traces.items)||traces.next_page_params)return false;for(const t of traces.items)if(t.success===true&&t.type==='call'&&same(t.to?.hash,q.account)&&uint(t.value))amount+=BigInt(t.value);}catch{return false;}}}
  return amount>=BigInt(q.minimumRaw);
 }
+// Runtime-verified Base DepositAddressFactory and RelayDepository deployments.
+const baseDepositFactory='0x1df43ab501f8b0d604f9a58a41a51744f2f8cd22';
+const baseDepository='0x4cd00e387622c35bddb9b4c962c136462338bc31';
+const relaySweepAbi=parseAbi(['function computeDepositAddress(bytes32 orderId,address depositor) view returns (address)','event RelayNativeDeposit(address from,uint256 amount,bytes32 id)']);
+async function baseNativeSweepMatches(c,tx,receipt,q,amount){
+ if(q.chainId!==8453||!same(tx.to,baseDepositFactory))return false;
+ for(const log of receipt.logs){
+  if(log.removed||!same(log.address,baseDepository))continue;
+  let event;
+  try{event=decodeEventLog({abi:relaySweepAbi,data:log.data,topics:log.topics});}catch{continue;}
+  if(event.eventName!=='RelayNativeDeposit'||!same(event.args.from,q.account)||event.args.amount!==amount)continue;
+  const fundedAddress=await c.readContract({address:baseDepositFactory,abi:relaySweepAbi,functionName:'computeDepositAddress',args:[event.args.id,q.account],blockNumber:receipt.blockNumber});
+  if(same(fundedAddress,q.depositAddress))return true;
+ }
+ return false;
+}
 async function relayDepositProof(txHash,q,o){
  const c=walletClient(q.chainId,o),b=await walletSnapshot(c,q.chainId,o.now),r=await c.getTransactionReceipt({hash:txHash});
  if(!same(r.transactionHash,txHash)||r.status!=='success'||(await c.getBlock({blockNumber:r.blockNumber})).hash!==r.blockHash||b.number-r.blockNumber+1n<2n)return false;
  const amount=units(q.amount,q.asset.decimals);
- if(same(q.asset.address,ZERO)){const tx=await c.getTransaction({hash:txHash});return same(tx.from,q.depositAddress)&&tx.value>=amount;}
+ if(same(q.asset.address,ZERO)){const tx=await c.getTransaction({hash:txHash});if(same(tx.from,q.depositAddress)&&tx.value>=amount)return true;return baseNativeSweepMatches(c,tx,r,q,amount);}
  return r.logs.some(log=>{try{const event=decodeEventLog({abi:erc20,data:log.data,topics:log.topics});return !log.removed&&same(log.address,q.asset.address)&&event.eventName==='Transfer'&&same(event.args.from,q.depositAddress)&&event.args.value>=amount;}catch{return false;}});
 }
 export async function robinhoodRouteStatus(input,o={}){
