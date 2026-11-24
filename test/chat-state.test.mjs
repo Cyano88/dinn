@@ -29,3 +29,11 @@ test('public lock links use the correct network, record ID and manager version',
  ])assert.ok(firstLockPreview(input).includes('[View lock]('+url+')'));
  assert.doesNotMatch(firstLockPreview({pinkLock:{records:[{...record,pinkSaleUrl:'https://www.pinksale.finance/pinklock/robinhood/record/15'}]}}),/View lock/);
 });
+test('restoring old and new swap quotes expires the prompt and preserves the terms',()=>{
+ const prompt='Approve this quote or decline?';
+ for(const suffix of [prompt,prompt+'\n\nDo you accept these exact terms? Reply yes or cancel.']){
+  const messages=[{role:'user',content:'Swap ETH for USDC'},{role:'assistant',content:'Minimum output 2 USDC. '+suffix}];
+  const restored=restoreChatState(JSON.stringify({messages}));
+  assert.equal(restored.messages[1].content,'Minimum output 2 USDC. This quote has expired. Ask for a new quote to swap.');
+ }
+});

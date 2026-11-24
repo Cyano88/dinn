@@ -22,6 +22,11 @@ export function restoreChatState(raw){
  const messages=restoreConversation(raw);let stored;try{stored=JSON.parse(raw);}catch{}
  let priorAddress;const results=messages.map((m,i)=>{
   if(m.role==='user'){const addresses=m.content.match(/0x[0-9a-f]{40}(?![0-9a-f])/gi)||[];if(addresses.length)priorAddress=addresses.length===1&&(/dex/i.test(m.content)||/^0x[0-9a-f]{40}$/i.test(m.content.trim()))?addresses[0]:undefined;return null;}
+  // Approval actions are deliberately not restored. Expire both generations of the swap prompt.
+  const quotePrompt=m.content.indexOf('Approve this quote or decline?');
+  if(quotePrompt>=0&&/^Approve this quote or decline\?(?:\s+Do you accept these exact terms\?[^\n]*)?$/.test(m.content.slice(quotePrompt))){
+   m.content=m.content.slice(0,quotePrompt)+'This quote has expired. Ask for a new quote to swap.';
+  }
   const saved=savedChatResult(stored?.results?.[i]);if(saved)return saved;
   // Recover old text-only DEX replies from an explicit address in that conversation.
   if(priorAddress&&/DEX Screener/i.test(m.content)&&/prepared|profile|checkout/i.test(m.content))return savedChatResult({actions:[{id:'dex',address:priorAddress}]});

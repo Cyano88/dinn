@@ -392,7 +392,7 @@ $('chat').onsubmit=async e=>{
   }
   if(launchConversationStep&&result.toolsUsed?.some(name=>['open_wallet_action','wallet_balance','wallet_portfolio','transaction_status','inspect_token','research_base_stock','research_base_stock_paired_token','research_pons_stock','research_pons_stock_pair','pons_trade','base_stock_trade'].includes(name)))showLaunchStage(null,false);
   if(result.tradeQuoteOffer)tradeQuoteOffer={...result.tradeQuoteOffer,user,epoch,turn:result.message};
-  const walletAction=result.actions?.find(action=>action.id==='wallet_approve');if(walletAction)result.message+='\n\nDo you accept these exact terms? Reply “yes” or “approve” to send, or “cancel” to stop. Nothing has been sent yet.';
+  const walletAction=result.actions?.find(action=>action.id==='wallet_approve');if(walletAction&&!result.message.endsWith('Approve this quote or decline?'))result.message+='\n\nDo you accept these exact terms? Reply “yes” or “approve” to send, or “cancel” to stop. Nothing has been sent yet.';
   const researchTarget=result.inspection?.address||result.data?.address;
   const baseResearch=result.toolsUsed?.some(name=>['research_base_stock','research_base_stock_paired_token'].includes(name));
   if(accessToken && (baseResearch||result.inspection) && /^0x[a-f0-9]{40}$/i.test(researchTarget) && !JSON.parse(read('research-feedback')||'null')?.publicFeed){
