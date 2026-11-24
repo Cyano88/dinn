@@ -18,7 +18,7 @@ Earlier pivot record (historical, superseded by the capabilities above):
 
 User direction: pause Elysium work, mark it Coming soon, make Dinn multi-launchpad AI and begin with Pons on Robinhood Chain. This document records a product decision, not a claim about Elysium network health.
 
-Active shell: public/index.html, public/workspace.js. Original Ascend UI snapshot: docs/archive/elysium-index-2026-11-10.html; original public/app.js and adapters retained. Existing browser keys are not deleted or migrated. New per-account brief/chat keys use dinn.multi.*.v1. No existing Ascend draft is interpreted as Pons settings.
+Active shell: public/index.html, public/workspace.js. Original Ascend UI snapshot: docs/archive/elysium-index-2026-11-10.html; the [retired browser entry](https://github.com/Cyano88/dinn/blob/0f9ca842067285e8ffc72525b2f4451d509d9c8d/public/app.js) is available in Git history. The live /app.js route serves public/workspace.js. Existing browser keys are not deleted or migrated. New per-account brief/chat keys use dinn.multi.*.v1. No existing Ascend draft is interpreted as Pons settings.
 
 Server blocks all legacy Elysium launch, funding, swap, market, wallet, delivery and creator-fee routes with 410, independent of environment execution flags. Old execution bundle blocked. Legacy agent launch services removed. AI prompt now explains current capability boundaries. Public documentation updated.
 

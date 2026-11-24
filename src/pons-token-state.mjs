@@ -1,5 +1,5 @@
 import {claimTransaction} from './pons-claim-call.mjs';
-import {parseAbi,formatUnits,zeroAddress,keccak256,encodeAbiParameters,encodeFunctionData,decodeEventLog,toHex} from 'viem';
+import {parseAbi,formatUnits,zeroAddress,keccak256,encodeAbiParameters,decodeEventLog} from 'viem';
 import {getClient,snapshot,PONS_FACTORY} from './pons.mjs';
 import {factoryAbi,escrowAbi,factoryCodeHash,escrowCodeHash,escrowAddress} from './pons-fee-abi.mjs';
 import {purchaseUsdReference} from './purchase-usd.mjs';

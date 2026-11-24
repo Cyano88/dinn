@@ -1,23 +1,48 @@
 # Dinn
 
-Dinn helps people launch tokens on Pons and use wallet tools through a guided chat. Dinn Labs gives autonomous trading agents sourced, read-only research about Robinhood stock tokens and Pons launches on Robinhood Chain, Coinbase tokenized stocks on Base, and Bankr stock-paired launches. The paid research service is [live on NEAR AI Agent Market](https://market.near.ai/a/dinn).
+Dinn is a conversational workspace for researching tokens and tokenized stocks on Base and Robinhood Chain. Creators can launch a token on Pons through chat. Trading agents can hire Dinn Labs for a sourced research report through two marketplaces.
 
-**Open Dinn:** [dinnlabs.com](https://dinnlabs.com) &middot; [Using Dinn Chat](https://dinnlabs.com/docs) &middot; [Developer docs](https://dinnlabs.com/docs/integrate) &middot; [Marketplace integration record](docs/NEAR-MARKETPLACE.md)
+[Open Dinn Chat](https://dinnlabs.com/) · [Using Dinn](https://dinnlabs.com/docs) · [Developer quickstart](https://dinnlabs.com/docs/integrate)
 
-## The agent service
+## Research coverage
 
-Send the chain and target in the first message.
+| What you want to research | What to send | What Dinn checks |
+| --- | --- | --- |
+| Coinbase tokenized stock on Base | Company name, ticker such as `NVDAc`, or Base contract | Registry and onchain identity, dated reference value, transfer controls, market activity, and available holder and lock evidence. For supported equities, Dinn can surface dated company news and compare the stock move with a sampled token pool. |
+| Stock-paired Bankr launch on Base | Launch token contract | Launch record, pool creation receipt and stock registry match. The report includes available pool liquidity and volume, fees, sampled holder activity, and creator vesting amounts and dates. Discovery can shortlist checked pairs by liquidity or 24-hour volume. |
+| Pons launch on Robinhood Chain | Launch token contract | Launch age, trading pair, bonding curve progress, curve volume and fees, sampled holder buys and sells, and supported lock or vesting records. Stock-paired research examines the launch and its pairing stock separately. |
+| Robinhood stock token | Ticker or Robinhood Chain contract | Registry and onchain identity, available reference price, and contract, holder and lock evidence where available. |
 
-- **Robinhood Chain.** For a Robinhood stock token, send its ticker or contract address to check its identity and available reference price. For a Pons launch, send its contract address to check its bonding curve, volume, fees and sampled holder activity. Request stock-paired launch research to see the launch and its pairing stock separately. Reports check supported PinkLock, UNCX V2, HoodLock and Titan records for the exact token.
-- **Base.** For a Coinbase stock token, send its ticker or Base address to check its identity, dated reference value, transfer controls and available market and holder evidence. For a stock-paired Bankr launch, send the launch address to verify the pair and check available pool activity, fees and vesting.
+Reports identify sources, check times and coverage gaps. A lock schedule can reach its release date before the holder withdraws. A missing record leaves the lock status unknown. Price, liquidity and company news provide context; an executable quote requires a separate check.
 
-Reports include sources and coverage limits. An empty locker search covers only the sources checked. The buyer retains control of trading decisions.
+## Dinn Chat
 
-The public JSON endpoint is a free, read-only preview. The separate NEAR Agent Market listing hires Dinn's self-hosted worker for **$0.10 per report**. The worker polls for funded assignments, delivers the report, and persists job recovery state in PostgreSQL. NEAR Agent Market handles the hire and payment; Pons and Robinhood Chain supply token evidence. 0G powers Dinn's conversational inference, while the on-chain report is deterministic.
+- **Launch on Pons.** Choose a token name, ticker, enabled supply preset, pairing asset and fees. Add an optional logo and social links, or generate a logo and preview and publish a project website. Supported page features include a matching-pairs game and an art gallery using supplied image links. Choose an optional opening purchase, review the terms and approve the launch. Find supported Pons launches in **Launches** and open their research from the list.
+- **Use a wallet.** Check balances, send supported assets, swap on available routes, or bridge supported Base assets to Robinhood Chain. Dinn guides the review and approval and shows transaction status. Bridge tracking distinguishes source confirmation from destination delivery.
+- **Manage a Pons token.** Review supported buys and sells, check and claim eligible creator fees, or prepare a supported token burn. Dinn can check existing lock records and direct users to an external locker to create one.
+- **Research on Base.** Ask about a stock or paste a Bankr launch address. Eligible stock reports can hand off to Bankr for its live quote and location checks. Bankr token creation through Dinn is planned.
 
-## Reproduce the flow
+## Agent access
 
-Use Node 22 or newer. No wallet key is needed for the read-only path.
+| Entry point | Terms | Delivery |
+| --- | --- | --- |
+| [NEAR AI Agent Market](https://market.near.ai/a/dinn) | $0.10 per hire | Send the chain and target in the opening brief. One buyer-requested refresh for the same token is included on eligible reopened assignments. For reports with a saved baseline, the refresh leads with comparable changes in pool liquidity, Pons curve progress, sampled wallet activity and lock schedules. |
+| [Agentic Market on Base](https://agentic.market/services/dinn-pasy-onrender-com) | 0.10 USDC per research request via x402 | An agent posts to the [paid endpoint](https://dinn-pasy.onrender.com/api/paid/research), follows the payment challenge and receives the report. A discovery shortlist and an individual token report are separate calls. [Buyer quickstart](https://dinnlabs.com/agentic-market.md) |
+| [Public API](https://dinnlabs.com/.well-known/dinn.json) | Free read-only preview | Inspect the [request schema](https://dinnlabs.com/api/agent/schema) for supported services and fields. Paid and signed-in reports can include provider-backed holder data omitted from previews. |
+
+Try a public research request without a wallet:
+
+```sh
+curl -X POST https://dinnlabs.com/api/agent/request \
+  -H 'Content-Type: application/json' \
+  -d '{"service":"base.stock.research","requestId":"stock-example-1","input":{"query":"NVDAc"}}'
+```
+
+A completed research response includes structured results, a readable report and an evidence content hash. Marketplace research is read-only. The calling agent controls any later trade and wallet approval.
+
+## Run locally
+
+Use Node.js 22 or newer. Install dependencies, build the browser bundles, run the tests and start the app:
 
 ```sh
 npm ci
@@ -25,32 +50,15 @@ npm test
 npm start
 ```
 
-Open `http://127.0.0.1:4317`. Provider-backed reads need the relevant RPC configuration in a local `.env` copied from `.env.example`. Never commit credentials. To try the hosted public API, inspect [`/.well-known/dinn.json`](https://dinn-pasy.onrender.com/.well-known/dinn.json), then send this request to `https://dinn-pasy.onrender.com/api/agent/request`:
+Open http://127.0.0.1:4317. See [.env.example](.env.example) for provider settings for authentication, inference and chain reads. Production uses Render and PostgreSQL. The [NEAR worker](ops/near-worker/README.md) runs separately on a VPS and uses PostgreSQL to recover marketplace jobs. 0G powers conversational inference. Research evidence comes from registry, chain, market and news sources.
 
-```json
-{"service":"token.research","requestId":"judge-grail-1","input":{"address":"0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4"}}
-```
+## Integration and verification
 
-**See:** `status: completed`, a checked Robinhood Chain block, `deliverableMarkdown`, machine-readable evidence, an `evidence.sha256` content hash, and `broadcast: false`. Results change with the chain and source coverage. A hash checks content integrity; it is not an attestation or payment receipt. The [reference trading-agent client](scripts/dinn-trading-agent-demo.mjs) checks the hash and token/block binding, recomputes sampled holder flows, and returns a conservative `REVIEW`, `ABSTAIN`, or simulation-only outcome. Run it with:
-
-```sh
-node scripts/dinn-trading-agent-demo.mjs 0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4
-```
-
-The [marketplace record](docs/NEAR-MARKETPLACE.md) documents a controlled $0.10 hire: Dinn delivered a report in 11 seconds, the buyer accepted it, and the marketplace recorded payment released. The buyer and seller accounts belonged to the same owner. This verifies the paid delivery path, not independent customer demand or an external-wallet withdrawal. A zero-cost Agent Market test run for normal Coinbase stock research was also picked up and delivered automatically; it returned dated NVDAc market evidence and the optional Bankr handoff. Holder data was intentionally omitted, no payment was due, and buyer acceptance remains pending. The run did not place a trade.
-
-## Human product and verified limits
-
-Dinn chat guides Pons launch setup, wallet reads, supported sends, swaps, bridges, fee claims, and token research. The browser requests explicit wallet approval for signed actions. A funded Base-to-Robinhood bridge and a funded Pons launch were completed through Dinn on 14 November 2026. The resulting [DATR token on Pons](https://ponsfamily.com/launchpad/0x49B7B200ab5Ef1657e1dd9f0Edf53c69d68384C1) has a [verified launch transaction](https://robinhoodchain.blockscout.com/tx/0x322354170e0fa42b45d4028dcdd2bc375d4b0ba2d276023b6960af7f32943a46). A marketplace earnings withdrawal and all other signed wallet actions have not been live-funded in this verification pass. Dinn's embedded wallet does not automatically connect to the Pons site.
-
-Production runs on Render with PostgreSQL. The separate Agent Market worker runs on a VPS and uses the Render database for recovery state. See [Pons integration status](docs/PONS-INTEGRATION.md) and [agent access](public/agent-guide.md) for exact capabilities and limits.
-
-## Hackathon provenance
-
-Dinn's Pons chat, launch, wallet tooling, and earlier NEAR research existed before this hackathon iteration. The baseline is commit [`29003cd`](https://github.com/Cyano88/dinn/commit/29003cd1377e0d9c8fef95552cf04ac053f479d1). The [NEAR agent-access work](https://github.com/Cyano88/dinn/compare/29003cd1377e0d9c8fef95552cf04ac053f479d1...feat/near-agent-access) added the public agent contract, evidence-backed token research, reference consumer, self-hosted NEAR Agent Market worker, funded hire/recovery flow, and related tests. Subsequent Pons and chat improvements are product work and should not be counted as NEAR integration. The primary submission track is **Agent Economy**.
-
-The existing filmed Grail request is a recorded snapshot at Robinhood Chain block `112933500`, with bounded holder and lock coverage. It uses captured CLI output and a real marketplace hire record; it does not show a trade. It is not the unified Base-and-NEAR product demo, which has not been published. Older Elysium/Ascend implementation notes are preserved separately in [historical documentation](docs/README-HISTORY.md); they describe retired flows, not the live Dinn product.
+- [Agent integration guide](public/agent-guide.md) and [reference research client](scripts/dinn-trading-agent-demo.mjs)
+- [NEAR marketplace delivery and payment record](docs/NEAR-MARKETPLACE.md), including the distinction between controlled verification and independent demand
+- [Funded Pons launch receipt](https://robinhoodchain.blockscout.com/tx/0x322354170e0fa42b45d4028dcdd2bc375d4b0ba2d276023b6960af7f32943a46) and [Pons integration notes](docs/PONS-INTEGRATION.md)
+- [Agent Economy submission baseline](https://github.com/Cyano88/dinn/commit/29003cd1377e0d9c8fef95552cf04ac053f479d1), [NEAR integration changes](https://github.com/Cyano88/dinn/compare/29003cd1377e0d9c8fef95552cf04ac053f479d1...feat/near-agent-access) and [historical Ascend documentation](docs/README-HISTORY.md)
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+[MIT](LICENSE)

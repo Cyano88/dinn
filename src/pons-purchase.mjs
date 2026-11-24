@@ -1,4 +1,4 @@
-﻿import {parseAbi,parseUnits,formatUnits,encodeFunctionData,toHex,zeroAddress} from 'viem';
+﻿import {parseAbi,parseUnits,formatUnits,encodeFunctionData,zeroAddress} from 'viem';
 export const PONS_BUY_ROUTER='0xe33E9E479dF8802cb0866d5d05258bEc4cF62948';
 export const erc20Abi=parseAbi(['function balanceOf(address) view returns(uint256)','function allowance(address,address) view returns(uint256)','function approve(address,uint256) returns(bool)','event Transfer(address indexed from,address indexed to,uint256 value)']);
 export function purchaseConfig(value){
