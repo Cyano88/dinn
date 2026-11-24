@@ -28,3 +28,24 @@ export function restoreChatState(raw){
   return null;
  });return {messages,results};
 }
+
+const explorers={8453:'https://basescan.org',4663:'https://robinhoodchain.blockscout.com'};
+const networks={8453:'Base',4663:'Robinhood Chain'};
+const hash=value=>/^0x[0-9a-f]{64}$/i.test(value||'');
+export function isSwapStatusQuestion(text){
+ return /^(?:check(?: the| my)?(?: status of)?|show(?: me)?(?: my| the)?|what(?: is|'s)(?: the)? status of(?: my| the)?|did(?: my| the)?)?\s*(?:(?:my|the|last|latest)\s+)*swap(?:\s+(?:status|receipt|go through|complete|finish))?[.!?]?$/i.test(text.trim())&&!/^swap[.!?]?$/i.test(text.trim());
+}
+export function savedSwap(storage,account){
+ if(!/^0x[0-9a-f]{40}$/i.test(account||''))return null;
+ try{const r=JSON.parse(storage.getItem('dinn.robinhood.wallet.v1:'+account.toLowerCase()));return r?.review?.kind==='swap'&&r.review.account?.toLowerCase()===account.toLowerCase()&&explorers[r.review.chainId]&&r.review.chainId===r.review.destinationChainId&&hash(r.hash)?r:null;}catch{return null;}
+}
+export function swapReceipt(record,result){
+ const q=record.review,network=networks[q.chainId],link=(label,h)=>'['+label+']('+explorers[q.chainId]+'/tx/'+h+')';
+ const source=link('Source transaction',record.hash);
+ if(result&&result.hash?.toLowerCase()!==record.hash.toLowerCase())throw Error('Swap receipt hash mismatch');
+ if(result?.state==='verified'&&result.stage==='destination'&&hash(result.destinationHash))return {done:true,text:'\u2713 Swap completed on '+network+'. '+source+' \u00b7 '+link('Destination transaction',result.destinationHash)};
+ if(result?.state==='refunded'&&hash(result.destinationHash)&&result.refundChainId===q.chainId)return {done:true,text:'Swap refunded on '+network+'. '+source+' \u00b7 '+link('Refund transaction',result.destinationHash)};
+ if(result?.state==='reverted')return {done:true,text:'The swap transaction failed on '+network+'. '+source};
+ if(result?.needsRecovery||result?.state==='refund-reported')return {done:true,text:'This swap needs a status check with Relay. '+source+' ? [Open Relay recovery](https://relay.link/withdraw)'};
+ return {done:false,text:'Swap sent on '+network+'. Waiting for confirmation. '+source};
+}

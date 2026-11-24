@@ -14,7 +14,7 @@ import {mountDinnLaunches} from './dinn-launches.js';
 
 import {renderInspection} from './token-report.js';
 
-import {appendChatState,restoreChatState} from './chat-state.js';
+import {appendChatState,restoreChatState,isSwapStatusQuestion,savedSwap,swapReceipt} from './chat-state.js';
 
 import {dexCheckoutFor,profileText} from './dex-profile.js';
 
@@ -92,7 +92,7 @@ function syncBrief(){invalidateLaunch();for(const f of ['name','symbol','descrip
 
 function message(role,text){const el=document.createElement('div');el.className='message '+role;const label=document.createElement('small');label.textContent=role==='user'?'You':'Dinn';const body=document.createElement('div');body.className='message-body';if(role==='assistant')renderAssistantText(body,text);else body.textContent=text;el.append(label,body);$('messages').append(el);$('welcome').hidden=true;scrollChat();return body;}
 
-function restore(){const restored=restoreChatState(read('chat'));chatPendingApproval=null;chatResults=restored.results;history=restored.messages.map((m,i)=>m.role==='assistant'&&/reply\s+[“"]approve[”"]/i.test(m.content)&&!chatResults[i]?.actions?.some(action=>action.id==='wallet_approve')?{...m,content:m.content.replace(/If these details are correct, reply\s+[“"]approve[”"].*$/im,'This approval review expired when the chat was refreshed. Ask Dinn to check the current terms again before proceeding.').replace(/If these terms are right, reply\s+[“"]approve[”"].*$/im,'This launch check expired when the chat was refreshed. Ask Dinn to check the current terms again before proceeding.')}:m);$('messages').replaceChildren();history.forEach((m,i)=>{const body=message(m.role,m.content);if(chatResults[i])renderToolResult(body,{message:m.content,...chatResults[i],restored:true});});try{const saved=JSON.parse(read('pons-brief'));brief=saved?.launchpad==='pons'&&saved.chainId===4663?cleanBrief(Object.fromEntries(['name','symbol','description'].filter(f=>saved[f]!==undefined).map(f=>[f,saved[f]]))):{};}catch{brief={};}try{const setup=JSON.parse(read('setup'));awaiting=setup?.awaiting||null;setupActive=setup?.active===true;requestedSupply=typeof setup?.requestedSupply==='string'&&/^[1-9]\d{0,23}$/.test(setup.requestedSupply)?setup.requestedSupply:null;}catch{awaiting=null;setupActive=false;requestedSupply=null;}syncBrief();}
+function restore(){const restored=restoreChatState(read('chat'));chatPendingApproval=null;chatResults=restored.results;history=restored.messages.map((m,i)=>m.role==='assistant'&&/reply\s+[“"]approve[”"]/i.test(m.content)&&!chatResults[i]?.actions?.some(action=>action.id==='wallet_approve')?{...m,content:m.content.replace(/If these details are correct, reply\s+[“"]approve[”"].*$/im,'This approval review expired when the chat was refreshed. Ask Dinn to check the current terms again before proceeding.').replace(/If these terms are right, reply\s+[“"]approve[”"].*$/im,'This launch check expired when the chat was refreshed. Ask Dinn to check the current terms again before proceeding.')}:m);$('messages').replaceChildren();history.forEach((m,i)=>{const body=message(m.role,m.content);if(chatResults[i])renderToolResult(body,{message:m.content,...chatResults[i],restored:true});});try{const saved=JSON.parse(read('pons-brief'));brief=saved?.launchpad==='pons'&&saved.chainId===4663?cleanBrief(Object.fromEntries(['name','symbol','description'].filter(f=>saved[f]!==undefined).map(f=>[f,saved[f]]))):{};}catch{brief={};}try{const setup=JSON.parse(read('setup'));awaiting=setup?.awaiting||null;setupActive=setup?.active===true;requestedSupply=typeof setup?.requestedSupply==='string'&&/^[1-9]\d{0,23}$/.test(setup.requestedSupply)?setup.requestedSupply:null;}catch{awaiting=null;setupActive=false;requestedSupply=null;}syncBrief();queueMicrotask(resumeChatSwap);}
 
 function keepBrief(){save('pons-brief',{...brief,launchpad:'pons',chainId:4663});save('setup',{awaiting,active:setupActive,requestedSupply});syncBrief();}
 
@@ -334,6 +334,11 @@ $('chat').onsubmit=async e=>{
  e.preventDefault();if(!user)return;const text=$('prompt').value.trim();if(!text)return;if(chatApprovalBusy||claimBusy){say('Dinn is still checking or processing the current wallet action. Please wait before starting another one.');$('prompt').value='';return;}
  if(handlePendingChatApproval(text)){$('prompt').value='';return;}
  if(chatPendingApproval){const pending=chatPendingApproval;chatPendingApproval=null;if(pending.action)forgetWalletApproval(pending.action);say('I cleared the earlier approval review before handling this request. Ask me to check the current terms again before proceeding.');}
+ if(isSwapStatusQuestion(text)){
+  $('prompt').value='';const record=savedSwap(localStorage,account);
+  if(!record){recordSetupReply(text,'I could not find a recent swap for this wallet on this device.');return;}
+  const pending=swapReceipt(record).text,body=recordSetupReply(text,pending);watchChatSwap(body,record,pending);return;
+ }
  if(/^remove my latest feedback[.!]?$/i.test(text)){
   const owner=user,session=epoch;
   try{const {getAccessToken}=await import('/auth/entry.js');const result=await feedbackChat({action:'removeLatest'},await getAccessToken());if(owner===user && session===epoch){$('prompt').value='';recordSetupReply(text,result.removed?'Removed your latest public feedback.':'You have no public feedback to remove.');}}
@@ -469,7 +474,7 @@ if(user&&((nextUser===user)||d.state==='loading'&&!nextUser)){
  if(d.state==='connected'&&d.address===account){provider=d.provider||provider;walletSource=d.source||walletSource;walletSendTransaction=d.sendTransaction||null;$('wallet-status').textContent='';$('wallet-use-dinn').hidden=true;walletUI?.changed('',false);if(!$('wallet-view').hidden)void walletUI?.refresh();return;}
  if(d.state==='connected'||d.state==='wallet-needed'){
   epoch++;controller?.abort();chatPendingApproval=null;launchBusy=false;confirmedLaunchWallet=null;invalidateLaunch();launchActivity.stop();account=d.address||null;provider=d.provider||null;walletSource=d.source||null;walletSendTransaction=d.sendTransaction||null;
-  $('wallet-address').textContent=account||'';$('wallet-balance').textContent=' - ETH';$('wallet-status').textContent=d.walletStatus||'';$('wallet-use-dinn').hidden=!d.canUseEmbedded;walletUI?.changed(d.state==='wallet-needed'?d.walletStatus:'',false);if(account&&!$('wallet-view').hidden)void walletUI?.refresh();return;
+  $('wallet-address').textContent=account||'';$('wallet-balance').textContent=' - ETH';$('wallet-status').textContent=d.walletStatus||'';$('wallet-use-dinn').hidden=!d.canUseEmbedded;walletUI?.changed(d.state==='wallet-needed'?d.walletStatus:'',false);if(account&&!$('wallet-view').hidden)void walletUI?.refresh();if(account)queueMicrotask(resumeChatSwap);return;
  }
 }
 if(nextUser===user&&d.state==='connected'&&d.address===account&&d.provider===provider)return;showLaunchStage(null,false);if(!$('pons-review-dialog').hidden)showLaunchStage(null);epoch++;launchBusy=false;logoCreator.reset();controller?.abort();launchActivity.stop();selectedToken=null;confirmedLaunchWallet=null;resetWalletCopy();account=d.address||null;provider=d.provider||null;walletSource=d.source||null;walletSendTransaction=d.sendTransaction||null;invalidateLaunch();launchReturnPending=false;user=d.authenticated?(d.userId||account):null;const loading=d.state==='loading';$('session-loading').hidden=!loading;$('auth-gate').hidden=loading||!!user;$('workspace').hidden=loading||!user;$('workspace').inert=loading||!user;history=[];$('messages').replaceChildren();for(const id of ['feedback','brief-status','wallet-status'])$(id).textContent='';$('wallet-address').textContent=account||'';$('wallet-balance').textContent=' -  ETH';$('wallet-status').textContent=d.walletStatus||'';$('wallet-use-dinn').hidden=!d.canUseEmbedded;if(user){restore();restoreLaunch();restoreSettings();if(account){let prior;try{prior=JSON.parse(read('last-deployer'));}catch{}const recipient=$('launch-recipient');if(prior&&recipient.value.toLowerCase()===prior.toLowerCase()){recipient.value=account;saveSettings();}save('last-deployer',account);}renderTokenSummary();renderSetupChoices();}else {brief={};awaiting=null;syncBrief();}if(!user)for(const f of ['name','symbol','description'])$('brief-'+f).value='';draftSync.start(user);walletUI?.changed(d.state==='wallet-needed'?d.walletStatus:'',d.state==='wallet-changing');if(d.state==='wallet-changing'&&!account)walletUI?.switching();else if(d.state==='wallet-changing'&&account&&!$('wallet-view').hidden)void walletUI?.refresh();});
@@ -720,11 +725,58 @@ function appendChatActionNote(body,text,{success=false,pending=false,hash,chainI
  if(matches.length===1){const reply=matches[0];reply.content+='\n\n'+text;actionHistoryText.set(body,reply.content);try{save('chat',{messages:history,results:chatResults});}catch{}}
  scrollChat();return p;
 }
+const activeSwapChecks=new WeakSet();
+function watchChatSwap(body,record,initialText){
+ if(activeSwapChecks.has(body))return;
+ activeSwapChecks.add(body);
+ const owner=record.review.account,viewer=user;
+ const current=()=>body.isConnected&&viewer===user&&owner.toLowerCase()===account?.toLowerCase();
+ let prior=initialText;
+ async function check(attempt=0){
+  if(!current()){activeSwapChecks.delete(body);return;}
+  let update;
+  try{
+   const result=await api('/api/robinhood/route/status',{hash:record.hash,review:record.review});
+   if(!current()){activeSwapChecks.delete(body);return;}
+   update=swapReceipt(record,result);
+   if(update.done&&['verified','refunded','reverted'].includes(result.state)){
+    const latest=savedSwap(localStorage,account);
+    if(latest?.hash===record.hash)localStorage.setItem('dinn.robinhood.wallet.v1:'+owner.toLowerCase(),JSON.stringify({...latest,state:result.state}));
+   }
+  }catch{}
+  if(update?.text&&update.text!==prior&&current()){
+   const matches=history.filter(m=>m.role==='assistant'&&m.content===prior);
+   const entry=matches.length===1?matches[0]:null;
+   body.replaceChildren();renderAssistantText(body,update.text);
+   if(update.done&&update.text.startsWith('\u2713'))body.classList.add('operation-success');
+   if(entry){entry.content=update.text;save('chat',{messages:history,results:chatResults});}
+   prior=update.text;
+  }
+  if(update?.done||attempt>=36){activeSwapChecks.delete(body);return;}
+  setTimeout(()=>void check(attempt+1),10000);
+ }
+ void check();
+}
+function resumeChatSwap(){
+ const record=savedSwap(localStorage,account);if(!record)return;
+ const pending=swapReceipt(record).text;
+ const bodies=$('messages').querySelectorAll('.message.assistant .message-body');
+ for(const body of bodies){
+  if(body.textContent.includes('Waiting for confirmation.')&&Array.from(body.querySelectorAll('a')).some(a=>a.href.endsWith('/tx/'+record.hash)))watchChatSwap(body,record,pending);
+ }
+}
+window.addEventListener('focus',resumeChatSwap);
 async function approveWalletFromChat(action,body){
  let pendingNote;try{
   const review=action.review;if(!review)throw Error('This review is unavailable. Ask Dinn to check the action again.');if(!walletUI)throw Error('Your wallet is not ready. Reconnect it, then ask Dinn to review the action again.');pendingNote=appendChatActionNote(body,walletSource==='embedded'?'Dinn is submitting from your Dinn wallet…':'Waiting for your external wallet confirmation…',{pending:true});const record=await walletUI.approveChat(review);
   if(record.state==='rejected'){pendingNote.classList.remove('chat-action-pending');appendChatActionNote(body,'Wallet request declined. Nothing was sent.');return;}
   if(!record.hash){pendingNote.classList.remove('chat-action-pending');appendChatActionNote(body,'Wallet result is uncertain. Check wallet activity before asking Dinn to review it again.');return;}
+  if(review.kind==='swap'&&!review.ponsTradeKind&&[4663,8453].includes(review.chainId)){
+   const pending=swapReceipt(record).text,previous=actionHistoryText.get(body);
+   const entry=history.findLast(m=>m.role==='assistant'&&m.content===previous);
+   if(entry){entry.content=pending;save('chat',{messages:history,results:chatResults});}
+   body.replaceChildren();renderAssistantText(body,pending);watchChatSwap(body,record,pending);return;
+  }
   pendingNote.textContent='Sent on '+({4663:'Robinhood Chain',8453:'Base',42161:'Arbitrum'}[review.chainId]||'the selected network')+'. Waiting for confirmation.';
   if(record.networkWarning)appendChatActionNote(body,'Your wallet could not return to its previous network. Switch it back manually before your next action.');if(record.storageWarning)appendChatActionNote(body,'Save this transaction hash: '+record.hash);
   const actionEpoch=epoch,actionAccount=account;let attempts=0;const clearPending=()=>pendingNote.classList.remove('chat-action-pending');
