@@ -25,6 +25,7 @@ img.brandmark{background:none;border-radius:0;object-fit:contain}img.signin-symb
 /* Sign-in benefit, legal links and infrastructure attribution */
 .signin-note{border:0;padding:0;margin-top:25px;font-size:12px;line-height:1.65;color:#68736a}.signin-legal{max-width:300px;margin:17px auto 0;font-size:11px;line-height:1.8;color:#737d76}.signin-legal a{color:#343f37;text-decoration:underline;text-decoration-color:#afb7b1;text-underline-offset:3px}.signin-legal a:hover{color:#111b14;text-decoration-color:currentColor}.auth-footer{min-height:28px;align-items:center}.inference-attribution{display:inline-flex;align-items:center;justify-content:center;gap:12px;font-size:11px;color:#737d76}.inference-attribution img{display:block;width:auto;height:20px;object-fit:contain}
 .signin-legal a{white-space:nowrap}
+.signin-legal.signin-docs{margin-top:4px}.nav-docs{text-decoration:none}
 
 .policy-page{max-width:740px;margin:0 auto;padding:40px 24px 64px}.policy-page article{margin:64px 0 40px}.policy-page h1{font-size:32px;letter-spacing:-1px;margin-bottom:24px}.policy-page h2{font-size:18px;margin:30px 0 10px}.policy-page p{color:#626d65;line-height:1.8}.policy-page .policy-status{font-size:11px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px}.policy-back{text-decoration:underline;text-underline-offset:4px}
 
