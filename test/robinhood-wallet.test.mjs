@@ -42,3 +42,21 @@ test('regenerated route IDs require an exact matching deposit before destination
 import {prepareWalletCall} from '../src/robinhood-wallet.mjs';
 test('USDT-style successful empty returns are accepted without accepting false returns',async()=>{const q=prepared();q.chainId=42161;q.asset=assets[42161][2];const c={getChainId:async()=>42161,getBlock:async()=>({number:12n,hash:blockHash,timestamp:BigInt(Math.floor(Date.now()/1000))}),readContract:async p=>p.functionName==='symbol'?'USDT':p.functionName==='decimals'?6:100000000n,getBalance:async()=>10n**18n,call:async()=>({data:undefined}),estimateGas:async()=>50000n,getGasPrice:async()=>1000000n};assert.equal((await prepareWalletCall(q,{client:c})).simulated,true);c.call=async()=>({data:'0x'+'0'.repeat(64)});await assert.rejects(()=>prepareWalletCall(q,{client:c}),/simulation/);});
 import {baseV4PoolId} from '../src/base-stock-v4.mjs';
+
+test('Base and Robinhood same-chain swaps return high impact for review and retain minimum receive checks',()=>{
+ for(const chainId of [8453,4663]){
+  const {q,i}=quote(chainId,'ETH');
+  const dest=assets[chainId][1],slug=chainId===8453?'base':'robinhood';
+  Object.assign(i,{kind:'swap',destinationChainId:chainId,outputAsset:dest});
+  q.details.currencyOut.currency={...dest,chainId};
+  q.protocol.v2.orderData.inputs[0].payment.chainId=slug;
+  q.protocol.v2.orderData.inputs[0].refunds[0].chainId=slug;
+  q.protocol.v2.orderData.output.chainId=slug;
+  q.protocol.v2.orderData.output.payments[0].currency=dest.address;
+  q.details.totalImpact.percent='-8.25';
+  const review=validateRobinhoodRoute(q,i);
+  assert.equal(review.impactPercent,8.25);assert.ok(review.minimumAmount);
+  q.details.currencyOut.minimumAmount='1';
+  assert.throws(()=>validateRobinhoodRoute(q,i),/minimum receive/);
+ }
+});

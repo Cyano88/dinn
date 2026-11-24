@@ -1,4 +1,8 @@
 import {encodeFunctionData,parseAbi,parseUnits,toHex,zeroAddress} from 'viem';
+export function swapImpactMessage(percent){
+ if(!Number.isFinite(percent))return '';
+ return (percent>3?'High price impact':'Price impact')+' for this quote: '+percent+'%.';
+}
 export const ZERO=zeroAddress;
 export const networks={4663:{name:'Robinhood Chain',slug:'robinhood',rpc:'https://rpc.mainnet.chain.robinhood.com',explorer:'https://robinhoodchain.blockscout.com'},8453:{name:'Base',slug:'base',rpc:'https://mainnet.base.org',explorer:'https://basescan.org'},42161:{name:'Arbitrum',slug:'arbitrum',rpc:'https://arb1.arbitrum.io/rpc',explorer:'https://arbiscan.io'}};
 export const assets={4663:[{address:ZERO,symbol:'ETH',decimals:18},{address:'0x5fc5360d0400a0fd4f2af552add042d716f1d168',symbol:'USDG',decimals:6},{address:'0x0bd7d308f8e1639fab988df18a8011f41eacad73',symbol:'WETH',decimals:18}],8453:[{address:ZERO,symbol:'ETH',decimals:18},{address:'0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',symbol:'USDC',decimals:6},{address:'0xfde4c96c8593536e31f229ea8f37b2ada2699bb2',symbol:'USDT',decimals:6}],42161:[{address:ZERO,symbol:'ETH',decimals:18},{address:'0xaf88d065e77c8cc2239327c5edb3a432268e5831',symbol:'USDC',decimals:6},{address:'0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',symbol:'USDT',decimals:6}]};

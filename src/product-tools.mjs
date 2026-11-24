@@ -7,7 +7,7 @@ import {discoveryStep,discoveryMessage,chosenCandidate,marketPrompt,metricPrompt
 import {researchTarget,researchQuestion,chatResearchGuide} from './research-guide.mjs';
 import {robinhoodBalances,prepareRobinhoodSend,walletAssetBalance} from './robinhood-wallet.mjs';
 import {prepareRobinhoodRoute,robinhoodRouteQuote} from './robinhood-routes.mjs';
-import {assets,networks,address as walletAddress,same} from './robinhood-wallet-call.mjs';
+import {assets,networks,address as walletAddress,same,swapImpactMessage} from './robinhood-wallet-call.mjs';
 import {ponsTokenState,tokenStateMessage} from './pons-token-state.mjs';
 import {preparePonsBurn} from './pons-burn.mjs';
 import {preparePonsTrade,ponsTradePair,quotePonsTrade} from './pons-trading.mjs';
@@ -141,7 +141,7 @@ async function walletActionReview(args,context){
  else input.outputAsset=resolveAsset(args.outputAsset);
  const review=await (kind==='send'?prepareRobinhoodSend(input,{env:context.env||process.env}):prepareRobinhoodRoute({...input,kind},{env:context.env||process.env}));
  const summary=kind==='send'?`${prefix}review: send ${review.amount} ${review.asset.symbol} on ${networks[review.chainId].name} to ${review.recipient}. Estimated network fee: ${review.networkFee} ETH.`:kind==='bridge'?`${prefix}review: bridge ${review.amount} ${review.asset.symbol} from ${networks[review.chainId].name} to ${networks[review.destinationChainId].name} as ${review.outputAsset.symbol}. Expected: ${review.expectedAmount}; minimum: ${review.minimumAmount}. Estimated network fee: ${review.networkFee} ETH${review.fee?`; relay fee: ${review.fee} ${review.asset.symbol}`:''}.`:`${prefix}review: swap ${review.amount} ${review.asset.symbol} on ${networks[review.chainId].name} for ${review.outputAsset.symbol}. Expected: ${review.expectedAmount}; minimum: ${review.minimumAmount}. Estimated network fee: ${review.networkFee} ETH${review.fee?`; relay fee: ${review.fee} ${review.asset.symbol}`:''}.`;
- return {message:summary+' No transaction has been sent.',data:{walletReview:review},actions:[{id:'wallet_approve',review}]};
+ return {message:[summary,kind==='swap'?swapImpactMessage(review.impactPercent):'',kind==='swap'?'Approve this quote or decline?':'No transaction has been sent.'].filter(Boolean).join(' '),data:{walletReview:review},actions:[{id:'wallet_approve',review}]};
 }
 async function burnActionReview(args,context,dependencies={}){
  const history=context.history||[],lastAssistant=history.at(-1)?.content||'',pending=/^To burn this,(?!\s*review:)/i.test(lastAssistant);let sourceMessages=[context.message||''];
@@ -165,7 +165,7 @@ async function ponsTradeAction(args,context,dependencies={}){
  const pair=await (dependencies.tradePair||ponsTradePair)({token,account:context.walletAccount},{env:context.env||process.env}),unitMatch=source.match(/\b\d+(?:\.\d+)?\s*([A-Za-z][A-Za-z0-9]{0,23})\b/),candidateUnit=unitMatch?.[1]?.toUpperCase(),explicitSymbol=candidateUnit&&!['OF','IN','ON','FOR','TO','FROM','WITH','TOKEN','TOKENS','COIN','COINS','PAIR','ASSET','ASSETS'].includes(candidateUnit)?candidateUnit:null,expectedSymbol=(kind==='buy'?pair.pair:pair.token).symbol.toUpperCase();if(explicitSymbol&&explicitSymbol!==expectedSymbol)return missing(`this token uses ${expectedSymbol} for this ${kind}. Send the amount in ${expectedSymbol}.`);
  const review=await (dependencies.prepareTrade||preparePonsTrade)({kind,token,account:context.walletAccount,amount},{env:context.env||process.env});
  if(review.kind==='pons-approval')return {message:`This ${kind} needs a token approval first: allow the Pons curve ${review.curve} to spend exactly ${review.amount} ${review.asset.symbol}. This approval does not place the trade. Estimated network fee: ${review.networkFee} ETH. No transaction has been sent.`,data:{walletReview:review},actions:[{id:'wallet_approve',review}]};
- if(review.kind==='swap')return {message:`Pons has graduated this token to its pool. Relay found a route to ${kind} ${review.tokenSymbol} on Robinhood Chain. Spend ${review.amount} ${review.asset.symbol}; expected ${review.expectedAmount} ${review.outputAsset.symbol}, minimum ${review.minimumAmount} ${review.outputAsset.symbol}. Slippage limit: 1%. Estimated network fee: ${review.networkFee} ETH${review.fee?'; Relay fee: '+review.fee+' '+review.asset.symbol:''}. No transaction has been sent.`,data:{walletReview:review},actions:[{id:'wallet_approve',review}]};
+ if(review.kind==='swap')return {message:`Pons has graduated this token to its pool. Relay found a route to ${kind} ${review.tokenSymbol} on Robinhood Chain. Spend ${review.amount} ${review.asset.symbol}; expected ${review.expectedAmount} ${review.outputAsset.symbol}, minimum ${review.minimumAmount} ${review.outputAsset.symbol}. ${swapImpactMessage(review.impactPercent)} Slippage limit: 1%. Estimated network fee: ${review.networkFee} ETH${review.fee?'; Relay fee: '+review.fee+' '+review.asset.symbol:''}. Approve this quote or decline?`,data:{walletReview:review},actions:[{id:'wallet_approve',review}]};
  const fees=Number(review.baseFeeBps)/100+Number(review.creatorTaxBps)/100+(Number(review.openingTaxBps)||0)/100;
  const amountText=kind==='buy'?`Spend ${review.amount} ${review.asset.symbol}${Number(review.refundAmount)>0?` (up to ${review.refundAmount} ${review.asset.symbol} may be returned if the curve fills early)`:''} to buy ${review.outputAsset.symbol}.`:`Sell ${review.amount} ${review.asset.symbol} for ${review.outputAsset.symbol}.`;
  return {message:`${amountText} Expected receive: ${review.outputAmount} ${review.outputAsset.symbol}; minimum: ${review.minimumOutput} ${review.outputAsset.symbol} (1% price movement limit). Pons fees: ${fees.toFixed(2)}% total${Number(review.openingTaxBps)>0?` including ${Number(review.openingTaxBps)/100}% opening tax`:''}. Estimated network fee: ${review.networkFee} ETH. Quote checked at block ${review.blockNumber}. No transaction has been sent.`,data:{walletReview:review},actions:[{id:'wallet_approve',review}]};
@@ -230,18 +230,13 @@ async function executeTool(name,args={},context={},dependencies={}){
   const symbol=args.kind==='buy'?info.pair.symbol:info.token.symbol;
   if(!args.amount||args.unit&&args.unit.toLowerCase()!==symbol.toLowerCase())return reply(prefix+'. '+args.kind+': enter the amount in '+symbol+'.');
   if(!addr(account))return reply('Connect your wallet so I can check a quote for that address.');
-  const limit='Dinn cannot offer this swap right now. The estimated values of what you pay and what you receive differ by more than 3%.';
   try{
    const quote=await (dependencies.tradeQuote||quotePonsTrade)({...args,account},options);
    const output=Number(quote.output).toLocaleString('en-US',{maximumSignificantDigits:6});
    const estimate=args.amount+' '+symbol+' could get you about '+output+' '+quote.symbol+'.';
-   let message=quote.reference?estimate+' '+(quote.impactLimit?limit:'I could not find a way to make this swap through Dinn right now.'):estimate+' The amount may change before you swap.';
-   if(quote.reference&&quote.impactLimit&&quote.comparison){
-    const {impactPercent,output:routeOutput}=quote.comparison;
-    const offered=Number(routeOutput).toLocaleString('en-US',{maximumSignificantDigits:6});
-    message=estimate+' The swap provider quoted '+offered+' '+quote.symbol+'. Dinn paused the swap because the provider valued those tokens '+Math.abs(impactPercent)+'% '+(impactPercent>0?'higher':'lower')+' than your '+symbol+'. Dinn allows a 3% difference.';
-   }
-   const minimum=quote.reference?quote.comparison?.minimum:quote.minimum;
+   let message=estimate+' '+(quote.reference?'I could not find an executable route for this estimate.':'The amount may change before you swap.');
+   if(Number.isFinite(quote.impactPercent))message+=' '+swapImpactMessage(quote.impactPercent);
+   const minimum=quote.minimum;
    if(minimum){
     const minimumText=Number(minimum).toLocaleString('en-US',{maximumSignificantDigits:7});
     message+='\n\nSlippage limit: 1%. If the swap completes, the minimum is about '+minimumText+' '+quote.symbol+'.';
@@ -253,9 +248,8 @@ async function executeTool(name,args={},context={},dependencies={}){
    }
    const offer=(!quote.reference&&minimum)?{account,token:args.token,kind:args.kind,amount:args.amount,unit:symbol}:null;
    if(offer)message+='\n\nProceed to review the current terms, or decline?';
-   return {...reply(message),...(offer?{tradeQuoteOffer:offer}:{}),data:{venue:quote.venue,block:quote.block,estimatedOutput:quote.output,symbol:quote.symbol,fees:quote.fees,comparison:quote.comparison}};
+   return {...reply(message),...(offer?{tradeQuoteOffer:offer}:{}),data:{venue:quote.venue,block:quote.block,estimatedOutput:quote.output,symbol:quote.symbol,fees:quote.fees,impactPercent:quote.impactPercent}};
   }catch(error){
-   if(error.message.startsWith('Route impact exceeds 3%'))return reply(limit);
    if(error.message.startsWith('No executable route'))return reply('I could not find a way to swap '+args.amount+' '+symbol+' for '+(args.kind==='buy'?info.token.symbol:info.pair.symbol)+' through Dinn right now.');
    return reply('I could not check how much you would receive for '+args.amount+' '+symbol+'. You can ask me to check again in a moment.');}
  }
