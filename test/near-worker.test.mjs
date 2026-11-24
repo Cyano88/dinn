@@ -313,6 +313,7 @@ test('reopened paid hire refreshes the original token once without starting a se
   return {status:'completed',deliverableMarkdown:'new',evidence:{sha256:'a'.repeat(64)}};
  }});
  assert.equal((await worker.runOnce()).results[0].state,'submitted');
+ assert.match(lock.data.markdown,/Since your first report[\s\S]*snapshots is unavailable[\s\S]*new/);
  assert.equal((await worker.runOnce()).results[0].state,'refresh-limit');
  assert.equal(calls,1);
 });

@@ -1,3 +1,4 @@
+import {researchSnapshot,refreshSummary} from './near-refresh.mjs';
 import {requestedLockFocus} from './research-finding.mjs';
 import {intakePrompt,discoveryStep,discoveryMessage,chosenCandidate} from './discovery-guide.mjs';
 import {discoverStockPairs} from './base-stock-paired-research.mjs';
@@ -291,7 +292,10 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
      if(!oneShot||refresh)throw error;
      return decline('failed','Dinn could not verify this report from its sources. No completed report is available.');
     }
-    data={...(data.guidedInput?{guidedInput:data.guidedInput}:{}),refresh,phase:'prepared',markdown:made.deliverableMarkdown,evidenceHash:made.evidence.sha256,service,tokenAddress:input.address,stockQuery:input.query,testRun:full.isTestRun===true,preparedAt:now().toISOString()};
+    const currentSnapshot=researchSnapshot(made.result);
+    const firstSnapshot=refresh?data.firstSnapshot:currentSnapshot;
+    const comparison=refresh&&service!=='base.stock-paired.discover'?refreshSummary(firstSnapshot,currentSnapshot)+'\n\n':'';
+    data={firstSnapshot,...(data.guidedInput?{guidedInput:data.guidedInput}:{}),refresh,phase:'prepared',markdown:comparison+made.deliverableMarkdown,evidenceHash:made.evidence.sha256,service,tokenAddress:input.address,stockQuery:input.query,testRun:full.isTestRun===true,preparedAt:now().toISOString()};
     if(feedbackEnabled && full.isPrivate===true && service!=='base.stock-paired.discover'){
      const code=randomBytes(32).toString('hex');
      data.feedbackDigest=createHash('sha256').update(code).digest('hex');
