@@ -1,4 +1,6 @@
 import {comparisonMessage} from './base-stock-comparison.mjs';
+import {discoverLaunchStories} from './launch-story-discovery.mjs';
+import {asksForLaunchIdeas} from '../public/stock-watch.js';
 import {equityContext,equityMessage,mentionedEquity} from './equity-context.mjs';
 import {newChatTask} from '../public/flow.js';
 import {leadWithLockFinding,requestedLockFocus} from './research-finding.mjs';
@@ -178,6 +180,7 @@ export async function transactionStatus({hash},o={}){
 }
 async function executeTool(name,args={},context={},dependencies={}){
  const def=productTools.find(t=>t.function.name===name)?.function;if(!def)throw Error('Unknown product tool.');if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).some(k=>!Object.hasOwn(def.parameters.properties,k)))throw Error('Unexpected tool arguments.');for(const key of def.parameters.required)if(args[key]===undefined)throw Error('Missing '+key+'.');
+ if(name==='discover_launch_stories')return discoverLaunchStories();
  if(name==='equity_market_context'){const data=await equityContext(args.ticker,{env:context.env||process.env,fetchImpl:dependencies.fetchImpl});return {data,message:equityMessage(data),actions:[]};}
  if(name==='manage_launch_draft'){if(context.signal?.aborted)throw Error('Tool cancelled.');return manageLaunchDraft(args,context,dependencies);}
  for(const [key,v]of Object.entries(args)){const p=def.parameters.properties[key];if(typeof v!=='string'||p.pattern&&!new RegExp(p.pattern).test(v)||p.enum&&!p.enum.includes(v))throw Error('Invalid '+key+'.');}
@@ -270,6 +273,8 @@ export function directProductIntent(text,context={}){
  if(/\b(?:arbitrum|42161)\b/i.test(t)&&(/\b(?:send|transfer|swap|bridge|balance|portfolio|wallet)\b/i.test(t)||/^To (?:send|swap|bridge) this,/i.test(lastAssistant)))return {message:'Arbitrum is paused in Dinn wallet. Choose Base or Robinhood Chain.',actions:[]};
  if(/^is (?:that|it|this)(?: address| holder)? a (?:trading )?pool[?.!]*$/i.test(t)&&lastAssistant.startsWith('Largest holder in the returned sample:'))return {message:lastAssistant.split('\n')[0],actions:[]};
  const lastEquity=lastAssistant.match(/\b([A-Z]{1,5}) was (?:up|down) [\d.]+% from its previous close/)?.[1];
+ if(asksForLaunchIdeas(t)&&/\b(?:base|bankr)\b/i.test(t))return {message:'Dinn can research Base stocks and Bankr stock pairs. Launch discovery currently checks Pons on Robinhood Chain. Ask for Pons launch ideas or name a Base stock to research.',actions:[]};
+ if(asksForLaunchIdeas(t))return {name:'discover_launch_stories',args:{}};
  const company=mentionedEquity(t);
  const comparison=asksForStockComparison(t);
  if(comparison&&(/\b(?:token|onchain|base|robinhood)\b/i.test(t)||lastEquity)){

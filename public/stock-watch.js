@@ -1,6 +1,13 @@
 import {pairCandidates} from './pons-assets.js';
 
 const stocks={TSLA:['Tesla'],NVDA:['Nvidia'],AAPL:['Apple'],MSFT:['Microsoft'],AMZN:['Amazon'],META:['Meta'],GOOGL:['Alphabet','Google']};
+export function asksForLaunchIdeas(text){
+ return !Object.entries(stocks).some(([ticker,names])=>[ticker,...names].some(name=>new RegExp('\\b'+name+'c?\\b','i').test(text)))&&/\b(?:stock|stocks|equities)\b/i.test(text)&&/\b(?:launch|launching)\b/i.test(text)&&/\b(?:what|which|find|best|ideas?|discover|suggest|worth|shortlist)\b/i.test(text);
+}
+export function selectLaunchStory(text,ideas){
+ const choice=text.trim().toLowerCase().replace(/[.!?]+$/,'').replace(/^(?:research|watch)\s+/,'').replace(/\s+deeper$/,'').replace(/^\$/,'');
+ return ideas.find(({asset})=>[asset.symbol,asset.name].some(name=>name.toLowerCase()===choice))||null;
+}
 export function watchIntent(text,watch){
  const names=Object.keys(stocks).filter(symbol=>[symbol,symbol+'c',...stocks[symbol]].some(name=>new RegExp('\\b'+name+'\\b','i').test(text)));
  if(names.length===1&&(/\b(?:launch|launching)\b/i.test(text)&&/\b(?:around|story|news|worth|research|momentum)\b/i.test(text)||/^research (?:a |the )?launch story/i.test(text)))return {kind:'research',ticker:names[0]};

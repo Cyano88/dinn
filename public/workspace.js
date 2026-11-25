@@ -1,4 +1,4 @@
-import {watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
+import {selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
 import {newChatTask} from './flow.js';
 import {firstLockPreview,lockCoverageText} from './token-report.js';
 import {showFeedbackFeed} from '/feedback-feed.js';
@@ -356,7 +356,19 @@ $('chat').onsubmit=async e=>{
  }
  let watch=null;
  try{watch=JSON.parse(read('stock-watch')||'null');}catch{}
- const watchAction=watchIntent(text,watch);
+ if(history.at(-1)?.content?.startsWith('I found no fresh story with a verified Pons pair')&&/^(?:launch this pair|research deeper|watch this story)[.!?]?$/i.test(text)){
+  recordSetupReply(text,'Which stock do you want to research? No pair was selected.');$('prompt').value='';return;
+ }
+ const afterShortlist=history.at(-1)?.content?.startsWith('Stock stories with an available Pons pair');
+ let selectedStory=null;
+ if(afterShortlist){
+  let ideas=[];try{ideas=JSON.parse(read('stock-shortlist')||'[]');}catch{}
+  selectedStory=selectLaunchStory(text,ideas);
+  if(!selectedStory&&/^(?:launch this pair|research deeper|watch this story)[.!?]?$/i.test(text)){
+   recordSetupReply(text,'Stock stories with an available Pons pair ? choose a ticker first: '+ideas.map(i=>i.asset.symbol).join(', ')+'.');$('prompt').value='';return;
+  }
+ }
+ const watchAction=selectedStory?{kind:'research',ticker:selectedStory.asset.symbol}:watchIntent(text,watch);
  if(watchAction&&(controller||setupBusy||launchBusy))return;
  if(watchAction?.kind==='question'){
   localStorage.setItem(key('stock-watch'),JSON.stringify({...watch,question:watchAction.question}));
@@ -379,7 +391,7 @@ $('chat').onsubmit=async e=>{
   }catch(err){if(user===owner&&epoch===session)recordSetupReply(text,'I couldn?t start this Pons setup. '+err.message);}
   finally{if(user===owner)setupBusy=false;}return;
  }
- let requestText=['research','update'].includes(watchAction?.kind)?'Check stock news for '+watchAction.ticker:text;
+ let requestText=asksForLaunchIdeas(text)?(/\b(?:base|bankr)\b/i.test(text)?'Find stock launch ideas on Base':'Find stock launch ideas on Pons'): ['research','update'].includes(watchAction?.kind)?'Check stock news for '+watchAction.ticker:text;
  const offer=tradeQuoteOffer;tradeQuoteOffer=null;
  if(offer&&offer.user===user&&offer.epoch===epoch&&offer.turn===history.at(-1)?.content&&offer.account?.toLowerCase()===account?.toLowerCase()){
   if(/^(?:no|decline|cancel|stop)[.!]?$/i.test(text)){recordSetupReply(text,'Swap declined. Nothing was sent.');$('prompt').value='';return;}
@@ -399,7 +411,7 @@ $('chat').onsubmit=async e=>{
   say('Reply “confirm reset” to clear setup, or “keep setup” to cancel.');$('prompt').value='';return;
  }
  if(requestText===text&&conversationalLaunchStatus(text)){$('prompt').value='';return;}
- if(requestText===text&&handleLaunchReply(text)){$('prompt').value='';return;}
+ if(requestText===text&&!asksForLaunchIdeas(text)&&handleLaunchReply(text)){$('prompt').value='';return;}
  if(controller||setupBusy)return;
  const requestUser=user,generation=epoch,draftRevision=launchRevision;controller=new AbortController();const request=controller;let advanceLaunchProfile=false;$('prompt').value='';$('send').disabled=true;$('stop-response').hidden=false;$('feedback').textContent='';message('user',text);const reply=message('assistant','');reply.textContent='Thinking';reply.classList.add('thinking');reply.setAttribute('aria-label','Dinn is thinking');for(let i=0;i<3;i++){const dot=document.createElement('span');dot.className='thinking-dot';dot.textContent='.';dot.setAttribute('aria-hidden','true');reply.append(dot);}let received=false;
  try{
@@ -410,9 +422,14 @@ $('chat').onsubmit=async e=>{
   const result=await receiveChat(r,delta=>{if(epoch===generation&&!['research','update'].includes(watchAction?.kind)){if(!received){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');received=true;}reply.append(document.createTextNode(delta));scrollChat();}});
   if(epoch!==generation)return;
   retryChatTurn=null;
+  if(result.toolsUsed?.includes('discover_launch_stories'))localStorage.setItem(key('stock-shortlist'),JSON.stringify(result.data?.ideas||[]));
   if(['research','update'].includes(watchAction?.kind)){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');}
   if(['research','update'].includes(watchAction?.kind)&&result.data?.ticker===watchAction.ticker&&result.data.checkedAt){
    const current=snapshot(result.data),refresh=watchAction.kind==='update';
+   if(selectedStory?.article){
+    const match=current.articles.find(a=>a.url===selectedStory.article.url);
+    if(match)current.articles=[match,...current.articles.filter(a=>a!==match)];
+   }
    const next=refresh?{...watch,latest:current}:{ticker:current.ticker,original:current,latest:current,question:''};
    result.message=watchReply(next.original,current,next.question,refresh);
    localStorage.setItem(key('stock-watch'),JSON.stringify(next));

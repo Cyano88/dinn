@@ -21,20 +21,22 @@ function field(item,key) {
  const raw=item.match(new RegExp('<'+key+'(?:\\s[^>]*)?>([\\s\\S]*?)</'+key+'>','i'))?.[1] || '';
  return raw.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").trim();
 }
-export async function equityContext(symbol,{fetchImpl=fetch,env=process.env,now=Date.now()}={}) {
+export async function equityContext(symbol,{fetchImpl=fetch,env=process.env,now=Date.now(),headlinesOnly=false}={}) {
  const ticker=equityTicker(symbol);
  if(!ticker)return null;
- const cached=fetchImpl===fetch && cache.get(ticker);
+ const key=headlinesOnly?ticker+"-headlines":ticker;
+ if(headlinesOnly)env={};
+ const cached=fetchImpl===fetch && cache.get(key);
  if(cached && now-cached.time<300000)return cached.value;
  if(fetchImpl!==fetch)return readEvidence(ticker,{fetchImpl,env,now});
- if(!pending.has(ticker)){
+ if(!pending.has(key)){
   const request=readEvidence(ticker,{fetchImpl,env,now}).then(value=>{
-   if(value.quote)cache.set(ticker,{time:now,value});
+   if(value.quote)cache.set(key,{time:now,value});
    return value;
-  }).finally(()=>pending.delete(ticker));
-  pending.set(ticker,request);
+  }).finally(()=>pending.delete(key));
+  pending.set(key,request);
  }
- return pending.get(ticker);
+ return pending.get(key);
 }
 async function readEvidence(ticker,{fetchImpl,env,now}){
  async function get(url,json=false) {
