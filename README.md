@@ -76,3 +76,5 @@ Open http://127.0.0.1:4317. See [.env.example](.env.example) for provider settin
 ### Bankr launch previews on Base
 
 After a creator idea in chat, ask ?Can I launch this on Base?? Dinn checks the live Base factory through `@bankr/launch-sdk`. With a Dinn-approved launchpad configured in `DINN_BANKR_BASE_LAUNCHPAD_ID`, the preview matches the stock token across Coinbase and Bankr, checks the launchpad's quote permission, and plans and simulates from the selected wallet. This adapter is preview-only. Registration, wallet submission and receipt verification are separate steps. Bankr's own pad (ID 0) requires Bankr authorization.
+
+The approved Base launchpad operator share is 1,000 bps (10%) of fees remaining after Bankr and any referrer. Register the Dinn treasury as the launchpad payee and configure its public address in `DINN_BANKR_BASE_FEE_RECIPIENT`. The preview checks the payee and exact steady and enabled decay shares in the SDK's resolved launch plan before simulation. The remaining 90% is the creator side, including any holder, liquidity or buyback allocations.

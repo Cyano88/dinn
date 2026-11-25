@@ -1,7 +1,16 @@
 import {createLaunchClient} from '@bankr/launch-sdk';
-import {isAddress} from 'viem';
+import {isAddress,zeroAddress} from 'viem';
 import {baseStockLookup} from './base-stock-data.mjs';
 import {serverRpcUrl} from './rpc-config.mjs';
+
+// Bankr stores each launchpad payee's share of the remaining fee as a WAD.
+const dinnShareBps=1000;
+const dinnShareWad=BigInt(dinnShareBps)*10n**14n;
+function matchesDinnFee(terms,treasury){
+ const matches=shares=>shares?.length===1&&shares[0]===dinnShareWad;
+ return terms?.payees?.length===1&&terms.payees[0]?.toLowerCase()===treasury.toLowerCase()
+  &&matches(terms.steadySharesWad)&&(terms.decay?.on===false||terms.decay?.on===true&&matches(terms.decay.sharesWad));
+}
 
 export async function bankrLaunchPreview({ticker,name,symbol,launcher},{env=process.env,lookup=baseStockLookup,client}={}){
  if(typeof ticker!=='string'||!/^[A-Z][A-Z0-9.-]{0,12}$/.test(ticker)||typeof name!=='string'||!name.trim()||name.length>40||typeof symbol!=='string'||!/^[A-Z0-9]{1,12}$/.test(symbol))throw Error('Invalid creator brief');
@@ -12,13 +21,16 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher},{env=proc
  if(state.gated)return {status:'gated',message:'Bankr currently restricts Base launches to its own launchpad. Your creator brief is ready to keep.'};
  const pad=env.DINN_BANKR_BASE_LAUNCHPAD_ID;
  if(!pad||!/^([1-9]\d{0,76})$/.test(pad))return {status:'setup',message:'You can keep this idea and its research. Launching a token on Base through Dinn is not available yet.'};
+ const treasury=env.DINN_BANKR_BASE_FEE_RECIPIENT;
+ if(!isAddress(treasury||'')||treasury.toLowerCase()===zeroAddress)return {status:'setup',message:'The Dinn Base fee wallet has not been configured.'};
  const stock=(await lookup({query:ticker+'c'})).stocks.find(row=>row.symbol.toUpperCase()===ticker+'C'&&row.bankrPairSupported);
  if(!stock)return {status:'unsupported',message:'Dinn could not verify a Base stock pair for '+ticker+' in both the Coinbase and Bankr lists.'};
  const launchpadId=BigInt(pad);
  if(!(await client.contracts().settings.padQuote(launchpadId,stock.address)).launches)return {status:'unsupported',message:'This launchpad does not currently allow '+stock.symbol+' as the pairing asset.'};
  if(!isAddress(launcher||''))return {status:'wallet',message:'Select your Base launch wallet to check this launch.'};
  const plan=await client.plan({launchpadId,launcher,feeRecipient:launcher,name,symbol,quote:stock.address});
+ if(!matchesDinnFee(plan.resolved?.padTerms,treasury))return {status:'fee-mismatch',message:'The launchpad fee terms differ from the approved Dinn split. This launch preview is unavailable.'};
  const sim=await client.simulate(plan);
  if(sim.assumedApprovals||!isAddress(sim.token)||!/^0x[a-f0-9]{64}$/i.test(sim.poolId))throw Error('Incomplete launch simulation');
- return {status:'simulated',chainId:8453,launchpadId:pad,quote:stock.address,launcher,predictedToken:sim.token,poolId:sim.poolId,creatorFeeRecipient:launcher,message:'Launch on Base with Dinn, powered by Bankr.\nBankr simulated '+name+' ($'+symbol+') paired with '+stock.symbol+' on Base. Creator fee wallet: '+launcher+'. This is a preview; nothing was signed or sent.'};
+ return {status:'simulated',chainId:8453,launchpadId:pad,quote:stock.address,launcher,predictedToken:sim.token,poolId:sim.poolId,creatorFeeRecipient:launcher,dinnFeeRecipient:treasury,dinnShareBps,creatorSideShareBps:10000-dinnShareBps,message:'Launch on Base with Dinn, powered by Bankr.\nBankr simulated '+name+' ($'+symbol+') paired with '+stock.symbol+' on Base. After Bankr and any referral fee, Dinn receives 10% of the remaining trading fees. The other 90% goes to creator-side allocations. Creator fee wallet: '+launcher+'. This is a preview; nothing was signed or sent.'};
 }
