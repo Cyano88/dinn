@@ -35,3 +35,14 @@ test('a hypothetical dividend cut cannot trigger a creator idea',async()=>{
  assert.equal(hasLaunchEvent({title:'A portfolio with UPS pays dividends. Here is what happens if one cuts'}),false);
  assert.equal(hasLaunchEvent({title:'UPS announces a new delivery service'}),true);
 });
+test('the next verified issuer headline can qualify when the lead story is hypothetical',async()=>{
+ const {launchStory}=await import('../public/stock-watch.js');
+ const articles=['Could Tesla launch a truck?','Amazon launches a truck','EU postpones discussion to approve Tesla self-driving tech'].map(t=>article(t,23));
+ const found=launchStory('TSLA',articles,'2026-11-24T12:00:00Z');
+ assert.equal(found,articles[2]);
+ const watch={ticker:'TSLA',ideaSource:found};
+ assert.match(ideaReply(watch),/postponed decision/);
+ assert.equal(ideaChoice('What could I launch around this?',watch,ideaInvite('TSLA')),'idea');
+ assert.equal(launchStory('TSLA',articles.slice(0,2),'2026-11-24T12:00:00Z'),null);
+ assert.equal(launchStory('TSLA',articles,'2026-11-26T12:00:00Z'),null);
+});

@@ -1,6 +1,6 @@
 import {accountRecords} from './account-records.js';
 import {loadAuthConfig} from './auth-boot.js';
-import {sharedFinding,hasLaunchEvent,ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
+import {sharedFinding,launchStory,ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
 import {newChatTask} from './flow.js';
 import {firstLockPreview,lockCoverageText} from './token-report.js';
 import {showFeedbackFeed} from '/feedback-feed.js';
@@ -404,6 +404,10 @@ $('chat').onsubmit=async e=>{
   }
   recordSetupReply(text,answer);$('prompt').value='';return;
  }
+ const namedPair=text.trim().match(/^launch (?:a token |this token )?(?:paired with |against |around |with )?\$?([a-z][a-z0-9.-]{0,11}) (?:pair )?on pons[.!?]?$/i);
+ if(namedPair&&!/^(this|that|it|token|eth|ether|ethereum)$/i.test(namedPair[1])&&!pairCandidates.some(p=>p.symbol.toLowerCase()===namedPair[1].toLowerCase()||p.name.toLowerCase()===namedPair[1].toLowerCase())){
+  recordSetupReply(text,'I could not match '+namedPair[1]+' to a Pons pairing asset that Dinn can verify. Which pairing asset would you like to check instead?');$('prompt').value='';return;
+ }
  const watchAction=choice==='launch'?{kind:'launch'}:selectedStory?{kind:'research',ticker:selectedStory.asset.symbol}:watchIntent(text,watch);
  if(watchAction&&(controller||setupBusy||launchBusy))return;
  if(watchAction?.kind==='question'){
@@ -414,18 +418,18 @@ $('chat').onsubmit=async e=>{
   $('prompt').value='';
   if(hasLaunchProgress(brief,currentSettings())&&!savedSetupWasLaunched()){recordSetupReply(text,'You already have a launch in progress. Resume it or clear that setup before using this research for a new token.');return;}
   const candidate=launchCandidate(watch.ticker),owner=user,session=epoch,revision=launchRevision;
-  if(!candidate){recordSetupReply(text,'I couldn?t find '+watch.ticker+' among the Pons pairing assets Dinn can verify. Your research is still saved.');return;}
+  if(!candidate){recordSetupReply(text,'I could not find '+watch.ticker+' among the Pons pairing assets Dinn can verify. Your research is still saved.');return;}
   setupBusy=true;
   try{
    const pair=await api('/api/pons/pair',{pairToken:candidate.address},AbortSignal.timeout(15000));
    if(user!==owner||session!==epoch||revision!==launchRevision)return;
    if(pair.chainId!==4663||pair.symbol!==watch.ticker||pair.address?.toLowerCase()!==candidate.address.toLowerCase())throw Error('The pair identity did not match.');
    if(savedSetupWasLaunched())startFreshTokenSetup();
-   const idea=choice==='launch'?launchAngle(watch):null;
+   const idea=watch.ideaSource?launchAngle(watch):null;
    const description=idea?ideaDescription(idea):researchDescription(watch);
    applyLaunchDraft({active:true,brief:description?{description}:{},settings:{pairToken:candidate.address},nextField:'name',logo:'',pair});
    recordSetupReply(text,watch.ticker+' is enabled on Pons. '+(description?'I added the research brief to your editable project description. ':'')+'What is your token called?');
-  }catch(err){if(user===owner&&epoch===session)recordSetupReply(text,'I couldn?t start this Pons setup. '+err.message);}
+  }catch(err){if(user===owner&&epoch===session)recordSetupReply(text,'I could not start this Pons setup. '+err.message);}
   finally{if(user===owner)setupBusy=false;}return;
  }
  let requestText=asksForLaunchIdeas(text)?(/\b(?:base|bankr)\b/i.test(text)?'Find stock launch ideas on Base':'Find stock launch ideas on Pons'): ['research','update'].includes(watchAction?.kind)?'Check stock news for '+watchAction.ticker:text;
@@ -499,14 +503,14 @@ $('chat').onsubmit=async e=>{
   const equity=result.data?.equityContext||(result.toolsUsed?.includes('equity_market_context')?result.data:null);
   if(equity?.ticker&&equity.checkedAt&&!walletAction&&watchAction?.kind!=='update'){
    const current=snapshot(equity);
-   const article=selectedStory?.article||equity.event||current.articles[0];
-   const age=Date.parse(equity.checkedAt)-Date.parse(article?.publishedAt);
-   if(hasLaunchEvent(article)&&age>=0&&age<=2*86400000){
+   const article=launchStory(equity.ticker,[selectedStory?.article,equity.event,...current.articles].filter(a=>a&&current.articles.some(found=>found.url===a.url)),equity.checkedAt);
+   if(article){
     const next={ticker:equity.ticker,original:current,latest:current,question:watch?.ticker===equity.ticker?watch.question:'',ideaSource:article};
     if(watch?.ticker===equity.ticker&&next.question)next.original=watch.original;
     await accountRecords.setItem(key('stock-watch'),JSON.stringify(next));
+    if(!result.message.includes(article.url))result.message+='\n\n'+article.title+' ['+(article.source||'Source')+']('+article.url+') '+article.publishedAt.slice(0,10);
     result.message+='\n\n'+ideaInvite(equity.ticker);
-   }
+   }else if(watchAction?.kind==='research'&&current.articles.length){result.message+='\n\nI would wait. I found coverage, but no recent company event I could use for a launch idea. What specific announcement should I watch for?';}
   }
   const state=appendChatState(history,chatResults,text,result.message,result);history=state.messages;chatResults=state.results;save('chat',state);renderToolResult(reply,result);advanceLaunchProfile=!launchConversationStep&&($('chat-review').disabled===false&&(result.actions||[]).some(action=>action.id==='review')||!!(result.launchDraft?.active&&result.launchDraft.nextField===null));
  }catch(err){if(epoch===generation){const failure=err.name==='AbortError'?'Response stopped. Your message is ready to retry.':err.message;reply.classList.remove('thinking');reply.removeAttribute('aria-label');reply.textContent=err.code==='daily_chat_limit'?failure:(received&&reply.textContent.trim()?reply.textContent+'\n\n':'')+'Could not finish: '+failure;reply.setAttribute('role','status');$('prompt').value=text;$('feedback').textContent=err.code==='daily_chat_limit'?'':'Your message is ready to retry.';}}

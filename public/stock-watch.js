@@ -30,10 +30,17 @@ function link(text,raw){
  }catch{return text;}
 }
 const label=a=>link(a.title,a.url)+' '+[a.source,a.publishedAt.slice(0,10)].filter(Boolean).join(' \u00b7 ');
-const concrete=/\b(announces?|announced|unveils?|unveiled|launches|launched|appoints?|appointed|approves?|approved|releases?|released|reports?|reported|signs|signed|wins|won|acquires|acquired|recalls?|recalled|cuts|raises|raised|halts?|halted|resigns?|resigned|sues|sued)\b/i;
+const concrete=/\b(postpones?|postponed|announces?|announced|unveils?|unveiled|launches|launched|appoints?|appointed|approves?|approved|releases?|released|reports?|reported|signs|signed|wins|won|acquires|acquired|recalls?|recalled|cuts|raises|raised|halts?|halted|resigns?|resigned|sues|sued)\b/i;
 const speculative=/\?|\b(could|might|may|rumou?rs?|expected|prediction|forecast|analysts?|should you|stock to buy|reportedly|according to sources|what happens if|what if|if one|if it|if they|my portfolio|model portfolio|dividend portfolio)\b/i;
 export function hasLaunchEvent(article){
  return !!article&&article.kind!=='regulatory-filing'&&concrete.test(article.title)&&!speculative.test(article.title);
+}
+export function launchStory(ticker, articles, checkedAt){
+ if(!Object.hasOwn(stocks,ticker))return null;
+ return articles.find(article=>{
+  const age=Date.parse(checkedAt)-Date.parse(article?.publishedAt);
+  return age>=0&&age<=2*86400000&&hasLaunchEvent(article)&&mentionsStock(article.title,ticker);
+ })||null;
 }
 export const ideaInvite=ticker=>'Want a launch idea around this '+ticker+' story?';
 export function launchAngle(watch){
@@ -41,7 +48,10 @@ export function launchAngle(watch){
  if(!a)return null;
  const t=a.title;
  let name='Evidence Club',activity='Members bring one dated source to each update and vote on the next question to investigate.',question='What new primary source would change the original finding?';
- if(/\b(?:approval|approves?|license|permit|regulat\w*)\b/i.test(t)){
+ if(/\bpostpon(?:es?|ed)\b/i.test(t)){
+  name='Decision Watch';activity='Track the postponed decision from this report to the next published meeting date and outcome.';
+  question='Has the body responsible for the decision published a new date or an outcome?';
+ }else if(/\b(?:approval|approves?|license|permit|regulat\w*)\b/i.test(t)){
   name='Clearance Watch';activity='Build a public timeline from the reported decision to the first real-world rollout. Members add a source for each milestone.';
   question='Has the company published the first rollout milestone covered by this decision?';
  }else if(/\b(?:launch\w*|deploy\w*|deliver\w*|unveil\w*|rollout|production)\b/i.test(t)){
@@ -67,6 +77,7 @@ export function ideaChoice(text,watch,last){
   if(/^(?:yes|yes please|sure|go ahead|show me|give me (?:an?|the) (?:launch )?idea)$/.test(t))return 'idea';
   if(/^(?:no|no thanks|skip|just research)$/.test(t))return 'decline';
  }
+ if(last?.endsWith(ideaInvite(watch.ticker))&&/^what (?:could|can|should) (?:i|we) launch around (?:this|that)(?: story| finding| research)?$/.test(t))return 'idea';
  if(last?.endsWith(ideaInvite(watch.ticker))&&/^(?:can (?:i|you)|give me|show me|suggest|create|build).*\blaunch idea\b/.test(t))return 'idea';
  if(last===ideaReply(watch)){
   if(/^(?:pons|(?:check|launch|use|start)(?: this| the)?(?: pair)? on pons)$/.test(t))return 'launch';
