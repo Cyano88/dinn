@@ -1,5 +1,14 @@
 ﻿const hash=v=>typeof v==='string'&&/^0x[0-9a-f]{64}$/i.test(v);const address=v=>typeof v==='string'&&/^0x[0-9a-f]{40}$/i.test(v)&&!/^0x0{40}$/i.test(v);
 export function confirmedLaunchToken(result){return result?.state==='verified'&&result.chainId===4663&&hash(result.hash)&&address(result.token)&&address(result.curve)?result.token:null;}
+export function ponsReceiptText(result,config){
+ if(!confirmedLaunchToken(result))return '';
+ const lines=['Launched on Robinhood Chain with Dinn, powered by Pons.'];
+ if(Number.isInteger(config?.creatorTaxBps)&&config.creatorTaxBps>=0&&config.creatorTaxBps<=10000){
+  lines.push('Creator tax at launch: '+config.creatorTaxBps/100+'%.');
+  if(config.creatorTaxBps>0&&address(config.creatorFeeRecipient))lines.push('Creator fee wallet: '+config.creatorFeeRecipient+'.');
+ }
+ return lines.join('\n');
+}
 export function mountLaunchActivity({getAccount,getEpoch,getRecord,setRecord,api,onResearch,onDex,onPonsWallet=()=>{},onStatus=()=>{},doc=document,interval=5000}){
  const $=id=>doc.getElementById(id);let timer=null,controller=null,revision=0,attempts=0,token=null;
  const identity=r=>JSON.stringify({hash:r?.hash,configuration:r?.configuration,quote:r?.quote});
@@ -15,10 +24,10 @@ export function mountLaunchActivity({getAccount,getEpoch,getRecord,setRecord,api
   try{const result=await api('/api/pons/receipt',{hash:txHash,configuration:r.configuration,quote:r.quote},request.signal);if(rev!==revision||epoch!==getEpoch()||account!==getAccount()||identity(getRecord())!==before)return;
    if(!['pending','confirming','verified','reverted'].includes(result.state)||result.hash?.toLowerCase()!==txHash.toLowerCase())throw Error('Unexpected receipt result.');
    const verifiedToken=confirmedLaunchToken(result);if(result.state==='verified'&&!verifiedToken)throw Error('Confirmed receipt did not include valid deployed contracts.');const next={...r,hash:txHash,phase:result.state==='pending'?'submitted':result.state,result};await setRecord(next);$('recover-hash').value=txHash;
-   const labels={pending:'Transaction pending or not yet found. Checking again automatically…',confirming:'Launch mined. Waiting for confirmation…',verified:'\u2713 Token deployed. Confirmed on Robinhood Chain.',reverted:'Launch transaction reverted. No successful token launch was verified.'};$('launch-activity').textContent=labels[result.state];
+   const labels={pending:'Transaction pending or not yet found. Checking again automatically…',confirming:'Launch mined. Waiting for confirmation…',verified:'\u2713 '+ponsReceiptText(result,r.configuration),reverted:'Launch transaction reverted. No successful token launch was verified.'};$('launch-activity').textContent=labels[result.state];
    token=verifiedToken;$('launch-activity').className=token?'operation-success':'';
    if(token){$('launch-activity').textContent+=' Token: '+token+'. Next: open View token, or explore its activity below.';$('launched-contract').href='https://robinhoodchain.blockscout.com/token/'+token;$('launched-pons').href='https://ponsfamily.com/launchpad/'+token;$('pons-handoff-note').textContent='On Pons, connect your launch wallet: '+account+'. Opening this page does not connect a wallet.';$('launch-next-actions').hidden=false;}
-   onStatus({result,token,account,hash:txHash});
+   onStatus({result,token,account,hash:txHash,configuration:r.configuration});
    if(['pending','confirming'].includes(result.state))schedule();
   }catch(e){if(rev===revision&&epoch===getEpoch()&&e.name!=='AbortError'){$('launch-activity').textContent=r.phase==='verified'?'Latest receipt recheck unavailable. The saved launch was previously verified.':'Status check incomplete: '+e.message+' No new transaction was sent.';if(r.phase!=='verified')onStatus({error:e.message,account,hash:txHash});if(!manual&&attempts<3)schedule();}}
   finally{if(rev===revision){controller=null;$('check-receipt').disabled=false;}}

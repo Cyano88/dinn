@@ -17,8 +17,8 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher},{env=proc
  const launchpadId=BigInt(pad);
  if(!(await client.contracts().settings.padQuote(launchpadId,stock.address)).launches)return {status:'unsupported',message:'This launchpad does not currently allow '+stock.symbol+' as the pairing asset.'};
  if(!isAddress(launcher||''))return {status:'wallet',message:'Select your Base launch wallet to check this launch.'};
- const plan=await client.plan({launchpadId,launcher,name,symbol,quote:stock.address});
+ const plan=await client.plan({launchpadId,launcher,feeRecipient:launcher,name,symbol,quote:stock.address});
  const sim=await client.simulate(plan);
  if(sim.assumedApprovals||!isAddress(sim.token)||!/^0x[a-f0-9]{64}$/i.test(sim.poolId))throw Error('Incomplete launch simulation');
- return {status:'simulated',chainId:8453,launchpadId:pad,quote:stock.address,launcher,predictedToken:sim.token,poolId:sim.poolId,message:'Bankr simulated '+name+' ($'+symbol+') paired with '+stock.symbol+' on Base. This is a preview; nothing was signed or sent.'};
+ return {status:'simulated',chainId:8453,launchpadId:pad,quote:stock.address,launcher,predictedToken:sim.token,poolId:sim.poolId,creatorFeeRecipient:launcher,message:'Launch on Base with Dinn, powered by Bankr.\nBankr simulated '+name+' ($'+symbol+') paired with '+stock.symbol+' on Base. Creator fee wallet: '+launcher+'. This is a preview; nothing was signed or sent.'};
 }
