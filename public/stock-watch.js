@@ -30,8 +30,8 @@ function link(text,raw){
  }catch{return text;}
 }
 const label=a=>link(a.title,a.url)+' '+[a.source,a.publishedAt.slice(0,10)].filter(Boolean).join(' \u00b7 ');
-const concrete=/\b(postpones?|postponed|announces?|announced|unveils?|unveiled|launches|launched|appoints?|appointed|approves?|approved|releases?|released|reports?|reported|signs|signed|wins|won|acquires|acquired|recalls?|recalled|cuts|raises|raised|halts?|halted|resigns?|resigned|sues|sued)\b/i;
-const speculative=/\?|\b(could|might|may|rumou?rs?|expected|prediction|forecast|analysts?|should you|stock to buy|reportedly|according to sources|what happens if|what if|if one|if it|if they|my portfolio|model portfolio|dividend portfolio)\b/i;
+const concrete=/\b(postpones?|postponed|announces?|announced|unveils?|unveiled|launches|launched|appoints?|appointed|approves?|approved|releases|released|reports|reported|signs|signed|wins|won|acquires|acquired|recalls?|recalled|cuts|raises|raised|halts?|halted|resigns?|resigned|sues|sued)\b/i;
+const speculative=/\?|\b(could|might|may|rumou?rs?|expected|prediction|forecast|analysts?|should you|stock to buy|reportedly|according to sources|what happens if|what if|if one|if it|if they|my portfolio|model portfolio|dividend portfolio|market report|research report|industry report)\b/i;
 export function hasLaunchEvent(article){
  return !!article&&article.kind!=='regulatory-filing'&&concrete.test(article.title)&&!speculative.test(article.title);
 }
