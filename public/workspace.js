@@ -79,7 +79,7 @@ const syncRetry=document.createElement('button');syncRetry.type='button';syncRet
 syncHost.append(syncText,syncRetry);$('draft-sync-controls').append(syncHost);
 async function accountRequest(action,data,id){
  if(user!==id)throw Error('Account changed.');const {getAccessToken}=await import('/auth/entry.js');const token=await getAccessToken();if(user!==id)throw Error('Account changed.');if(!token)throw Error('Sign in again to sync your draft.');
- const response=await fetch('/api/drafts/'+action,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify(data),signal:AbortSignal.timeout(20000)});const result=await response.json();if(!response.ok){const error=Error(result.error||'Could not sync your draft.');error.status=response.status;throw error;}return result;
+ const response=await fetch('/api/drafts/'+action,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify(data),signal:AbortSignal.timeout(action==='creator-idea'?75000:20000)});const result=await response.json();if(!response.ok){const error=Error(result.error||'Could not sync your draft.');error.status=response.status;throw error;}return result;
 }
 const draftSync=createDraftSync({storage:localStorage,request:async(action,data,id)=>{
  if(action==='get')await accountRecords.start(id,accountRequest,account,localStorage);
@@ -382,7 +382,8 @@ $('chat').onsubmit=async e=>{
   }
  }
  if(watch?.ideaSource&&/^(?:share (?:this |the )?research|publish to research feed)[.!]?$/i.test(text)){
-  const entry=sharedFinding(watch.ticker,watch.ideaSource);
+  if(!watch.concept){recordSetupReply(text,ideaInvite(watch.ticker));$('prompt').value='';return;}
+  const entry=sharedFinding(watch.ticker,watch.ideaSource,watch.concept);
   const preview='Research feed preview\n\n'+entry.question+'\n\n'+entry.finding+' ['+entry.source+']('+entry.url+') \u00b7 '+entry.publishedAt.slice(0,10)+'\n\n'+entry.idea+'. '+entry.activity+'\n\n'+entry.followUp+'\n\nPublish this to the public Research feed? Say "publish to research feed" to confirm.';
   $('prompt').value='';
   if(!/^publish/i.test(text)||history.at(-1)?.content!==preview){recordSetupReply(text,preview);return;}
@@ -394,7 +395,17 @@ $('chat').onsubmit=async e=>{
  if(choice&&choice!=='launch'){
   if(controller||setupBusy||launchBusy)return;
   let answer;
-  if(choice==='idea')answer=ideaReply(watch);
+  if(choice==='idea'){
+   const owner=user,run=epoch;setupBusy=true;
+   $('prompt').value='';const pending=say('Thinking...');pending?.classList.add('thinking');
+   try{
+    const {concept}=await accountRequest('creator-idea',{ticker:watch.ticker,url:watch.ideaSource.url},owner);
+    if(user!==owner||epoch!==run)return;
+    watch={...watch,concept};await accountRecords.setItem(key('stock-watch'),JSON.stringify(watch));
+    if(user!==owner||epoch!==run)return;answer=ideaReply(watch);
+   }catch(error){if(user===owner&&epoch===run)recordSetupReply(text,error.status===429?error.message:'I could not prepare a fresh idea this time. Your research is saved.');return;}
+   finally{pending?.closest('.message')?.remove();if(user===owner)setupBusy=false;}
+  }
   if(choice==='bankr')answer=bankrBrief(watch);
   if(choice==='decline')answer='Sure. What else would you like to research?';
   if(choice==='watch-idea'){
@@ -425,7 +436,7 @@ $('chat').onsubmit=async e=>{
    if(user!==owner||session!==epoch||revision!==launchRevision)return;
    if(pair.chainId!==4663||pair.symbol!==watch.ticker||pair.address?.toLowerCase()!==candidate.address.toLowerCase())throw Error('The pair identity did not match.');
    if(savedSetupWasLaunched())startFreshTokenSetup();
-   const idea=watch.ideaSource?launchAngle(watch):null;
+   const idea=watch.concept||choice==='launch'?launchAngle(watch):null;
    const description=idea?ideaDescription(idea):researchDescription(watch);
    applyLaunchDraft({active:true,brief:description?{description}:{},settings:{pairToken:candidate.address},nextField:'name',logo:'',pair});
    recordSetupReply(text,watch.ticker+' is enabled on Pons. '+(description?'I added the research brief to your editable project description. ':'')+'What is your token called?');

@@ -5,6 +5,7 @@ export async function createDraftStore({env=process.env,db}={}){
  await db.query(`CREATE TABLE IF NOT EXISTS dinn_drafts(owner TEXT PRIMARY KEY, revision INTEGER NOT NULL, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
  await db.query('CREATE TABLE IF NOT EXISTS dinn_account_records(owner TEXT NOT NULL, key TEXT NOT NULL, revision INTEGER NOT NULL, value TEXT, PRIMARY KEY(owner,key))');
  await db.query('CREATE TABLE IF NOT EXISTS dinn_shared_findings(id UUID PRIMARY KEY, owner TEXT NOT NULL, ticker TEXT NOT NULL, url_hash TEXT NOT NULL, entry JSONB NOT NULL, shared_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(owner,ticker,url_hash))');
+ await db.query('CREATE TABLE IF NOT EXISTS dinn_creator_lore(owner TEXT NOT NULL, story TEXT NOT NULL, format TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE, activity_key TEXT NOT NULL UNIQUE, concept JSONB NOT NULL, PRIMARY KEY(owner,story), UNIQUE(story,format))');
  const result=row=>row?{revision:row.revision,data:row.data,updatedAt:row.updated_at}:{revision:0,data:emptyDraft(),updatedAt:null};
  return {
   get:async owner=>result((await db.query('SELECT revision,data,updated_at FROM dinn_drafts WHERE owner=$1',[owner])).rows[0]),
@@ -19,6 +20,11 @@ export async function createDraftStore({env=process.env,db}={}){
     await db.query('INSERT INTO dinn_account_records(owner,key,revision,value) VALUES($1,$2,1,$3) ON CONFLICT DO NOTHING RETURNING revision',[owner,key,value]):
     await db.query('UPDATE dinn_account_records SET revision=revision+1,value=$4 WHERE owner=$1 AND key=$2 AND revision=$3 RETURNING revision',[owner,key,revision,value]);
    return result.rows[0]||null;
+  },
+  async creatorLore(owner,story){return (await db.query('SELECT concept FROM dinn_creator_lore WHERE owner=$1 AND story=$2',[owner,story])).rows[0]?.concept;},
+  async usedIdeas(story){return (await db.query('SELECT format,concept FROM dinn_creator_lore WHERE story=$1',[story])).rows;},
+  async reserveLore(owner,story,format,name,activity,concept){
+   return (await db.query('INSERT INTO dinn_creator_lore(owner,story,format,name_key,activity_key,concept) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING concept',[owner,story,format,name,activity,JSON.stringify(concept)])).rows[0]?.concept;
   },
   async publishFinding(owner,id,hash,entry){
    const r=await db.query('INSERT INTO dinn_shared_findings(id,owner,ticker,url_hash,entry) VALUES($1,$2,$3,$4,$5) ON CONFLICT(owner,ticker,url_hash) DO UPDATE SET entry=EXCLUDED.entry RETURNING id',[id,owner,entry.ticker,hash,JSON.stringify(entry)]);

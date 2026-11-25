@@ -46,6 +46,8 @@ export const ideaInvite=ticker=>'Want a launch idea around this '+ticker+' story
 export function launchAngle(watch){
  const a=watch.ideaSource;
  if(!a)return null;
+ if(watch.concept)return {...watch.concept,article:a};
+ if(watch.concept)return {...watch.concept,article:a};
  const t=a.title;
  const ticker=watch.ticker;
  let name=ticker+' Front Page',activity='Ask everyone to draw a four-panel comic explaining this headline to someone seeing it for the first time. Pin the clearest strip next to the original story, then invite readers to draw the sequel when a new fact lands.',question='What new detail would belong in the next panel?';
@@ -137,7 +139,7 @@ export function ideaDescription(i){
  return (i.activity+' Starting point: '+i.article.title).slice(0,500-ending.length)+ending;
 }
 
-export function sharedFinding(ticker,article){
- const idea=launchAngle({ticker,ideaSource:article});
+export function sharedFinding(ticker,article,concept){
+ const idea=launchAngle({ticker,ideaSource:article,concept});
  return {ticker,question:'What is the launch idea around '+ticker+'?',finding:article.title,source:article.source,url:article.url,publishedAt:article.publishedAt,idea:idea.name,activity:idea.activity,followUp:idea.question};
 }

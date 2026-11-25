@@ -1,18 +1,27 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import {createDraftService} from '../src/draft-service.mjs';
 import {createDraftStore} from '../src/draft-store.mjs';
 import {sharedFinding} from '../public/stock-watch.js';
+import {createChatAllowanceStore} from '../src/chat-allowance.mjs';
 import {createAccountRecords} from '../public/account-records.js';
 
 test('sharing rechecks the source, preserves the feed link and exposes only the preview',async()=>{
  const db=new PGlite();
  try {
   const article={title:'Tesla reports deliveries',source:'Tesla',url:'https://example.com/deliveries',publishedAt:'2026-11-22T12:00:00Z'};
-  const entry=sharedFinding('TSLA',article);
+
   const store=await createDraftStore({db});
-  const service=createDraftService({env:{DATABASE_URL:'test'},storeFactory:async()=>store,verify:async()=> 'private-user',research:async()=>({ticker:'TSLA',recentArticles:[article]})});
+  const service=createDraftService({env:{DATABASE_URL:'test'},storeFactory:async()=>store,verify:async token=>token,allowanceFactory:async()=>createChatAllowanceStore({db}),generate:async(t,a,formats)=>({format:formats[0].key,concept:{name:formats[0].key,activity:'Invite the community to '+formats[0].key,question:'What ships next?'}}),research:async()=>({ticker:'TSLA',checkedAt:article.publishedAt,recentArticles:[article]})});
+  const generate=owner=>service.handle({headers:{authorization:'Bearer '+owner}},'/api/drafts/creator-idea',{ticker:'TSLA',url:article.url});
+  const firstIdea=await generate('test');
+  assert.equal(firstIdea.status,200);
+  assert.deepEqual((await generate('test')).body,firstIdea.body);
+  const other=await generate('second');
+  assert.equal(other.status,200);assert.notEqual(other.body.concept.name,firstIdea.body.concept.name);
+  const entry=sharedFinding('TSLA',article,firstIdea.body.concept);
+  assert.equal((await service.handle({headers:{authorization:'Bearer second'}},'/api/drafts/share-finding',entry)).status,409);
   const share=data=>service.handle({headers:{authorization:'Bearer test'}},'/api/drafts/share-finding',data);
   assert.equal((await share({...entry,wallet:'private'})).status,400);
   assert.equal((await share({...entry,finding:'edited'})).status,409);
