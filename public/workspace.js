@@ -1,3 +1,4 @@
+import {clearBootReload,loadAuthConfig,reserveBootReload} from './auth-boot.js';
 import {selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
 import {newChatTask} from './flow.js';
 import {firstLockPreview,lockCoverageText} from './token-report.js';
@@ -517,10 +518,11 @@ function startAuthBootTimer(){
  if(authBootResolved||authBootTimer||authBootTimedOut)return;
  authBootTimer=setTimeout(()=>{
   authBootTimer=null;if(authBootResolved)return;authBootTimedOut=true;
-  showAuthRecovery('Sign-in is still loading. You can wait here or try again.');
+  $('session-loading').querySelector('.loading-caption').textContent='Still loading your account...';
+  authBootTimer=setTimeout(()=>{if(!authBootResolved)showAuthRecovery('The sign-in service is taking longer than expected.');},65000);
  },25000);
 }
-window.addEventListener('launchflow:auth',e=>{const d=e.detail;if(d.state==='loading'){if(authBootResolved||authBootTimedOut)return;startAuthBootTimer();}else{clearAuthBootTimer();authBootResolved=true;}const nextUser=d.authenticated?(d.userId||d.address):null;
+window.addEventListener('launchflow:auth',e=>{const d=e.detail;if(d.state==='loading'){if(authBootResolved||authBootTimedOut)return;startAuthBootTimer();}else{clearAuthBootTimer();clearBootReload(sessionStorage);authBootResolved=true;}const nextUser=d.authenticated?(d.userId||d.address):null;
 // Wallet/provider refreshes are not account changes: preserve the current chat and stage.
 if(user&&((nextUser===user)||d.state==='loading'&&!nextUser)){
  if(d.state==='loading')return;
@@ -980,10 +982,21 @@ function renderAgentAccess(manifest,checking=false){
 
 startAuthBootTimer();
 async function startSignIn(){
+ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+ let reloading=false;
  try{
-  const [config,auth]=await Promise.all([fetch('/api/auth/config').then(r=>{if(!r.ok)throw Error();return r.json();}),import('/auth/entry.js')]);
+  const [config,auth]=await Promise.all([
+   loadAuthConfig(()=>fetch('/api/auth/config',{signal:AbortSignal.timeout(8000)}),wait),
+   import('/auth/entry.js').catch(async error=>{
+    if(authBootResolved)throw error;
+    // The browser caches failed imports, including failed dependencies of this entry.
+    if(!reserveBootReload(sessionStorage))throw error;
+    reloading=true;await wait(1500);location.reload();throw error;
+   })
+  ]);
   auth.mountEmbeddedAuth($('embedded-auth'),config,$('account-controls'));
- }catch{clearAuthBootTimer();authBootResolved=true;showAuthRecovery('Sign-in could not load. Try again.');}
+ }catch{if(!reloading){clearAuthBootTimer();authBootResolved=true;showAuthRecovery('Dinn could not reach the sign-in service. Check your connection, then try again.');}}
+
 }
 void startSignIn();
 void fetch('/api/status').then(r=>{if(!r.ok)throw Error();return r.json();}).then(status=>{draftSync.configure(status.draftSyncEnabled);renderToolDirectory(status.capabilities);renderAgentAccess(null,true);fetch('/.well-known/dinn.json').then(r=>r.ok?r.json():null).then(data=>renderAgentAccess(data,false)).catch(()=>renderAgentAccess(null,false));if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}}).catch(()=>renderAgentAccess(null,false));
