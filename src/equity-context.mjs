@@ -60,7 +60,7 @@ async function readEvidence(ticker,{fetchImpl,env,now}){
  const candidates=articles.filter(a=>quote&&Date.parse(a.publishedAt)<=observed&&observed-Date.parse(a.publishedAt)<day).slice(0,20);
  const evidence=candidates.map((article,index)=>({id:'S'+(index+1),...article}));
  const checkedAt=new Date(now).toISOString();
- const packet={schemaVersion:1,assetType:'underlying-us-equity',ticker,checkedAt,quote,
+ const packet={schemaVersion:1,assetType:'underlying-us-equity',ticker,checkedAt,quote,recentArticles:articles.sort((a,b)=>b.publishedAt.localeCompare(a.publishedAt)).slice(0,30),
   sources:feeds.map(([publisher,url],i)=>({publisher,url,status:news[i].status==='fulfilled'?'checked':'unavailable'})),evidence};
  let event=null,report=null;
  if(evidence.length&&env.OG_API_KEY&&env.OG_MODEL){

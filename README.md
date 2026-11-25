@@ -17,6 +17,8 @@ Reports identify sources, check times and coverage gaps. A lock schedule can rea
 
 ## Dinn Chat
 
+For a research-backed launch, try ?Is there a story worth launching around Tesla?? Set a question with ?Watch for ?? and return with ?Any update?? Dinn compares newly published coverage with the original brief. One watch is saved for the signed-in account on that device. ?Launch this pair? checks current Pons approval and carries a dated source into the editable project description when available.
+
 - **Launch on Pons.** Choose a token name, ticker, enabled supply preset, pairing asset and fees. Add an optional logo and social links, or generate a logo and preview and publish a project website. Supported page features include a matching-pairs game and an art gallery using supplied image links. Choose an optional opening purchase, review the terms and approve the launch. Find supported Pons launches in **Launches** and open their research from the list.
 - **Use a wallet.** Check balances, send supported assets, swap on available routes, or bridge supported Base assets to Robinhood Chain. Dinn guides the review and approval and shows transaction status. Bridge tracking distinguishes source confirmation from destination delivery.
 - **Manage a Pons token.** Review supported buys and sells, check and claim eligible creator fees, or prepare a supported token burn. Dinn can check existing lock records and direct users to an external locker to create one.

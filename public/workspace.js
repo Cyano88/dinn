@@ -1,3 +1,4 @@
+import {watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
 import {newChatTask} from './flow.js';
 import {firstLockPreview,lockCoverageText} from './token-report.js';
 import {showFeedbackFeed} from '/feedback-feed.js';
@@ -353,7 +354,32 @@ $('chat').onsubmit=async e=>{
   try{const {getAccessToken}=await import('/auth/entry.js');const result=await feedbackChat({...feedback,reply},await getAccessToken());if(epoch!==feedbackEpoch||user!==feedbackOwner)return;localStorage.setItem(key('research-feedback'),JSON.stringify({...feedback,done:true}));$('prompt').value='';recordSetupReply(text,result.published?'Published to Feedback. To remove it, say "remove my latest feedback".':'Feedback saved for the Dinn team. Thank you.');}
   catch{if(epoch===feedbackEpoch)say('Your feedback could not be saved. Your reply is ready to retry.');}return;
  }
- let requestText=text;
+ let watch=null;
+ try{watch=JSON.parse(read('stock-watch')||'null');}catch{}
+ const watchAction=watchIntent(text,watch);
+ if(watchAction&&(controller||setupBusy||launchBusy))return;
+ if(watchAction?.kind==='question'){
+  localStorage.setItem(key('stock-watch'),JSON.stringify({...watch,question:watchAction.question}));
+  recordSetupReply(text,'Saved your '+watch.ticker+' question on this device: '+watchAction.question+' Ask ?Any update?? to check again.');$('prompt').value='';return;
+ }
+ if(watchAction?.kind==='launch'){
+  $('prompt').value='';
+  if(hasLaunchProgress(brief,currentSettings())&&!savedSetupWasLaunched()){recordSetupReply(text,'You already have a launch in progress. Resume it or clear that setup before using this research for a new token.');return;}
+  const candidate=launchCandidate(watch.ticker),owner=user,session=epoch,revision=launchRevision;
+  if(!candidate){recordSetupReply(text,'I couldn?t find '+watch.ticker+' among the Pons pairing assets Dinn can verify. Your research is still saved.');return;}
+  setupBusy=true;
+  try{
+   const pair=await api('/api/pons/pair',{pairToken:candidate.address},AbortSignal.timeout(15000));
+   if(user!==owner||session!==epoch||revision!==launchRevision)return;
+   if(pair.chainId!==4663||pair.symbol!==watch.ticker||pair.address?.toLowerCase()!==candidate.address.toLowerCase())throw Error('The pair identity did not match.');
+   if(savedSetupWasLaunched())startFreshTokenSetup();
+   const description=researchDescription(watch);
+   applyLaunchDraft({active:true,brief:description?{description}:{},settings:{pairToken:candidate.address},nextField:'name',logo:'',pair});
+   recordSetupReply(text,watch.ticker+' is enabled on Pons. '+(description?'I added the dated source to your editable project description. ':'')+'What is your token called?');
+  }catch(err){if(user===owner&&epoch===session)recordSetupReply(text,'I couldn?t start this Pons setup. '+err.message);}
+  finally{if(user===owner)setupBusy=false;}return;
+ }
+ let requestText=['research','update'].includes(watchAction?.kind)?'Check stock news for '+watchAction.ticker:text;
  const offer=tradeQuoteOffer;tradeQuoteOffer=null;
  if(offer&&offer.user===user&&offer.epoch===epoch&&offer.turn===history.at(-1)?.content&&offer.account?.toLowerCase()===account?.toLowerCase()){
   if(/^(?:no|decline|cancel|stop)[.!]?$/i.test(text)){recordSetupReply(text,'Swap declined. Nothing was sent.');$('prompt').value='';return;}
@@ -381,9 +407,16 @@ $('chat').onsubmit=async e=>{
   const payload=JSON.stringify({message:requestText,history,ponsBrief:brief,ponsSettings:currentSettings(),ponsSetup:{requestedSupply,active:setupActive||!!awaiting||!!launchStep,field:awaiting||({'launch-pair':'pairToken','launch-config':'configId','launch-tax':'creatorTaxBps','launch-buyback':'buybackEnabled','launch-recipient':'creatorFeeRecipient'})[launchStep]||null,logo:$('launch-logo').value},...(account?{walletAccount:account}:{}),...(selectedToken?{tokenAddress:selectedToken}:{})});
   if(!retryChatTurn||retryChatTurn.owner!==requestUser||retryChatTurn.payload!==payload)retryChatTurn={owner:requestUser,payload,id:crypto.randomUUID()};
   const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json','idempotency-key':retryChatTurn.id,...(accessToken?{authorization:'Bearer '+accessToken}:{})},body:payload,signal:request.signal});
-  const result=await receiveChat(r,delta=>{if(epoch===generation){if(!received){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');received=true;}reply.append(document.createTextNode(delta));scrollChat();}});
+  const result=await receiveChat(r,delta=>{if(epoch===generation&&!['research','update'].includes(watchAction?.kind)){if(!received){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');received=true;}reply.append(document.createTextNode(delta));scrollChat();}});
   if(epoch!==generation)return;
   retryChatTurn=null;
+  if(['research','update'].includes(watchAction?.kind)){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');}
+  if(['research','update'].includes(watchAction?.kind)&&result.data?.ticker===watchAction.ticker&&result.data.checkedAt){
+   const current=snapshot(result.data),refresh=watchAction.kind==='update';
+   const next=refresh?{...watch,latest:current}:{ticker:current.ticker,original:current,latest:current,question:''};
+   result.message=watchReply(next.original,current,next.question,refresh);
+   localStorage.setItem(key('stock-watch'),JSON.stringify(next));
+  }
   if(result.launchDraft){try{if(launchRevision!==draftRevision)throw Error('Your token details changed while Dinn was responding. Retry against the current details.');applyLaunchDraft(result.launchDraft);}catch(error){received=false;reply.replaceChildren();throw error;}}
   if(result.inspection){
    const overview=researchSummary(result.inspection);
