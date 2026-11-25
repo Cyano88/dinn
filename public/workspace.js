@@ -1,5 +1,5 @@
 import {clearBootReload,loadAuthConfig,reserveBootReload} from './auth-boot.js';
-import {selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
+import {ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
 import {newChatTask} from './flow.js';
 import {firstLockPreview,lockCoverageText} from './token-report.js';
 import {showFeedbackFeed} from '/feedback-feed.js';
@@ -373,7 +373,21 @@ $('chat').onsubmit=async e=>{
    recordSetupReply(text,'Stock stories with an available Pons pair. Choose a ticker first: '+ideas.map(i=>i.asset.symbol).join(', ')+'.');$('prompt').value='';return;
   }
  }
- const watchAction=selectedStory?{kind:'research',ticker:selectedStory.asset.symbol}:watchIntent(text,watch);
+ const choice=ideaChoice(text,watch,history.at(-1)?.content);
+ if(choice&&choice!=='launch'){
+  if(controller||setupBusy||launchBusy)return;
+  let answer;
+  if(choice==='idea')answer=ideaReply(watch);
+  if(choice==='bankr')answer=bankrBrief(watch);
+  if(choice==='decline')answer='Sure. What else would you like to research?';
+  if(choice==='watch-idea'){
+   const question=launchAngle(watch).question;
+   localStorage.setItem(key('stock-watch'),JSON.stringify({...watch,question}));
+   answer='Saved your question: '+question+' Ask "Any update?" to check it again.';
+  }
+  recordSetupReply(text,answer);$('prompt').value='';return;
+ }
+ const watchAction=choice==='launch'?{kind:'launch'}:selectedStory?{kind:'research',ticker:selectedStory.asset.symbol}:watchIntent(text,watch);
  if(watchAction&&(controller||setupBusy||launchBusy))return;
  if(watchAction?.kind==='question'){
   localStorage.setItem(key('stock-watch'),JSON.stringify({...watch,question:watchAction.question}));
@@ -390,9 +404,10 @@ $('chat').onsubmit=async e=>{
    if(user!==owner||session!==epoch||revision!==launchRevision)return;
    if(pair.chainId!==4663||pair.symbol!==watch.ticker||pair.address?.toLowerCase()!==candidate.address.toLowerCase())throw Error('The pair identity did not match.');
    if(savedSetupWasLaunched())startFreshTokenSetup();
-   const description=researchDescription(watch);
+   const idea=choice==='launch'?launchAngle(watch):null;
+   const description=idea?ideaDescription(idea):researchDescription(watch);
    applyLaunchDraft({active:true,brief:description?{description}:{},settings:{pairToken:candidate.address},nextField:'name',logo:'',pair});
-   recordSetupReply(text,watch.ticker+' is enabled on Pons. '+(description?'I added the dated source to your editable project description. ':'')+'What is your token called?');
+   recordSetupReply(text,watch.ticker+' is enabled on Pons. '+(description?'I added the research brief to your editable project description. ':'')+'What is your token called?');
   }catch(err){if(user===owner&&epoch===session)recordSetupReply(text,'I couldn?t start this Pons setup. '+err.message);}
   finally{if(user===owner)setupBusy=false;}return;
  }
@@ -424,7 +439,7 @@ $('chat').onsubmit=async e=>{
   const payload=JSON.stringify({message:requestText,history,ponsBrief:brief,ponsSettings:currentSettings(),ponsSetup:{requestedSupply,active:setupActive||!!awaiting||!!launchStep,field:awaiting||({'launch-pair':'pairToken','launch-config':'configId','launch-tax':'creatorTaxBps','launch-buyback':'buybackEnabled','launch-recipient':'creatorFeeRecipient'})[launchStep]||null,logo:$('launch-logo').value},...(account?{walletAccount:account}:{}),...(selectedToken?{tokenAddress:selectedToken}:{})});
   if(!retryChatTurn||retryChatTurn.owner!==requestUser||retryChatTurn.payload!==payload)retryChatTurn={owner:requestUser,payload,id:crypto.randomUUID()};
   const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json','idempotency-key':retryChatTurn.id,...(accessToken?{authorization:'Bearer '+accessToken}:{})},body:payload,signal:request.signal});
-  const result=await receiveChat(r,delta=>{if(epoch===generation&&!['research','update'].includes(watchAction?.kind)){if(!received){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');received=true;}reply.append(document.createTextNode(delta));scrollChat();}});
+  const result=await receiveChat(r,delta=>{if(epoch===generation&&!['research','update'].includes(watchAction?.kind)){if(!received){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');received=true;}if(!reply.textContent&&/https?:\/\//i.test(delta))renderAssistantText(reply,delta);else reply.append(document.createTextNode(delta));scrollChat();}});
   if(epoch!==generation)return;
   retryChatTurn=null;
   if(result.toolsUsed?.includes('discover_launch_stories'))localStorage.setItem(key('stock-shortlist'),JSON.stringify(result.data?.ideas||[]));
@@ -464,6 +479,18 @@ $('chat').onsubmit=async e=>{
    }catch{/* Keep the research available when optional feedback is offline. */}
   }
   if(epoch!==generation)return;
+  const equity=result.data?.equityContext||(result.toolsUsed?.includes('equity_market_context')?result.data:null);
+  if(equity?.ticker&&equity.checkedAt&&!walletAction&&watchAction?.kind!=='update'){
+   const current=snapshot(equity);
+   const article=selectedStory?.article||equity.event||current.articles[0];
+   const age=Date.parse(equity.checkedAt)-Date.parse(article?.publishedAt);
+   if(article&&article.kind!=='regulatory-filing'&&!/\?|\b(?:could|might|rumou?rs?|reportedly|stock to buy|prediction)\b/i.test(article.title)&&age>=0&&age<=2*86400000){
+    const next={ticker:equity.ticker,original:current,latest:current,question:watch?.ticker===equity.ticker?watch.question:'',ideaSource:article};
+    if(watch?.ticker===equity.ticker&&next.question)next.original=watch.original;
+    localStorage.setItem(key('stock-watch'),JSON.stringify(next));
+    result.message+='\n\n'+ideaInvite(equity.ticker);
+   }
+  }
   const state=appendChatState(history,chatResults,text,result.message,result);history=state.messages;chatResults=state.results;save('chat',state);renderToolResult(reply,result);advanceLaunchProfile=!launchConversationStep&&($('chat-review').disabled===false&&(result.actions||[]).some(action=>action.id==='review')||!!(result.launchDraft?.active&&result.launchDraft.nextField===null));
  }catch(err){if(epoch===generation){const failure=err.name==='AbortError'?'Response stopped. Your message is ready to retry.':err.message;reply.classList.remove('thinking');reply.removeAttribute('aria-label');reply.textContent=err.code==='daily_chat_limit'?failure:(received&&reply.textContent.trim()?reply.textContent+'\n\n':'')+'Could not finish: '+failure;reply.setAttribute('role','status');$('prompt').value=text;$('feedback').textContent=err.code==='daily_chat_limit'?'':'Your message is ready to retry.';}}
  finally{if(user===requestUser&&epoch!==generation&&request.signal.aborted&&(!$('prompt').value)&&(!controller||controller===request)){

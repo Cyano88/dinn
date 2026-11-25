@@ -18,3 +18,15 @@ test('only newly dated and matching evidence is surfaced; original brief stays i
  assert.match(watchReply(original,original,'deliveries',true),/still open/);
  assert.match(original.articles[0].title,/discusses/);
 });
+import {ideaInvite,ideaChoice,ideaReply,bankrBrief,launchAngle,ideaDescription} from '../public/stock-watch.js';
+test('a creator can opt into a sourced milestone idea without starting a launch',()=>{
+ const a=article('Tesla wins approval for a rollout',23),w={ticker:'TSLA',ideaSource:{...a,source:'Reuters'}};
+ assert.equal(ideaChoice('yes',w,ideaInvite('TSLA')),'idea');
+ assert.equal(ideaChoice('yes',w,'Would you like something else?'),null);
+ const idea=ideaReply(w);
+ assert.match(idea,/Clearance Watch/);assert.match(idea,/\[Tesla wins approval for a rollout\]\(https:/);
+ assert.equal(ideaChoice('Pons',w,idea),'launch');assert.equal(ideaChoice('Bankr',w,idea),'bankr');assert.equal(ideaChoice('just watch',w,idea),'watch-idea');
+ assert.match(bankrBrief(w),/Check current pair support with Bankr/);
+ assert.match(ideaDescription(launchAngle(w)),/Reuters, 2026-11-23/);
+ assert.equal(ideaChoice('no thanks',w,ideaInvite('TSLA')),'decline');
+});
