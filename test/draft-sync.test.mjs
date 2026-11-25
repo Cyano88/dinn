@@ -32,25 +32,38 @@ test('server derives draft ownership from verified token and validates writes',a
 function harness(remote={revision:0,data:emptyDraft()}){
  const local=storage();let cloud=remote,latest={};
  const controller=createDraftSync({storage:local,delay:1,onStatus:s=>latest=s,request:async(action,body)=>{if(action==='get')return structuredClone(cloud);if(body.revision!==cloud.revision){const e=Error('Conflict');e.status=409;throw e;}cloud={revision:cloud.revision+1,data:structuredClone(body.data)};return structuredClone(cloud);}});
- controller.configure(true);return {local,controller,get state(){return latest.state;},get cloud(){return cloud;},set cloud(value){cloud=value;}};
+ return {local,controller,get state(){return latest.state;},get cloud(){return cloud;},set cloud(value){cloud=value;}};
 }
 test('legacy local draft imports once and a new browser restores the account draft',async()=>{
  const h=harness();h.local.setItem(key('alice'),JSON.stringify(draft('Diana').values['pons-brief']));h.controller.start('alice');await wait(()=>h.cloud.revision===1);assert.equal(h.cloud.data.values['pons-brief'].name,'Diana');
  await h.controller.refresh();assert.equal(h.cloud.revision,1);
- const next=harness(h.cloud);next.controller.start('alice');await wait(()=>next.state==='saved');assert.equal(JSON.parse(next.local.getItem(key('alice'))).name,'Diana');h.controller.stop();next.controller.stop();
+ const next=harness(h.cloud);next.controller.start('alice');await wait(()=>next.state==='saved');assert.equal(JSON.parse(next.controller.read('pons-brief','alice')).name,'Diana');assert.equal(next.local.getItem(key('alice')),null);h.controller.stop();next.controller.stop();
 });
-test('conflicting local and account drafts require a choice and preserve a backup',async()=>{
- const h=harness({revision:3,data:draft('Account')});h.local.setItem(key('alice'),JSON.stringify(draft('Local').values['pons-brief']));h.controller.start('alice');await wait(()=>h.state==='conflict');assert.equal(h.cloud.revision,3);
- await h.controller.useAccount();assert.equal(JSON.parse(h.local.getItem(key('alice'))).name,'Account');assert.equal(JSON.parse(h.local.getItem('dinn.draft-backups.v1:alice'))[0].data.values['pons-brief'].name,'Local');h.controller.stop();
+test('account draft wins over an older browser copy without prompting or rewriting it',async()=>{
+ const h=harness({revision:3,data:draft('Account')});h.local.setItem(key('alice'),JSON.stringify(draft('Local').values['pons-brief']));h.controller.start('alice');await wait(()=>h.state==='saved');
+ assert.equal(h.cloud.revision,3);assert.equal(JSON.parse(h.controller.read('pons-brief','alice')).name,'Account');assert.equal(h.local.getItem('dinn.draft-backups.v1:alice'),null);h.controller.stop();
 });
-test('stale tab cannot overwrite newer edits until Keep this draft is chosen',async()=>{
- const h=harness({revision:1,data:draft('Original')});h.controller.start('alice');await wait(()=>h.state==='saved');h.cloud={revision:2,data:draft('Elsewhere')};h.local.setItem(key('alice'),JSON.stringify(draft('Local edit').values['pons-brief']));await h.controller.flush();await wait(()=>h.state==='conflict');assert.equal(h.cloud.data.values['pons-brief'].name,'Elsewhere');
- await h.controller.keepLocal();assert.equal(h.cloud.revision,3);assert.equal(h.cloud.data.values['pons-brief'].name,'Local edit');h.controller.stop();
+test('stale tab reconciles a newer launch while saving independent chat edits',async()=>{
+ const h=harness({revision:1,data:draft('Original')});h.controller.start('alice');await wait(()=>h.state==='saved');h.cloud={revision:2,data:draft('Elsewhere')};
+ h.controller.write('pons-brief','alice',{name:'Stale'});h.controller.write('chat','alice',{messages:[]});await h.controller.flush();await wait(()=>h.cloud.revision===3);
+ assert.equal(h.cloud.data.values['pons-brief'].name,'Elsewhere');assert.deepEqual(h.cloud.data.values.chat,{messages:[]});assert.equal(h.local.getItem(key('alice')),null);h.controller.stop();
 });
 test('a late response after switching accounts cannot apply another owner draft',async()=>{
  let release;const local=storage(),applied=[];const sync=createDraftSync({storage:local,onApply:id=>applied.push(id),request:async(action,body,id)=>id==='alice'?await new Promise(r=>release=r):{revision:1,data:draft('Bob')}});
- sync.configure(true);sync.start('alice');sync.start('bob');await wait(()=>applied.length===1);release({revision:1,data:draft('Alice')});await new Promise(r=>setTimeout(r,10));assert.deepEqual(applied,['bob']);assert.equal(local.getItem(key('alice')),null);sync.stop();
+ sync.start('alice');sync.start('bob');await wait(()=>applied.length===1);release({revision:1,data:draft('Alice')});await new Promise(r=>setTimeout(r,10));assert.deepEqual(applied,['bob']);assert.equal(local.getItem(key('alice')),null);sync.stop();
 });
 test('pending wallet records are never included in portable drafts',()=>{
- const local=storage();local.setItem('dinn.pons.pending.v1:4663:0x123','pending');local.setItem('dinn.deployer.v1:alice','external');local.setItem(key('alice'),JSON.stringify(draft('Diana').values['pons-brief']));const sync=createDraftSync({storage:local,request:()=>{}});assert.deepEqual(Object.keys(sync.snapshot('alice').values),['pons-brief']);
+ const local=storage();local.setItem('dinn.pons.pending.v1:4663:0x123','pending');local.setItem('dinn.deployer.v1:alice','external');local.setItem(key('alice'),JSON.stringify(draft('Diana').values['pons-brief']));const sync=createDraftSync({storage:local,request:()=>{}});sync.write('pons-brief','alice',{name:'Diana'});sync.write('wallet','alice',{pending:true});assert.equal(sync.read('wallet','alice'),null);assert.equal(sync.read('pons-brief','bob'),null);
+});
+test('an edit made during an in-flight save reaches the account in the next revision',async()=>{
+ let release,cloud={revision:1,data:draft('Start')},first=true;
+ const sync=createDraftSync({storage:storage(),request:async(action,body)=>{
+  if(action==='get')return cloud;
+  if(first){first=false;await new Promise(r=>release=r);}
+  return cloud={revision:cloud.revision+1,data:structuredClone(body.data)};
+ }});
+ sync.start('alice');await wait(()=>sync.read('pons-brief','alice'));
+ sync.write('pons-brief','alice',{name:'First edit'});await wait(()=>release);
+ sync.write('pons-brief','alice',{name:'Second edit'});release();
+ await wait(()=>cloud.revision===3);assert.equal(cloud.data.values['pons-brief'].name,'Second edit');sync.stop();
 });

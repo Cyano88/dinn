@@ -6,7 +6,7 @@ export function createDraftService({env=process.env,verify,storeFactory=createDr
  const enabled=()=>!!env.DATABASE_URL||!!env.DINN_DRAFT_SYNC_URL;
  return {enabled,async handle(req,path,data){
   if(!['/api/drafts/get','/api/drafts/save'].includes(path))return {status:404,body:{error:'Unknown draft action.'}};
-  if(!enabled())return {status:503,body:{error:'Account draft storage is unavailable. Your local draft is kept.'}};
+  if(!enabled())return {status:503,body:{error:'Account draft storage is unavailable.'}};
   const token=req.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];if(!token||token.length>12000)return {status:401,body:{error:'Sign in to sync your draft.'}};
   if(Object.keys(data).some(k=>!(path.endsWith('/save')?['revision','data']:[]).includes(k)))return {status:400,body:{error:'Unexpected draft request field.'}};
   if(path.endsWith('/save')){if(!Number.isSafeInteger(data.revision)||data.revision<0)return {status:400,body:{error:'Invalid draft revision.'}};try{data={revision:data.revision,data:validateDraft(data.data)};}catch(e){return {status:400,body:{error:e.message}};}}
@@ -21,6 +21,6 @@ export function createDraftService({env=process.env,verify,storeFactory=createDr
   pending||=storeFactory({env}).catch(error=>{pending=null;throw error;});const store=await pending;
   if(path.endsWith('/get'))return {status:200,body:await store.get(owner)};
   const saved=await store.put(owner,data.revision,data.data);
-  return saved?{status:200,body:saved}:{status:409,body:{error:'Your account draft changed elsewhere. Choose which draft to keep.'}};
+  return saved?{status:200,body:saved}:{status:409,body:{error:'The account draft has a newer revision.'}};
  }};
 }

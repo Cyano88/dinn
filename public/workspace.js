@@ -4,6 +4,7 @@ import {newChatTask} from './flow.js';
 import {firstLockPreview,lockCoverageText} from './token-report.js';
 import {showFeedbackFeed} from '/feedback-feed.js';
 import {hasLaunchProgress,launchReturnChoice} from './launch-resume.js';
+import {draftKinds} from './draft-data.js';
 import {createDraftSync} from './draft-sync.js';
 import {usdTotal} from './purchase-usd.js';
 import {launchLinkSteps,parseLaunchLink,previewLimitMessage} from './launch-link-chat.js';
@@ -65,24 +66,27 @@ function pairAddress(value){if(/^(eth|native eth)$/i.test(value))return '0x'+'0'
 
 const key=kind=>'dinn.multi.'+kind+'.v1:'+user;
 
-function read(kind){try{return localStorage.getItem(key(kind));}catch{return null;}}
+function read(kind){try{return draftKinds.includes(kind)?draftSync.read(kind,user):localStorage.getItem(key(kind));}catch{return null;}}
 
-function save(kind,value){localStorage.setItem(key(kind),JSON.stringify(value));draftSync.changed(kind);}
+function save(kind,value){if(draftKinds.includes(kind))draftSync.write(kind,user,value);else localStorage.setItem(key(kind),JSON.stringify(value));}
 
 const syncHost=document.createElement('div');syncHost.className='draft-sync';syncHost.hidden=true;
 const syncText=document.createElement('span');syncText.setAttribute('role','status');
-const accountDraftButton=document.createElement('button'),localDraftButton=document.createElement('button'),syncRetry=document.createElement('button');
-accountDraftButton.textContent='Use account draft';localDraftButton.textContent='Keep this draft';syncRetry.textContent='Retry sync';
-for(const button of [accountDraftButton,localDraftButton,syncRetry]){button.type='button';button.className='subtle';}
-syncHost.append(syncText,accountDraftButton,localDraftButton,syncRetry);$('draft-sync-controls').append(syncHost);
+const syncRetry=document.createElement('button');syncRetry.type='button';syncRetry.className='subtle';syncRetry.textContent='Retry';
+syncHost.append(syncText,syncRetry);$('draft-sync-controls').append(syncHost);
 const draftSync=createDraftSync({storage:localStorage,request:async(action,data,id)=>{
  if(user!==id)throw Error('Account changed.');const {getAccessToken}=await import('/auth/entry.js');const token=await getAccessToken();if(user!==id)throw Error('Account changed.');if(!token)throw Error('Sign in again to sync your draft.');
  const response=await fetch('/api/drafts/'+action,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify(data),signal:AbortSignal.timeout(20000)});const result=await response.json();if(!response.ok){const error=Error(result.error||'Could not sync your draft.');error.status=response.status;throw error;}return result;
-},onStatus:({state,message})=>{syncHost.hidden=!['error','conflict'].includes(state);syncText.textContent=message;accountDraftButton.hidden=localDraftButton.hidden=state!=='conflict';syncRetry.hidden=state!=='error';},onApply:id=>{
+},onStatus:({state,message})=>{
+ if(user&&['loading','saved','error'].includes(state)){
+  const loading=state==='loading';$('workspace').hidden=loading;$('workspace').inert=loading;$('session-loading').hidden=!loading;
+ }
+ syncHost.hidden=state!=='error';syncText.textContent=message;},onApply:id=>{
  if(id!==user)return;epoch++;controller?.abort();launchBusy=false;setupBusy=false;logoCreator.reset();invalidateLaunch();showLaunchStage(null,false);restore();restoreSettings();renderTokenSummary();renderSetupChoices();
 }});
-accountDraftButton.onclick=()=>void draftSync.useAccount();localDraftButton.onclick=()=>void draftSync.keepLocal();syncRetry.onclick=()=>void draftSync.refresh();
+syncRetry.onclick=()=>void draftSync.refresh();
 window.addEventListener('focus',()=>void draftSync.refresh());
+window.addEventListener('online',()=>void draftSync.refresh());
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')void draftSync.flush();});
 
 async function api(path,data,signal){const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data),signal});const v=await r.json();if(!r.ok)throw Error(v.error||'Could not complete the request.');return v;}
@@ -469,7 +473,7 @@ $('chat').onsubmit=async e=>{
 };
 
 
-$('brief-form').onsubmit=async e=>{e.preventDefault();const generation=epoch;if(!user)return;try{const b=await api('/api/pons/brief',{launchpad:'pons',chainId:4663,...Object.fromEntries(['name','symbol','description'].map(f=>[f,$('brief-'+f).value]))});if(epoch!==generation)return;brief=cleanBrief({name:b.name,symbol:b.symbol,description:b.description});awaiting=null;keepBrief();$('brief-status').textContent='Brief saved in this browser. Not deployed.';}catch(err){if(epoch===generation)$('brief-status').textContent=err.message;}};
+$('brief-form').onsubmit=async e=>{e.preventDefault();const generation=epoch;if(!user)return;try{const b=await api('/api/pons/brief',{launchpad:'pons',chainId:4663,...Object.fromEntries(['name','symbol','description'].map(f=>[f,$('brief-'+f).value]))});if(epoch!==generation)return;brief=cleanBrief({name:b.name,symbol:b.symbol,description:b.description});awaiting=null;keepBrief();$('brief-status').textContent='Launch details updated.';}catch(err){if(epoch===generation)$('brief-status').textContent=err.message;}};
 
 async function check(button,status,path,data,render){const generation=epoch;button.disabled=true;status.textContent='Checking…';status.classList.add('status-shimmer');status.setAttribute('aria-busy','true');try{const r=await api(path,data);if(generation===epoch)render(r);}catch(err){if(generation===epoch)status.textContent=err.message;}finally{status.classList.remove('status-shimmer');status.removeAttribute('aria-busy');button.disabled=false;}}
 
@@ -767,7 +771,7 @@ function applyLaunchDraft(d){
 
  for(const f of socialFields)values['launch-'+f]=settings.socials?.[f]||'';
 
- const kinds=['pons-brief','pons-settings','setup'],old=kinds.map(read);try{save('pons-brief',{...nextBrief,launchpad:'pons',chainId:4663});save('pons-settings',{values,launchStep:nextStep});save('setup',{awaiting:nextAwaiting,active:d.active,requestedSupply:d.requestedSupply||null});}catch(error){kinds.forEach((k,i)=>{try{if(old[i]===null)localStorage.removeItem(key(k));else localStorage.setItem(key(k),old[i]);}catch{}});throw Error('Browser storage could not save the validated draft. Please retry.');}
+ const kinds=['pons-brief','pons-settings','setup'],old=kinds.map(read);try{save('pons-brief',{...nextBrief,launchpad:'pons',chainId:4663});save('pons-settings',{values,launchStep:nextStep});save('setup',{awaiting:nextAwaiting,active:d.active,requestedSupply:d.requestedSupply||null});}catch(error){kinds.forEach((k,i)=>{try{draftSync.write(k,user,old[i]===null?undefined:JSON.parse(old[i]));}catch{}});throw Error('Could not update your launch details. Please retry.');}
 
  requestedSupply=d.requestedSupply||null;brief=nextBrief;awaiting=nextAwaiting;setupActive=d.active;restoreSettings();launchPair=d.pair||launchPair;syncBrief();renderSetupChoices();
 
@@ -999,7 +1003,7 @@ async function startSignIn(){
 
 }
 void startSignIn();
-void fetch('/api/status').then(r=>{if(!r.ok)throw Error();return r.json();}).then(status=>{draftSync.configure(status.draftSyncEnabled);renderToolDirectory(status.capabilities);renderAgentAccess(null,true);fetch('/.well-known/dinn.json').then(r=>r.ok?r.json():null).then(data=>renderAgentAccess(data,false)).catch(()=>renderAgentAccess(null,false));if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}}).catch(()=>renderAgentAccess(null,false));
+void fetch('/api/status').then(r=>{if(!r.ok)throw Error();return r.json();}).then(status=>{renderToolDirectory(status.capabilities);renderAgentAccess(null,true);fetch('/.well-known/dinn.json').then(r=>r.ok?r.json():null).then(data=>renderAgentAccess(data,false)).catch(()=>renderAgentAccess(null,false));if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}}).catch(()=>renderAgentAccess(null,false));
 void (async()=>{const {mountRobinhoodWallet}=await import('/pons/entry.js');walletUI=mountRobinhoodWallet({api,getAccount:()=>account,getProvider:()=>provider,getSendTransaction:()=>walletSource==='embedded'?walletSendTransaction:null,getWalletSource:()=>walletSource,getEpoch:()=>epoch,onSwitch:(value,restored)=>{walletNetworkBusy=value;if(!value&&restored)window.dispatchEvent(new CustomEvent('dinn:wallet-network-restored'));}});if(account)walletUI.changed('',false);})().catch(()=>{$('wallet-status').textContent='Wallet tools could not load. Reload to try again.';});
 
 
