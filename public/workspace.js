@@ -438,8 +438,10 @@ $('chat').onsubmit=async e=>{
    if(savedSetupWasLaunched())startFreshTokenSetup();
    const idea=watch.concept||choice==='launch'?launchAngle(watch):null;
    const description=idea?ideaDescription(idea):researchDescription(watch);
-   applyLaunchDraft({active:true,brief:description?{description}:{},settings:{pairToken:candidate.address},nextField:'name',logo:'',pair});
-   recordSetupReply(text,watch.ticker+' is enabled on Pons. '+(description?'I added the research brief to your editable project description. ':'')+'What is your token called?');
+   const identity=idea?.symbol?{name:idea.name,symbol:idea.symbol}:{};
+   const nextField=identity.symbol?(description?'configId':'description'):'name';
+   applyLaunchDraft({active:true,brief:{...identity,...(description?{description}:{})},settings:{pairToken:candidate.address},nextField,logo:'',pair});
+   recordSetupReply(text,watch.ticker+' is enabled on Pons. '+(description?'I added the research brief to your editable project description. ':'')+(identity.symbol?'Your token is '+identity.name+' ($'+identity.symbol+'). You can change either. '+(description?'Which launch configuration would you like to use?':'How would you describe your token?'):'What is your token called?'));
   }catch(err){if(user===owner&&epoch===session)recordSetupReply(text,'I could not start this Pons setup. '+err.message);}
   finally{if(user===owner)setupBusy=false;}return;
  }

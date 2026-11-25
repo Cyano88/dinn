@@ -13,7 +13,7 @@ test('sharing rechecks the source, preserves the feed link and exposes only the 
   const article={title:'Tesla reports deliveries',source:'Tesla',url:'https://example.com/deliveries',publishedAt:'2026-11-22T12:00:00Z'};
 
   const store=await createDraftStore({db});
-  const service=createDraftService({env:{DATABASE_URL:'test'},storeFactory:async()=>store,verify:async token=>token,allowanceFactory:async()=>createChatAllowanceStore({db}),generate:async(t,a,formats)=>({format:formats[0].key,concept:{name:formats[0].key,activity:'Invite the community to '+formats[0].key,question:'What ships next?'}}),research:async()=>({ticker:'TSLA',checkedAt:article.publishedAt,recentArticles:[article]})});
+  const service=createDraftService({env:{DATABASE_URL:'test'},storeFactory:async()=>store,verify:async token=>token,allowanceFactory:async()=>createChatAllowanceStore({db}),generate:async(t,a,formats)=>({format:formats[0].key,concept:{name:formats[0].key,symbol:'CRAFT',activity:'Invite the community to '+formats[0].key,question:'What ships next?'}}),research:async()=>({ticker:'TSLA',checkedAt:article.publishedAt,recentArticles:[article]})});
   const generate=owner=>service.handle({headers:{authorization:'Bearer '+owner}},'/api/drafts/creator-idea',{ticker:'TSLA',url:article.url});
   const firstIdea=await generate('test');
   assert.equal(firstIdea.status,200);

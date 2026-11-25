@@ -1,12 +1,12 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {equityContext} from './equity-context.mjs';
-import {composeLore,chooseFormats,loreKey} from './creator-lore.mjs';
+import {composeLore,nameSavedConcept,chooseFormats,loreKey} from './creator-lore.mjs';
 import {sharedFinding,hasLaunchEvent,launchStory} from '../public/stock-watch.js';
 import {chatLimit,createChatAllowanceStore} from './chat-allowance.mjs';
 import {PrivyClient} from '@privy-io/node';
 import {validateDraft} from '../public/draft-data.js';
 import {createDraftStore} from './draft-store.mjs';
-export function createDraftService({env=process.env,verify,storeFactory=createDraftStore,fetchImpl=fetch,research=equityContext,generate=composeLore,allowanceFactory=createChatAllowanceStore}={}){
+export function createDraftService({env=process.env,verify,storeFactory=createDraftStore,fetchImpl=fetch,research=equityContext,generate=composeLore,nameConcept=nameSavedConcept,allowanceFactory=createChatAllowanceStore}={}){
  let client,pending,usage;
  const enabled=()=>!!env.DATABASE_URL||!!env.DINN_DRAFT_SYNC_URL;
  return {enabled,async findings(id){
@@ -37,6 +37,10 @@ export function createDraftService({env=process.env,verify,storeFactory=createDr
    let concept=await store.creatorLore(owner,story);
    if(path.endsWith('/creator-idea')){
     if(!launchStory(context.ticker,[article],context.checkedAt))return {status:409,body:{error:'This story needs a fresh research check.'}};
+    if(concept&&!concept.symbol){
+     const named=await nameConcept(context.ticker,concept,{env,fetchImpl});
+     concept=await store.nameExisting(owner,story,named,loreKey(named.name));
+    }
     if(concept)return {status:200,body:{concept}};
     usage||=allowanceFactory({env}).catch(e=>{usage=null;throw e;});
     const meter=await usage, reservation=await meter.reserve(owner,'lore-'+story,['creator-idea',story],chatLimit(env));

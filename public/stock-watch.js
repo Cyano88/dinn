@@ -74,9 +74,10 @@ export function launchAngle(watch){
  return {name,activity,question,article:a};
 }
 const setupInvite='Want to start setting up a token for this idea on Pons?';
+export const conceptLabel=idea=>idea.symbol?idea.name+' ($'+idea.symbol+')':idea.name;
 export function ideaReply(watch){
  const idea=launchAngle(watch);if(!idea)return 'Which stock story would you like to research first?';
- return '**'+idea.name+'**\n\n'+idea.activity+'\n\nInspired by '+label(idea.article)+'\n\n'+setupInvite;
+ return '**'+conceptLabel(idea)+'**\n\n'+idea.activity+'\n\nInspired by '+label(idea.article)+'\n\n'+setupInvite;
 }
 export function ideaChoice(text,watch,last){
  if(!watch?.ideaSource)return null;
@@ -99,7 +100,7 @@ export function ideaChoice(text,watch,last){
 }
 export function bankrBrief(watch){
  const i=launchAngle(watch);
- return '**Base creator brief: '+i.name+'**\n\n'+i.activity+'\n\nStory: '+label(i.article)+'\n\nFirst milestone: '+i.question+'\n\nProposed pairing asset: the Base stock token for '+watch.ticker+'. Check current pair support with Bankr. Launching through Bankr in Dinn is coming soon.';
+ return '**Base creator brief: '+conceptLabel(i)+'**\n\n'+i.activity+'\n\nStory: '+label(i.article)+'\n\nFirst milestone: '+i.question+'\n\nProposed pairing asset: the Base stock token for '+watch.ticker+'. Check current pair support with Bankr. Launching through Bankr in Dinn is coming soon.';
 }
 function findings(original,current,question){
  const known=new Set(original.articles.map(a=>a.url));
@@ -141,5 +142,5 @@ export function ideaDescription(i){
 
 export function sharedFinding(ticker,article,concept){
  const idea=launchAngle({ticker,ideaSource:article,concept});
- return {ticker,question:'What is the launch idea around '+ticker+'?',finding:article.title,source:article.source,url:article.url,publishedAt:article.publishedAt,idea:idea.name,activity:idea.activity,followUp:idea.question};
+ return {ticker,question:'What is the launch idea around '+ticker+'?',finding:article.title,source:article.source,url:article.url,publishedAt:article.publishedAt,idea:conceptLabel(idea),activity:idea.activity,followUp:idea.question};
 }

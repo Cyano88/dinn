@@ -22,6 +22,10 @@ export async function createDraftStore({env=process.env,db}={}){
    return result.rows[0]||null;
   },
   async creatorLore(owner,story){return (await db.query('SELECT concept FROM dinn_creator_lore WHERE owner=$1 AND story=$2',[owner,story])).rows[0]?.concept;},
+  async nameExisting(owner,story,concept,nameKey){
+   const updated=await db.query("UPDATE dinn_creator_lore SET concept=$3,name_key=$4 WHERE owner=$1 AND story=$2 AND NOT (concept ? 'symbol') RETURNING concept",[owner,story,JSON.stringify(concept),nameKey]);
+   return updated.rows[0]?.concept||this.creatorLore(owner,story);
+  },
   async usedIdeas(story){return (await db.query('SELECT format,concept FROM dinn_creator_lore WHERE story=$1',[story])).rows;},
   async reserveLore(owner,story,format,name,activity,concept){
    return (await db.query('INSERT INTO dinn_creator_lore(owner,story,format,name_key,activity_key,concept) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING concept',[owner,story,format,name,activity,JSON.stringify(concept)])).rows[0]?.concept;
