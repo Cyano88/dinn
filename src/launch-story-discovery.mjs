@@ -1,3 +1,4 @@
+import {hasLaunchEvent} from '../public/stock-watch.js';
 import {equityContext} from './equity-context.mjs';
 import {ponsPair} from './pons-pairs.mjs';
 import {pairCandidates} from '../public/pons-assets.js';
@@ -19,12 +20,10 @@ async function scanEach(items,fn){
  return results;
 }
 const day=86400000;
-const concrete=/\b(announces?|announced|unveils?|unveiled|launches|launched|appoints?|appointed|approves?|approved|releases?|released|reports?|reported|signs|signed|wins|won|acquires|acquired|recalls?|recalled|cuts|raises|raised|halts?|halted|resigns?|resigned|sues|sued)\b/i;
-const speculative=/\?|\b(could|might|may|rumou?rs?|expected|prediction|forecast|analysts?|should you|stock to buy|reportedly|according to sources)\b/i;
 function lead(packet,now){
  return (packet?.recentArticles||[]).filter(a=>{
   const age=now-Date.parse(a.publishedAt);
-  return age>=0&&age<=2*day&&a.kind!=='regulatory-filing'&&concrete.test(a.title)&&!speculative.test(a.title)&&a.url.length<=1000;
+  return age>=0&&age<=2*day&&hasLaunchEvent(a)&&a.url.length<=1000;
  }).sort((a,b)=>Number(b.kind==='issuer-announcement')-Number(a.kind==='issuer-announcement')||Date.parse(b.publishedAt)-Date.parse(a.publishedAt))[0];
 }
 let lastScreen;

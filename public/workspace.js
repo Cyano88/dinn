@@ -1,5 +1,5 @@
 import {clearBootReload,loadAuthConfig,reserveBootReload} from './auth-boot.js';
-import {ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
+import {hasLaunchEvent,ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
 import {newChatTask} from './flow.js';
 import {firstLockPreview,lockCoverageText} from './token-report.js';
 import {showFeedbackFeed} from '/feedback-feed.js';
@@ -484,7 +484,7 @@ $('chat').onsubmit=async e=>{
    const current=snapshot(equity);
    const article=selectedStory?.article||equity.event||current.articles[0];
    const age=Date.parse(equity.checkedAt)-Date.parse(article?.publishedAt);
-   if(article&&article.kind!=='regulatory-filing'&&!/\?|\b(?:could|might|rumou?rs?|reportedly|stock to buy|prediction)\b/i.test(article.title)&&age>=0&&age<=2*86400000){
+   if(hasLaunchEvent(article)&&age>=0&&age<=2*86400000){
     const next={ticker:equity.ticker,original:current,latest:current,question:watch?.ticker===equity.ticker?watch.question:'',ideaSource:article};
     if(watch?.ticker===equity.ticker&&next.question)next.original=watch.original;
     localStorage.setItem(key('stock-watch'),JSON.stringify(next));

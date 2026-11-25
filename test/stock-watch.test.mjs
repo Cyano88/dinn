@@ -30,3 +30,8 @@ test('a creator can opt into a sourced milestone idea without starting a launch'
  assert.match(ideaDescription(launchAngle(w)),/Reuters, 2026-11-23/);
  assert.equal(ideaChoice('no thanks',w,ideaInvite('TSLA')),'decline');
 });
+test('a hypothetical dividend cut cannot trigger a creator idea',async()=>{
+ const {hasLaunchEvent}=await import('../public/stock-watch.js');
+ assert.equal(hasLaunchEvent({title:'A portfolio with UPS pays dividends. Here is what happens if one cuts'}),false);
+ assert.equal(hasLaunchEvent({title:'UPS announces a new delivery service'}),true);
+});
