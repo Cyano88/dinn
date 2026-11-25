@@ -1,3 +1,5 @@
+import {randomUUID as chatUUID} from 'node:crypto';
+import {createChatAllowanceStore,chatLimit} from './src/chat-allowance.mjs';
 import {createCreatorPages} from './src/creator-pages.mjs';
 import {discoverStockPairs} from './src/base-stock-paired-research.mjs';
 import {feedbackFeed,feedbackRequest} from './src/research-feedback.mjs';
@@ -56,6 +58,7 @@ const creatorPages=createCreatorPages();
 const draftService=createDraftService();
 const ponsLaunchService=createPonsLaunchService();
 const checkInferenceAccess=inferenceAccess();
+let chatAllowanceStore;
 const publicOrigin=process.env.DINN_PUBLIC_URL||process.env.RENDER_EXTERNAL_URL;
 const allowedOrigins=new Set([`http://127.0.0.1:${port}`,`http://localhost:${port}`,...(publicOrigin?[new URL(publicOrigin).origin]:[])]);
 // Both public hostnames route to the same production Dinn workspace.
@@ -146,7 +149,9 @@ const server=createServer(async(req,res)=>{
     try{const result=await feedbackRequest(req,path,data);return json(res,result.status,result.body);}
     catch{return json(res,503,{error:'Feedback is temporarily unavailable. Please try again.'});}
    }
-   if(path==='/api/chat'||path==='/api/agent/request'&&data.service==='plan'){const denied=await checkInferenceAccess(req);if(denied)return json(res,denied.status,{error:denied.error});}
+   const isPlan=path==='/api/plan'||(path==='/api/agent/request'&&data.service==='plan');
+   let chatOwner;
+   if(path==='/api/chat'||isPlan){const denied=await checkInferenceAccess(req,id=>{chatOwner=id;});if(denied)return json(res,denied.status,{error:denied.error});}
    if(path==='/api/dex/logo-download'){const image=await downloadDexLogo(data);res.writeHead(200,{'content-type':image.type,'content-disposition':'attachment; filename="'+image.filename+'"','cache-control':'no-store'});return res.end(image.bytes);}
    if(path==='/api/tools/run'){if(Object.keys(data).some(k=>!['name','args','walletAccount'].includes(k)))throw Error('Unknown tool request field.');walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);if(walletReadStarts.length>=40)return json(res,429,{error:'Tool checks are busy.'});walletReadStarts.push(Date.now());return json(res,200,await executeProductTool(data.name,data.args,{walletAccount:data.walletAccount,env:process.env,holderSnapshotEnabled:false}));}
    const robinhoodWalletRoutes={'/api/robinhood/wallet/balances':robinhoodBalances,'/api/robinhood/wallet/prepare':prepareRobinhoodSend,'/api/robinhood/wallet/receipt':walletSourceReceipt,'/api/robinhood/route/quote':robinhoodRouteQuote,'/api/robinhood/route/prepare':prepareRobinhoodRoute,'/api/robinhood/route/status':robinhoodRouteStatus,'/api/pons/burn/validate':validatePonsBurn,'/api/pons/burn/receipt':ponsBurnReceipt,'/api/pons/trade/prepare':preparePonsTrade,'/api/pons/trade/receipt':ponsTradeReceipt};
@@ -165,25 +170,44 @@ const server=createServer(async(req,res)=>{
     try{const action=path==='/api/ascend/fees/prepare'?prepareCreatorFee:path==='/api/ascend/fees/receipt'?creatorFeeReceipt:path==='/api/ascend/fees'?inspectCreatorFees:path==='/api/funding/source/balance'?bridgeBalance:path==='/api/funding/source/prepare'?prepareBridge:path==='/api/funding/source/receipt'?bridgeSourceReceipt:path==='/api/wallet/prices'?walletPrices:path==='/api/funding/balance'?fundingBalance:path==='/api/wallet/native'?walletNativeBalance:path==='/api/funding/relay/quote'?relayQuote:path==='/api/funding/relay/status'?relayStatus:path==='/api/funding/prepare'?prepareDeposit:path==='/api/funding/receipt'?depositReceipt:path==='/api/funding/route'?fundingRoute:path==='/api/market/tokens'?marketTokens:path==='/api/market/prepare'?prepareMarketTrade:path==='/api/market/receipt'?marketTradeReceipt:path==='/api/wallet/route-check'?walletRouteCheck:path==='/api/delivery/status'?trackMontraDelivery:path==='/api/market/detect'?detectMarket:path==='/api/market/quote'?marketQuote:path==='/api/swap/quote'?quoteSwap:path==='/api/swap/receipt'?swapReceipt:path.endsWith('/balances')?walletBalances:path.endsWith('/prepare')?prepareTransfer:transferReceipt;return json(res,200,await action(data));}
     catch(error){const message=error.name==='Error'&&!/https?:|api.key|rpc/i.test(error.message)?error.message:'Wallet reads could not complete. Please try again.';return json(res,400,{error:message});}
    }
-   if(path==='/api/chat'){
-
-    validateChat(data);
+   if(path==='/api/chat'||isPlan){
+    const input=isPlan?{message:path==='/api/plan'?data.message:data.input?.message}:data;
+    validateChat(input);
+    let allowance,ticket,replay;
+    if(chatOwner){
+     const id=req.headers['idempotency-key']??(isPlan?data.requestId:null)??chatUUID();
+     if(typeof id!=='string'||!/^[a-zA-Z0-9._-]{1,100}$/.test(id))return json(res,400,{error:'Invalid chat request ID.'});
+     try{
+      chatAllowanceStore||=createChatAllowanceStore().catch(error=>{chatAllowanceStore=null;throw error;});
+      allowance=await chatAllowanceStore;
+      const reserved=await allowance.reserve(chatOwner,id,[path,input],chatLimit(process.env));
+      if(reserved.error)return json(res,reserved.status,{error:reserved.error,...(reserved.code?{code:reserved.code}:{})});
+      ({ticket,replay}=reserved);
+     }catch{return json(res,503,{error:'Your chat allowance could not be checked. Please try again.'});}
+    }
     const controller=new AbortController();
     const cancel=()=>controller.abort();res.on('close',cancel);
-    res.writeHead(200,{'content-type':'application/x-ndjson; charset=utf-8','cache-control':'no-store','x-accel-buffering':'no'});res.flushHeaders();
-    try{for await(const event of streamChat(data,{productMode:true,signal:controller.signal,onboardingOnly,launchEnabled,transfersEnabled:nativeTransfersEnabled(),swapsEnabled:montraSwapsEnabled()})){if(res.destroyed)break;res.write(JSON.stringify(event)+'\n');}}
-    catch(error){if(!res.destroyed)res.write(JSON.stringify({type:'error',message:error.name==='TimeoutError'?'Dinn took too long to respond. Please try again.':error.message})+'\n');}
-    finally{res.off('close',cancel);controller.abort();res.end();}
+    try{
+     if(isPlan){
+      const result=replay??await buildPlan(input.message);
+      if(ticket&&!res.destroyed&&result?.mode!=='offline'){await allowance.finish(ticket,result);ticket=null;}
+      return json(res,200,result);
+     }
+     res.writeHead(200,{'content-type':'application/x-ndjson; charset=utf-8','cache-control':'no-store','x-accel-buffering':'no'});res.flushHeaders();
+     const events=replay?[{type:'delta',text:replay.message},{type:'done',result:replay}]:streamChat(data,{productMode:true,signal:controller.signal,onboardingOnly,launchEnabled,transfersEnabled:nativeTransfersEnabled(),swapsEnabled:montraSwapsEnabled()});
+     for await(const event of events){
+      if(res.destroyed)break;
+      if(ticket&&event.type==='done'&&event.result?.mode!=='offline'){await allowance.finish(ticket,event.result);ticket=null;}
+      res.write(JSON.stringify(event)+'\n');
+     }
+    }catch(error){if(isPlan)throw error;if(!res.destroyed)res.write(JSON.stringify({type:'error',message:error.name==='TimeoutError'?'Dinn took too long to respond. Please try again.':error.message})+'\n');}
+    finally{res.off('close',cancel);controller.abort();if(ticket)await allowance.release(ticket).catch(()=>console.error('Chat allowance release failed.'));if(!isPlan)res.end();}
     return;
    }
    if(path==='/api/agent/request'){
     if(Object.hasOwn(agentServices,data.service)){walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);if(walletReadStarts.length>=40)return json(res,429,{error:'Agent reads are busy. Try again shortly.'});walletReadStarts.push(Date.now());try{return json(res,200,await agentAccessRequest(data,{paidMarketplaceHire:false}));}catch(e){return json(res,400,{error:e.name==='Error'&&!/https?:|api.key|Bearer/i.test(e.message)?e.message:'Agent evidence could not be verified. No paid delivery or transaction occurred.'});}}
-    if(data.service==='plan')return json(res,200,await buildPlan(data.input?.message));
     if(data.service==='pons.brief')return json(res,200,ponsBrief(data.input));
     return json(res,410,{error:'This service is unavailable. Discover supported services at /api/agent/schema.'});
-   }
-   if(path==='/api/plan'){
-    return json(res,200,await buildPlan(data.message));
    }
    if(path==='/api/launch/preflight')return json(res,200,await launchPreflight(data));
    if(path==='/api/launch/receipt')return json(res,200,await readLaunchReceipt(data,launchRpcUrl));

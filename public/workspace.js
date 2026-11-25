@@ -37,6 +37,7 @@ function currentSocials(){return cleanSocials(Object.fromEntries(socialFields.ma
 let launchPair=null,setupActive=false,requestedSupply=null;
 
 let tradeQuoteOffer=null;
+let retryChatTurn=null;
 let walletUI=null,launchesView=null,walletNetworkBusy=false,claimBusy=false,claimApprovalBusy=false,claimRecoveryKey=null,chatPendingApproval=null,chatApprovalBusy=false;
 async function openFeeClaim(address){
  if(!/^0x[0-9a-f]{40}$/i.test(address||''))return;view('assistant');const owner=account,run=epoch;
@@ -377,9 +378,12 @@ $('chat').onsubmit=async e=>{
  const requestUser=user,generation=epoch,draftRevision=launchRevision;controller=new AbortController();const request=controller;let advanceLaunchProfile=false;$('prompt').value='';$('send').disabled=true;$('stop-response').hidden=false;$('feedback').textContent='';message('user',text);const reply=message('assistant','');reply.textContent='Thinking';reply.classList.add('thinking');reply.setAttribute('aria-label','Dinn is thinking');for(let i=0;i<3;i++){const dot=document.createElement('span');dot.className='thinking-dot';dot.textContent='.';dot.setAttribute('aria-hidden','true');reply.append(dot);}let received=false;
  try{
   const {getAccessToken}=await import('/auth/entry.js');const accessToken=await getAccessToken();
-  const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json',...(accessToken?{authorization:'Bearer '+accessToken}:{})},body:JSON.stringify({message:requestText,history,ponsBrief:brief,ponsSettings:currentSettings(),ponsSetup:{requestedSupply,active:setupActive||!!awaiting||!!launchStep,field:awaiting||({'launch-pair':'pairToken','launch-config':'configId','launch-tax':'creatorTaxBps','launch-buyback':'buybackEnabled','launch-recipient':'creatorFeeRecipient'})[launchStep]||null,logo:$('launch-logo').value},...(account?{walletAccount:account}:{}),...(selectedToken?{tokenAddress:selectedToken}:{})}),signal:request.signal});
+  const payload=JSON.stringify({message:requestText,history,ponsBrief:brief,ponsSettings:currentSettings(),ponsSetup:{requestedSupply,active:setupActive||!!awaiting||!!launchStep,field:awaiting||({'launch-pair':'pairToken','launch-config':'configId','launch-tax':'creatorTaxBps','launch-buyback':'buybackEnabled','launch-recipient':'creatorFeeRecipient'})[launchStep]||null,logo:$('launch-logo').value},...(account?{walletAccount:account}:{}),...(selectedToken?{tokenAddress:selectedToken}:{})});
+  if(!retryChatTurn||retryChatTurn.owner!==requestUser||retryChatTurn.payload!==payload)retryChatTurn={owner:requestUser,payload,id:crypto.randomUUID()};
+  const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json','idempotency-key':retryChatTurn.id,...(accessToken?{authorization:'Bearer '+accessToken}:{})},body:payload,signal:request.signal});
   const result=await receiveChat(r,delta=>{if(epoch===generation){if(!received){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');received=true;}reply.append(document.createTextNode(delta));scrollChat();}});
   if(epoch!==generation)return;
+  retryChatTurn=null;
   if(result.launchDraft){try{if(launchRevision!==draftRevision)throw Error('Your token details changed while Dinn was responding. Retry against the current details.');applyLaunchDraft(result.launchDraft);}catch(error){received=false;reply.replaceChildren();throw error;}}
   if(result.inspection){
    const overview=researchSummary(result.inspection);
@@ -406,7 +410,7 @@ $('chat').onsubmit=async e=>{
   }
   if(epoch!==generation)return;
   const state=appendChatState(history,chatResults,text,result.message,result);history=state.messages;chatResults=state.results;save('chat',state);renderToolResult(reply,result);advanceLaunchProfile=!launchConversationStep&&($('chat-review').disabled===false&&(result.actions||[]).some(action=>action.id==='review')||!!(result.launchDraft?.active&&result.launchDraft.nextField===null));
- }catch(err){if(epoch===generation){const failure=err.name==='AbortError'?'Response stopped. Your message is ready to retry.':err.message;reply.classList.remove('thinking');reply.removeAttribute('aria-label');reply.textContent=(received&&reply.textContent.trim()?reply.textContent+'\n\n':'')+'Could not finish: '+failure;reply.setAttribute('role','status');$('prompt').value=text;$('feedback').textContent='Your message is ready to retry.';}}
+ }catch(err){if(epoch===generation){const failure=err.name==='AbortError'?'Response stopped. Your message is ready to retry.':err.message;reply.classList.remove('thinking');reply.removeAttribute('aria-label');reply.textContent=err.code==='daily_chat_limit'?failure:(received&&reply.textContent.trim()?reply.textContent+'\n\n':'')+'Could not finish: '+failure;reply.setAttribute('role','status');$('prompt').value=text;$('feedback').textContent=err.code==='daily_chat_limit'?'':'Your message is ready to retry.';}}
  finally{if(user===requestUser&&epoch!==generation&&request.signal.aborted&&(!$('prompt').value)&&(!controller||controller===request)){
    $('prompt').value=text;$('feedback').textContent='Your account refreshed during the reply. Press Enter to retry.';
    if(reply.isConnected){reply.classList.remove('thinking');reply.removeAttribute('aria-label');reply.textContent='Your message is ready to retry.';}

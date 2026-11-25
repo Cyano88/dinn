@@ -25,7 +25,7 @@ export async function* readLines(body){
  }}finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
 }
 export async function receiveChat(response,onDelta){
- if(!response.ok){const data=await response.json();throw Error(data.error||'Dinn could not respond. Please try again.');}
+ if(!response.ok){const data=await response.json();throw Object.assign(Error(data.error||'Dinn could not respond. Please try again.'),{code:data.code});}
  let text='';
  for await(const line of readLines(response.body)){
   if(!line.trim())continue;const event=JSON.parse(line);

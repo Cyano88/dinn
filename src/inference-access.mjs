@@ -3,7 +3,7 @@ import {PrivyClient} from '@privy-io/node';
 // Public deployments must not expose the paid model endpoint anonymously.
 export function inferenceAccess({env=process.env,verify,now=Date.now}={}){
  let client;const requests=new Map();
- return async req=>{
+ return async (req,onVerified)=>{
   if(env.NODE_ENV!=='production'&&!env.RENDER)return null;
   const token=req.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];
   if(!token||token.length>12000)return {status:401,error:'Sign in to chat with Dinn.'};
@@ -13,6 +13,6 @@ export function inferenceAccess({env=process.env,verify,now=Date.now}={}){
   const time=now();for(const [id,values]of requests)if(values.at(-1)<=time-60000)requests.delete(id);
   const recent=(requests.get(owner)||[]).filter(t=>t>time-60000);
   if(recent.length>=12)return {status:429,error:'Please wait a minute before asking Dinn again.'};
-  recent.push(time);requests.set(owner,recent);return null;
+  recent.push(time);requests.set(owner,recent);if(onVerified)onVerified(owner);return null;
  };
 }
