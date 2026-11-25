@@ -47,28 +47,34 @@ export function launchAngle(watch){
  const a=watch.ideaSource;
  if(!a)return null;
  const t=a.title;
- let name='Evidence Club',activity='Members bring one dated source to each update and vote on the next question to investigate.',question='What new primary source would change the original finding?';
- if(/\bpostpon(?:es?|ed)\b/i.test(t)){
-  name='Decision Watch';activity='Track the postponed decision from this report to the next published meeting date and outcome.';
-  question='Has the body responsible for the decision published a new date or an outcome?';
+ const ticker=watch.ticker;
+ let name=ticker+' Front Page',activity='Ask everyone to draw a four-panel comic explaining this headline to someone seeing it for the first time. Pin the clearest strip next to the original story, then invite readers to draw the sequel when a new fact lands.',question='What new detail would belong in the next panel?';
+ if(/\b(?:orbit\w*|space|satellite\w*)\b/i.test(t)&&/\bdata cent(?:er|re)s?\b/i.test(t)){
+  name='Server Room in Space';
+  activity='Give the community one design challenge: draw a mission patch for an AI data center in orbit. Let people vote for the patch they would put on the first server rack. Pin the winning design beside the original report.';
+  question='Has anyone published a launch date or shown hardware for the proposed data center?';
+ }else if(/\bpostpon(?:es?|ed)\b/i.test(t)){
+  name=ticker+' Rain Check';activity='Make a two-frame meme about the postponed decision. Everyone draws the delay today and leaves frame two blank. Reopen the thread when a new date is announced and let the community finish it.';
+  question='Has the decision maker published a new date?';
  }else if(/\b(?:approval|approves?|license|permit|regulat\w*)\b/i.test(t)){
-  name='Clearance Watch';activity='Build a public timeline from the reported decision to the first real-world rollout. Members add a source for each milestone.';
-  question='Has the company published the first rollout milestone covered by this decision?';
- }else if(/\b(?:launch\w*|deploy\w*|deliver\w*|unveil\w*|rollout|production)\b/i.test(t)){
-  name='Launch Log';activity='Let the community track promised milestones against dated delivery updates on the project page.';
-  question='What has actually shipped since this report?';
+  name=ticker+' Green Light';activity='Start a thread called "Approved. Now what?" Ask members to sketch the first thing a customer might actually see. When the rollout begins, put the sketches beside a sourced photo or announcement.';
+  question='What is the first public sign that the approved plan has reached customers?';
  }else if(/\b(?:earnings|revenue|quarter|results|profit)\b/i.test(t)){
-  name='Quarter Watch';activity='Invite members to pick one reported business metric and track it through the next earnings release.';
-  question='How does the next published result compare with this one?';
+  name=ticker+' In One Chart';activity='Challenge members to explain one number from the earnings release in a single chart. Every entry links to the figure it used. Let readers choose the clearest chart and bring it back at the next release.';
+  question='How does the same figure change in the next company release?';
  }else if(/\b(?:stake|shares|holding|holdings)\b/i.test(t)){
-  name='Filing Club';activity='Give the community a dated log of disclosed positions, with each change linked to the corresponding filing.';
-  question='Does the next filing show the same position, and what period does it cover?';
+  name=ticker+' Filing Detectives';activity='Turn the stake story into a filing hunt. Ask members to find the original disclosure and mark the line showing the position. Pin the first correct citation alongside its reporting period.';
+  question='Which filing and reporting date support the stake in the headline?';
+ }else if(/\b(?:launch\w*|deploy\w*|deliver\w*|unveil\w*|rollout|production)\b/i.test(t)){
+  name=ticker+' First Sighting';activity='Open a first-sighting board for the rollout in this story. Ask members for a dated photo, release note or product listing. Feature the earliest entry others can verify.';
+  question='Where can someone independently verify the first delivery or release?';
  }
- return {name:watch.ticker+' '+name,activity,question,article:a};
+ return {name,activity,question,article:a};
 }
+const setupInvite='Want to start setting up a token for this idea on Pons?';
 export function ideaReply(watch){
  const idea=launchAngle(watch);if(!idea)return 'Which stock story would you like to research first?';
- return '**'+idea.name+'**\n\n'+idea.activity+'\n\n**The starting point**\n'+label(idea.article)+'\n\n**First question to track**\n'+idea.question+'\n\nSay "Share research" to preview this for the Research feed. Or choose Pons, Bankr, or watch the story.';
+ return '**'+idea.name+'**\n\n'+idea.activity+'\n\nInspired by '+label(idea.article)+'\n\n'+setupInvite;
 }
 export function ideaChoice(text,watch,last){
  if(!watch?.ideaSource)return null;
@@ -77,9 +83,12 @@ export function ideaChoice(text,watch,last){
   if(/^(?:yes|yes please|sure|go ahead|show me|give me (?:an?|the) (?:launch )?idea)$/.test(t))return 'idea';
   if(/^(?:no|no thanks|skip|just research)$/.test(t))return 'decline';
  }
- if(last?.endsWith(ideaInvite(watch.ticker))&&/^what (?:could|can|should) (?:i|we) launch around (?:this|that)(?: story| finding| research)?$/.test(t))return 'idea';
+ if((last?.endsWith(ideaInvite(watch.ticker))||last===ideaReply(watch)||last?.endsWith('Or choose Pons, Bankr, or watch the story.'))&&/^what (?:could|can|should) (?:i|we) launch around (?:this|that)(?: story| finding| research)?$/.test(t))return 'idea';
  if(last?.endsWith(ideaInvite(watch.ticker))&&/^(?:can (?:i|you)|give me|show me|suggest|create|build).*\blaunch idea\b/.test(t))return 'idea';
- if(last===ideaReply(watch)){
+ const currentIdea=last===ideaReply(watch);
+ if(currentIdea&&/^(?:yes|yep|yeah|sure|go ahead|yes please|let.s do it|start setup|use this idea)$/.test(t))return 'launch';
+ if(currentIdea&&/^(?:no|no thanks|not now|maybe later)$/.test(t))return 'decline';
+ if(currentIdea||last?.endsWith('Or choose Pons, Bankr, or watch the story.')){
   if(/^(?:pons|(?:check|launch|use|start)(?: this| the)?(?: pair)? on pons)$/.test(t))return 'launch';
   if(/^(?:bankr|launch on bankr|on bankr|use bankr|(?:prepare |create )?(?:a |the )?brief for bankr)$/.test(t))return 'bankr';
   if(/^(?:watch|just watch|watch (?:it|the story|this story))$/.test(t))return 'watch-idea';

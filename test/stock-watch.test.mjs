@@ -24,7 +24,7 @@ test('a creator can opt into a sourced milestone idea without starting a launch'
  assert.equal(ideaChoice('yes',w,ideaInvite('TSLA')),'idea');
  assert.equal(ideaChoice('yes',w,'Would you like something else?'),null);
  const idea=ideaReply(w);
- assert.match(idea,/Clearance Watch/);assert.match(idea,/\[Tesla wins approval for a rollout\]\(https:/);
+ assert.match(idea,/Green Light/);assert.match(idea,/\[Tesla wins approval for a rollout\]\(https:/);
  assert.equal(ideaChoice('Pons',w,idea),'launch');assert.equal(ideaChoice('Bankr',w,idea),'bankr');assert.equal(ideaChoice('just watch',w,idea),'watch-idea');
  assert.match(bankrBrief(w),/Check current pair support with Bankr/);
  assert.match(ideaDescription(launchAngle(w)),/Reuters, 2026-11-23/);
@@ -45,4 +45,17 @@ test('the next verified issuer headline can qualify when the lead story is hypot
  assert.equal(ideaChoice('What could I launch around this?',watch,ideaInvite('TSLA')),'idea');
  assert.equal(launchStory('TSLA',articles.slice(0,2),'2026-11-24T12:00:00Z'),null);
  assert.equal(launchStory('TSLA',articles,'2026-11-26T12:00:00Z'),null);
+});
+
+test('the orbital data center idea gives a creator one actionable next step',()=>{
+ const w={ticker:'SPCX',ideaSource:article('FCC approves SpaceX plan to put AI data centers in space',25)};
+ const reply=ideaReply(w);
+ assert.match(reply,/mission patch/);
+ assert.match(reply,/Want to start setting up a token for this idea on Pons\?$/);
+ assert.doesNotMatch(reply,/choose Pons|Say "Share research"|Bankr/);
+ assert.equal(ideaChoice('yes',w,reply),'launch');
+ assert.equal(ideaChoice('not now',w,reply),'decline');
+ assert.equal(ideaChoice('What could I launch around this?',w,reply),'idea');
+ assert.equal(ideaChoice('yes',w,'Published.'),null);
+ assert.equal(ideaChoice('yes',w,'Or choose Pons, Bankr, or watch the story.'),null);
 });
