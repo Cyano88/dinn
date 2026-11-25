@@ -1,3 +1,4 @@
+import {chatSwap,swapAmountPrompt} from './chat-swap.mjs';
 import {comparisonMessage} from './base-stock-comparison.mjs';
 import {discoverLaunchStories} from './launch-story-discovery.mjs';
 import {asksForLaunchIdeas} from '../public/stock-watch.js';
@@ -123,7 +124,22 @@ async function baseStockTradeAction(args,context,dependencies={}){
  const summary=kind==='buy'?`Spend ${quote.amount} ${quote.asset.symbol} to buy ${tokenSymbol}.`:`Sell ${quote.amount} ${tokenSymbol} for ${quote.outputAsset.symbol}.`;
  return {message:`${prefix}Dinn can show a read-only pool estimate: ${summary} Estimated output: ${quote.expectedAmount} ${quote.outputAsset.symbol}; estimated minimum at 1% tolerance: ${quote.minimumAmount} ${quote.outputAsset.symbol}. This is a reference quote from the verified Base pool, not Bankr's execution quote or a safety verdict. Dinn cannot place this stock-paired trade: Bankr must provide its executable quote and perform the required location check. [Open this token on Bankr](https://bankr.bot/trade/${found.address}). No wallet permission or transaction was prepared.`,actions:[]};
 }
-async function walletActionReview(args,context){
+async function walletActionReview(args,context,dependencies){
+ const swap=args.kind==='swap'?chatSwap(context):null;
+ if(swap){
+  const ask=note=>({message:'To swap this, '+(note?note+' ':'')+swapAmountPrompt(swap),actions:[]});
+  if(!addr(context.walletAccount))return {message:'To swap this, connect your wallet first.',actions:[]};
+  let amount=swap.amount;
+  if(amount==='all'){
+   if(swap.asset==='ETH')return ask('leave some ETH for the network fee.');
+   try{amount=(await (dependencies.balance||walletAssetBalance)({account:context.walletAccount,chainId:swap.chainId,asset:swap.asset},{env:context.env||process.env})).balance;}
+   catch{return ask('I could not check your balance.');}
+   if(!/^\d+(?:\.\d+)?$/.test(amount)||!/[1-9]/.test(amount))return ask('your available '+swap.asset+' balance is zero.');
+  }
+  if(!amount||!/[1-9]/.test(amount))return ask('');
+  args={kind:'swap',network:String(swap.chainId),asset:swap.asset,outputAsset:swap.outputAsset,amount};
+  context={...context,history:[],message:'swap '+amount+' '+swap.asset+' for '+swap.outputAsset+' on '+networks[swap.chainId].name};
+ }
  const kind=args.kind,chainId=Number(args.network),history=context.history||[],lastAssistant=history.at(-1)?.content||'',pending=/^To (send|bridge|swap) this,(?!\s*review:)/i.exec(lastAssistant);let sourceMessages=[context.message||''];
  if(pending&&pending[1].toLowerCase()===kind&&!newChatTask(context.message||'')){let assistantIndex=history.length-1;while(assistantIndex>=0){const m=history[assistantIndex],sameFlow=m?.role==='assistant'&&new RegExp('^To '+kind+' this,(?!\\s*review:)','i').test(m.content);if(!sameFlow)break;assistantIndex-=2;}const firstFlowAssistant=assistantIndex+2,start=Math.max(0,firstFlowAssistant-1);sourceMessages=[...history.slice(start).filter(m=>m.role==='user').map(m=>m.content),context.message||''];}
  const source=sourceMessages.join('\n');
@@ -141,7 +157,9 @@ async function walletActionReview(args,context){
  const asset=resolveAsset(args.asset),input={account:context.walletAccount,chainId,asset,amount:args.amount};
  if(kind==='send')input.recipient=args.recipient;
  else input.outputAsset=resolveAsset(args.outputAsset);
- const review=await (kind==='send'?prepareRobinhoodSend(input,{env:context.env||process.env}):prepareRobinhoodRoute({...input,kind},{env:context.env||process.env}));
+ let review;
+ try{review=await (kind==='send'?prepareRobinhoodSend(input,{env:context.env||process.env}):(dependencies.prepareRoute||prepareRobinhoodRoute)({...input,kind},{env:context.env||process.env}));}
+ catch(error){if(!swap)throw error;return missing('I could not get a usable quote for '+args.amount+' '+swap.asset+'. '+swapAmountPrompt(swap));}
  const summary=kind==='send'?`${prefix}review: send ${review.amount} ${review.asset.symbol} on ${networks[review.chainId].name} to ${review.recipient}. Estimated network fee: ${review.networkFee} ETH.`:kind==='bridge'?`${prefix}review: bridge ${review.amount} ${review.asset.symbol} from ${networks[review.chainId].name} to ${networks[review.destinationChainId].name} as ${review.outputAsset.symbol}. Expected: ${review.expectedAmount}; minimum: ${review.minimumAmount}. Estimated network fee: ${review.networkFee} ETH${review.fee?`; relay fee: ${review.fee} ${review.asset.symbol}`:''}.`:`${prefix}review: swap ${review.amount} ${review.asset.symbol} on ${networks[review.chainId].name} for ${review.outputAsset.symbol}. Expected: ${review.expectedAmount}; minimum: ${review.minimumAmount}. Estimated network fee: ${review.networkFee} ETH${review.fee?`; relay fee: ${review.fee} ${review.asset.symbol}`:''}.`;
  return {message:[summary,kind==='swap'?swapImpactMessage(review.impactPercent):'',kind==='swap'?'Approve this quote or decline?':'No transaction has been sent.'].filter(Boolean).join(' '),data:{walletReview:review},actions:[{id:'wallet_approve',review}]};
 }
@@ -217,7 +235,7 @@ async function executeTool(name,args={},context={},dependencies={}){
  const canClaim=addr(context.walletAccount)&&BigInt(data.claimableWei)>0n;
  return {message:tokenStateMessage(data,args.focus|| (name==='review_pons_claim'?'fees':'market')),tokenState:data,tokenAddress:address,data,actions:canClaim&&name==='review_pons_claim'?[{id:'claim',address,title:'Review fee claim'}]:[]};
  }
- if(name==='open_wallet_action')return walletActionReview(args,context);
+ if(name==='open_wallet_action')return walletActionReview(args,context,dependencies);
   if(name==='base_stock_trade')return baseStockTradeAction(args,context,dependencies);
  if(name==='pons_trade_quote'){
   const reply=message=>({message,actions:[]});
