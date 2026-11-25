@@ -1,6 +1,6 @@
 import {accountRecords} from './account-records.js';
 import {loadAuthConfig} from './auth-boot.js';
-import {sharedFinding,launchStory,ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
+import {setupInvite,sharedFinding,launchStory,ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
 import {newChatTask} from './flow.js';
 import {firstLockPreview,lockCoverageText} from './token-report.js';
 import {showFeedbackFeed} from '/feedback-feed.js';
@@ -415,6 +415,7 @@ $('chat').onsubmit=async e=>{
    }catch{if(user!==owner||run!==epoch)return;answer=bankrBrief(watch,'Bankr launch terms could not be checked. Try again shortly.');}
    finally{if(user===owner)setupBusy=false;}
   }
+  if(choice==='choose-network')answer=setupInvite;
   if(choice==='decline')answer='Sure. What else would you like to research?';
   if(choice==='watch-idea'){
    const question=launchAngle(watch).question;

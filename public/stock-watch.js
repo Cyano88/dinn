@@ -73,7 +73,8 @@ export function launchAngle(watch){
  }
  return {name,activity,question,article:a};
 }
-const setupInvite='Want to start setting up a token for this idea on Pons?';
+const formerInvite='Want to start setting up a token for this idea on Pons?';
+export const setupInvite='Would you like to set up your token on Robinhood Chain or check whether you can launch it on Base?';
 export const conceptLabel=idea=>idea.symbol?idea.name+' ($'+idea.symbol+')':idea.name;
 export function ideaReply(watch){
  const idea=launchAngle(watch);if(!idea)return 'Which stock story would you like to research first?';
@@ -88,10 +89,13 @@ export function ideaChoice(text,watch,last){
  }
  if((last?.endsWith(ideaInvite(watch.ticker))||last===ideaReply(watch)||last?.endsWith('Or choose Pons, Bankr, or watch the story.'))&&/^what (?:could|can|should) (?:i|we) launch around (?:this|that)(?: story| finding| research)?$/.test(t))return 'idea';
  if(last?.endsWith(ideaInvite(watch.ticker))&&/^(?:can (?:i|you)|give me|show me|suggest|create|build).*\blaunch idea\b/.test(t))return 'idea';
- const currentIdea=last===ideaReply(watch);
- if(currentIdea&&/^(?:yes|yep|yeah|sure|go ahead|yes please|let.s do it|start setup|use this idea)$/.test(t))return 'launch';
+ const currentIdea=last===ideaReply(watch)||last===setupInvite;
+ const previousIdea=last?.endsWith(formerInvite);
+ if((currentIdea||previousIdea)&&/^(?:yes|yep|yeah|sure|go ahead|yes please|let.s do it|start setup|use this idea)$/.test(t))return previousIdea?'launch':'choose-network';
  if(currentIdea&&/^(?:no|no thanks|not now|maybe later)$/.test(t))return 'decline';
- if(currentIdea||last?.endsWith('Or choose Pons, Bankr, or watch the story.')){
+ if(currentIdea||previousIdea||last?.endsWith('Or choose Pons, Bankr, or watch the story.')){
+  const networkChoice=t.match(/^(?:(?:can (?:i|we|you) |i want to |i.d like to |let.s )?(?:check (?:whether |if )?(?:i|we) can )?(?:launch|set up|start|preview)(?: (?:it|this|my token|this token|a token|the launch|this idea))? on |(?:use |on |go with |what about |how about |try |check )?)(base|robinhood(?: chain)?)(?: please)?$/);
+  if(networkChoice)return networkChoice[1]==='base'?'bankr':'launch';
   if(/^(?:pons|(?:check|launch|use|start)(?: this| the)?(?: pair)? on pons)$/.test(t))return 'launch';
   if(/^(?:bankr|launch on bankr|on bankr|use bankr|(?:prepare |create )?(?:a |the )?brief for bankr)$/.test(t))return 'bankr';
   if(/^(?:watch|just watch|watch (?:it|the story|this story))$/.test(t))return 'watch-idea';

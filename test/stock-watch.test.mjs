@@ -51,9 +51,13 @@ test('the orbital data center idea gives a creator one actionable next step',()=
  const w={ticker:'SPCX',ideaSource:article('FCC approves SpaceX plan to put AI data centers in space',25)};
  const reply=ideaReply(w);
  assert.match(reply,/mission patch/);
- assert.match(reply,/Want to start setting up a token for this idea on Pons\?$/);
+ assert.match(reply,/check whether you can launch it on Base\?$/);
  assert.doesNotMatch(reply,/choose Pons|Say "Share research"|Bankr/);
- assert.equal(ideaChoice('yes',w,reply),'launch');
+ assert.equal(ideaChoice('yes',w,reply),'choose-network');
+ for(const request of ['Base please','Can I launch this on Base?','Check whether I can launch it on Base'])assert.equal(ideaChoice(request,w,reply),'bankr');
+ assert.equal(ideaChoice('Set up my token on Robinhood Chain',w,reply),'launch');
+ assert.equal(ideaChoice('send ETH on Base',w,reply),null);
+ assert.equal(ideaChoice('yes',w,'Want to start setting up a token for this idea on Pons?'),'launch');
  assert.equal(ideaChoice('not now',w,reply),'decline');
  assert.equal(ideaChoice('What could I launch around this?',w,reply),'idea');
  assert.equal(ideaChoice('yes',w,'Published.'),null);

@@ -11,7 +11,7 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher},{env=proc
  if(state.paused)return {status:'paused',message:'Bankr has paused new Base launches. Your creator brief is ready to keep.'};
  if(state.gated)return {status:'gated',message:'Bankr currently restricts Base launches to its own launchpad. Your creator brief is ready to keep.'};
  const pad=env.DINN_BANKR_BASE_LAUNCHPAD_ID;
- if(!pad||!/^([1-9]\d{0,76})$/.test(pad))return {status:'setup',message:'Dinn needs a registered Bankr launchpad on Base before it can prepare this launch.'};
+ if(!pad||!/^([1-9]\d{0,76})$/.test(pad))return {status:'setup',message:'You can keep this idea and its research. Launching a token on Base through Dinn is not available yet.'};
  const stock=(await lookup({query:ticker+'c'})).stocks.find(row=>row.symbol.toUpperCase()===ticker+'C'&&row.bankrPairSupported);
  if(!stock)return {status:'unsupported',message:'Dinn could not verify a Base stock pair for '+ticker+' in both the Coinbase and Bankr lists.'};
  const launchpadId=BigInt(pad);

@@ -75,4 +75,4 @@ Open http://127.0.0.1:4317. See [.env.example](.env.example) for provider settin
 
 ### Bankr launch previews on Base
 
-After a creator idea in chat, ask for Bankr. Dinn checks the live Base factory through `@bankr/launch-sdk`. With a Dinn-approved launchpad configured in `DINN_BANKR_BASE_LAUNCHPAD_ID`, the preview matches the stock token across Coinbase and Bankr, checks the launchpad's quote permission, and plans and simulates from the selected wallet. This adapter is preview-only. Registration, wallet submission and receipt verification are separate steps. Bankr's own pad (ID 0) requires Bankr authorization.
+After a creator idea in chat, ask ?Can I launch this on Base?? Dinn checks the live Base factory through `@bankr/launch-sdk`. With a Dinn-approved launchpad configured in `DINN_BANKR_BASE_LAUNCHPAD_ID`, the preview matches the stock token across Coinbase and Bankr, checks the launchpad's quote permission, and plans and simulates from the selected wallet. This adapter is preview-only. Registration, wallet submission and receipt verification are separate steps. Bankr's own pad (ID 0) requires Bankr authorization.
