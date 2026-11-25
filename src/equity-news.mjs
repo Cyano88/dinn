@@ -3,7 +3,7 @@
  'cnbc.com':'CNBC','marketwatch.com':'MarketWatch','barrons.com':"Barron's",'apnews.com':'Associated Press',
  'bbc.com':'BBC','bbc.co.uk':'BBC','finance.yahoo.com':'Yahoo Finance','investors.com':"Investor's Business Daily"
 };
-const cik={TSLA:1318605,NVDA:1045810,AAPL:320193,MSFT:789019,AMZN:1018724,META:1326801,GOOGL:1652044};
+import {issuerIds as cik} from '../public/pons-equities.js';
 export const filingsUrl=ticker=>'https://data.sec.gov/submissions/CIK'+String(cik[ticker]).padStart(10,'0')+'.json';
 export function filingsArticles(data,ticker,now){
  if(Number(data?.cik)!==cik[ticker]||!data.tickers?.includes(ticker)||!Array.isArray(data.filings?.recent?.form))throw Error('Unexpected company filings response');

@@ -19,7 +19,7 @@ Reports identify sources, check times and coverage gaps. A lock schedule can rea
 
 ## Dinn Chat
 
-Ask ?What stock has a story worth launching around today?? to screen the seven covered stocks for recent event headlines. Choose a ticker from the shortlist to investigate the evidence. Shortlisted pairs are checked against Pons on Robinhood Chain.
+Ask ?What stock has a story worth launching around today?? to screen the verified company stocks in Dinn?s known Pons pair list for recent event headlines. Choose a ticker from the shortlist to investigate the evidence. Shortlisted pairs are checked against Pons on Robinhood Chain.
 
 For a research-backed launch, try ?Is there a story worth launching around Tesla?? Set a question with ?Watch for ?? and return with ?Any update?? Dinn compares newly published coverage with the original brief. One watch is saved for the signed-in account on that device. ?Launch this pair? checks current Pons approval and carries a dated source into the editable project description when available.
 

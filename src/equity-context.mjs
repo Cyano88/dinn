@@ -1,9 +1,5 @@
-import {newsFeeds,outlet,filingsUrl,filingsArticles} from './equity-news.mjs';
-// Registry tickers and equity tickers are distinct namespaces. Extend explicitly.
-const equities = {
- NVDA: ['NVIDIA','Nvidia'], AAPL: ['Apple'], MSFT: ['Microsoft'],
- TSLA: ['Tesla'], AMZN: ['Amazon'], META: ['Meta Platforms','Meta'], GOOGL: ['Alphabet','Google']
-};
+﻿import {newsFeeds,outlet,filingsUrl,filingsArticles} from './equity-news.mjs';
+import {equityNames as equities,mentionsStock} from '../public/pons-equities.js';
 const cache = new Map();
 const pending = new Map();
 const feedReads = new Map();
@@ -13,9 +9,8 @@ export function equityTicker(symbol) {
  return Object.hasOwn(equities,ticker) ? ticker : null;
 }
 export function mentionedEquity(text) {
- const matches = Object.entries(equities).filter(([ticker,names]) =>
-  [ticker+'c?',...names].some(name=>new RegExp('\\b'+name+'\\b','i').test(text)));
- return matches.length===1 ? matches[0][0] : null;
+ const matches=Object.keys(equities).filter(t=>mentionsStock(text,t));
+ return matches.length===1 ? matches[0] : null;
 }
 function field(item,key) {
  const raw=item.match(new RegExp('<'+key+'(?:\\s[^>]*)?>([\\s\\S]*?)</'+key+'>','i'))?.[1] || '';
@@ -71,7 +66,7 @@ async function readEvidence(ticker,{fetchImpl,env,now}){
    let title=field(match[1],'title').slice(0,300),url=field(match[1],'link'),time=Date.parse(field(match[1],'pubDate'));
    if(url.length>2000||!URL.canParse(url)||!Number.isFinite(time)||time>now||now-time>4*day||!/^https:\/\/[\w.-]+\/[\w%/.?=&:+~-]+$/i.test(url)||!title)continue;
    const feed=feeds[i][0],issuer=feed==='NVIDIA newsroom';
-   if(!issuer&&!new RegExp('\\b(?:'+[ticker,...equities[ticker]].join('|')+')\\b','i').test(title))continue;
+   if(!issuer&&!mentionsStock(title,ticker))continue;
    let publisher=feed,excerpt='';
    if(feed==='Google News'){
     publisher=outlet(match[1].match(/<source\s+[^>]*url=["']([^"']+)/i)?.[1]);
