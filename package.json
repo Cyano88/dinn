@@ -15,6 +15,7 @@
     "check:network": "node --env-file-if-exists=.env scripts/check-network.mjs"
   },
   "dependencies": {
+    "@bankr/launch-sdk": "1.0.0",
     "@coinbase/x402": "2.1.0",
     "@privy-io/node": "^0.39.0",
     "@privy-io/react-auth": "^3.51.3",
@@ -30,7 +31,7 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "sharp": "^0.35.5",
-    "viem": "^2.38.0"
+    "viem": "2.57.19"
   },
   "engines": {
     "node": ">=22"

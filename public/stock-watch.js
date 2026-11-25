@@ -98,9 +98,9 @@ export function ideaChoice(text,watch,last){
  }
  return null;
 }
-export function bankrBrief(watch){
+export function bankrBrief(watch,availability){
  const i=launchAngle(watch);
- return '**Base creator brief: '+conceptLabel(i)+'**\n\n'+i.activity+'\n\nStory: '+label(i.article)+'\n\nFirst milestone: '+i.question+'\n\nProposed pairing asset: the Base stock token for '+watch.ticker+'. Check current pair support with Bankr. Launching through Bankr in Dinn is coming soon.';
+ return '**Base creator brief: '+conceptLabel(i)+'**\n\n'+i.activity+'\n\nStory: '+label(i.article)+'\n\nFirst milestone: '+i.question+'\n\nProposed pairing asset: the Base stock token for '+watch.ticker+'. '+(availability||'Check current pair support with Bankr.');
 }
 function findings(original,current,question){
  const known=new Set(original.articles.map(a=>a.url));

@@ -406,7 +406,15 @@ $('chat').onsubmit=async e=>{
    }catch(error){if(user===owner&&epoch===run)recordSetupReply(text,error.status===429?error.message:'I could not prepare a fresh idea this time. Your research is saved.');return;}
    finally{pending?.closest('.message')?.remove();if(user===owner)setupBusy=false;}
   }
-  if(choice==='bankr')answer=bankrBrief(watch);
+  if(choice==='bankr'){
+   const owner=user,run=epoch;setupBusy=true;
+   try{
+    const idea=launchAngle(watch);
+    const preview=idea.symbol?await accountRequest('bankr-preview',{ticker:watch.ticker,name:idea.name,symbol:idea.symbol,launcher:account},owner):{message:'Ask for a named token idea to check its Base launch terms.'};
+    if(user!==owner||run!==epoch)return;answer=bankrBrief(watch,preview.message);
+   }catch{if(user!==owner||run!==epoch)return;answer=bankrBrief(watch,'Bankr launch terms could not be checked. Try again shortly.');}
+   finally{if(user===owner)setupBusy=false;}
+  }
   if(choice==='decline')answer='Sure. What else would you like to research?';
   if(choice==='watch-idea'){
    const question=launchAngle(watch).question;
