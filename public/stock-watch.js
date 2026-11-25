@@ -15,7 +15,7 @@ export function snapshot(data){
  const articles=(data.recentArticles||[]).filter(a=>a.title&&/^https:\/\//.test(a.url)&&Number.isFinite(Date.parse(a.publishedAt)));
  return {ticker:data.ticker,checkedAt:data.checkedAt,articles,sources:data.sources||[],quote:data.quote};
 }
-const label=a=>a.title+' ('+a.publishedAt.slice(0,10)+') '+a.url;
+const label=a=>(a.source?a.source+' ? ':'')+a.title+' ('+a.publishedAt.slice(0,10)+') '+a.url;
 function findings(original,current,question){
  const known=new Set(original.articles.map(a=>a.url));
  const fresh=current.articles.filter(a=>!known.has(a.url)&&Date.parse(a.publishedAt)>Date.parse(original.checkedAt));

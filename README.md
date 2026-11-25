@@ -6,6 +6,8 @@ Dinn is a conversational workspace for researching tokens and tokenized stocks o
 
 ## Research coverage
 
+Underlying stock research checks dated company news, selected financial newsroom feeds, Google News headlines from recognized outlets, and recent SEC 8-K, 10-Q and 10-K filings. Reports link to the available evidence. Publication time and the last stock quote determine which stories qualify for price-move analysis. A filing timestamp establishes when the filing was accepted.
+
 | What you want to research | What to send | What Dinn checks |
 | --- | --- | --- |
 | Coinbase tokenized stock on Base | Company name, ticker such as `NVDAc`, or Base contract | Registry and onchain identity, dated reference value, transfer controls, market activity, and available holder and lock evidence. For supported equities, Dinn can surface dated company news and compare the stock move with a sampled token pool. |
