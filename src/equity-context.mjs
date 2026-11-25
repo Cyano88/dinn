@@ -125,7 +125,7 @@ export function equityMessage(context) {
  if(!context)return '';
  const {ticker,quote,event,report}=context;
  const links=diverseArticles((context.recentArticles||[]).filter(a=>a.url!==event?.url&&a.url!==report?.url),2);
- const reading=links.length?'\n\nRecent sources\n'+links.map(a=>'['+a.source+' ? '+a.publishedAt.slice(0,10)+']('+a.url+') '+a.title).join('\n'):'';
+ const reading=links.length?'\n\nRecent sources\n'+links.map(a=>'['+a.source+' · '+a.publishedAt.slice(0,10)+']('+a.url+') '+a.title).join('\n'):'';
  if(!quote)return 'I couldn’t verify a recent U.S. stock price for '+ticker+' to explain its move.'+reading;
  const direction=quote.changePercent>=0?'up':'down';
  const price=ticker+' was '+direction+' '+Math.abs(quote.changePercent).toFixed(2)+'% from its previous close, at $'+quote.priceUsd.toFixed(2)+' as of '+quote.asOf.slice(0,16).replace('T',' ')+' UTC. [U.S. stock price]('+quote.url+')';

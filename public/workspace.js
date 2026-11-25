@@ -366,14 +366,14 @@ $('chat').onsubmit=async e=>{
   let ideas=[];try{ideas=JSON.parse(read('stock-shortlist')||'[]');}catch{}
   selectedStory=selectLaunchStory(text,ideas);
   if(!selectedStory&&/^(?:launch this pair|research deeper|watch this story)[.!?]?$/i.test(text)){
-   recordSetupReply(text,'Stock stories with an available Pons pair ? choose a ticker first: '+ideas.map(i=>i.asset.symbol).join(', ')+'.');$('prompt').value='';return;
+   recordSetupReply(text,'Stock stories with an available Pons pair. Choose a ticker first: '+ideas.map(i=>i.asset.symbol).join(', ')+'.');$('prompt').value='';return;
   }
  }
  const watchAction=selectedStory?{kind:'research',ticker:selectedStory.asset.symbol}:watchIntent(text,watch);
  if(watchAction&&(controller||setupBusy||launchBusy))return;
  if(watchAction?.kind==='question'){
   localStorage.setItem(key('stock-watch'),JSON.stringify({...watch,question:watchAction.question}));
-  recordSetupReply(text,'Saved your '+watch.ticker+' question on this device: '+watchAction.question+' Ask ?Any update?? to check again.');$('prompt').value='';return;
+  recordSetupReply(text,'Saved your '+watch.ticker+' question on this device: '+watchAction.question+' Ask "Any update?" to check again.');$('prompt').value='';return;
  }
  if(watchAction?.kind==='launch'){
   $('prompt').value='';
