@@ -1,5 +1,6 @@
-import {clearBootReload,loadAuthConfig,reserveBootReload} from './auth-boot.js';
-import {hasLaunchEvent,ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
+import {accountRecords} from './account-records.js';
+import {loadAuthConfig} from './auth-boot.js';
+import {sharedFinding,hasLaunchEvent,ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
 import {newChatTask} from './flow.js';
 import {firstLockPreview,lockCoverageText} from './token-report.js';
 import {showFeedbackFeed} from '/feedback-feed.js';
@@ -47,14 +48,14 @@ async function openFeeClaim(address){
  if(!owner||!provider||!['embedded','external'].includes(walletSource)){say('Connect the wallet that owns these Pons fees, then ask me to check the claim again.');return;}
  if(claimBusy){say('A fee claim check is already running.');return;}claimBusy=true;
  let recordKey='dinn.pons.claim.v1:4663:'+owner.toLowerCase(),record;
- try{record=JSON.parse(localStorage.getItem(recordKey)||'null');}catch{claimBusy=false;say('Saved claim history cannot be read. Check wallet activity before continuing.');return;}
+ try{record=JSON.parse(accountRecords.getItem(recordKey)||'null');}catch{claimBusy=false;say('Saved claim history cannot be read. Check wallet activity before continuing.');return;}
  const link=(body,hash)=>{if(!/^0x[0-9a-f]{64}$/i.test(hash||''))return;const a=document.createElement('a');a.href='https://robinhoodchain.blockscout.com/tx/'+hash;a.target='_blank';a.rel='noopener noreferrer';a.textContent='View transaction';body.append(a);};
- const poll=async(hash,claim,attempt=0)=>{if(epoch!==run||account!==owner)return;try{const result=await api('/api/pons/fees/receipt',{hash,claim});if(epoch!==run||account!==owner)return;if(!['pending','confirming','verified','reverted'].includes(result.state)||result.hash?.toLowerCase()!==hash.toLowerCase()||result.state==='verified'&&(result.recipient?.toLowerCase()!==claim.account.toLowerCase()||result.asset?.toLowerCase()!==claim.asset.toLowerCase()||result.amountWei!==claim.amountWei))throw Error('Receipt did not match the reviewed fee claim.');record={...record,phase:result.state};localStorage.setItem(recordKey,JSON.stringify(record));if(result.state==='verified'){const body=say('✓ Fee claim confirmed. The payout went to '+result.recipient+'.');body.parentElement.classList.add('operation-success');link(body,hash);return;}if(result.state==='reverted'){const body=say('The fee claim failed. No fees were collected.');link(body,hash);return;}if(attempt<12){setTimeout(()=>void poll(hash,claim,attempt+1),5000);return;}const body=say('Your fee claim is still processing. Say “check fee claim” to check again.');link(body,hash);}catch(error){const body=say('I could not verify the fee claim yet: '+error.message+' No new transaction was sent.');link(body,hash);}};
+ const poll=async(hash,claim,attempt=0)=>{if(epoch!==run||account!==owner)return;try{const result=await api('/api/pons/fees/receipt',{hash,claim});if(epoch!==run||account!==owner)return;if(!['pending','confirming','verified','reverted'].includes(result.state)||result.hash?.toLowerCase()!==hash.toLowerCase()||result.state==='verified'&&(result.recipient?.toLowerCase()!==claim.account.toLowerCase()||result.asset?.toLowerCase()!==claim.asset.toLowerCase()||result.amountWei!==claim.amountWei))throw Error('Receipt did not match the reviewed fee claim.');record={...record,phase:result.state};await accountRecords.setItem(recordKey,JSON.stringify(record));if(result.state==='verified'){const body=say('✓ Fee claim confirmed. The payout went to '+result.recipient+'.');body.parentElement.classList.add('operation-success');link(body,hash);return;}if(result.state==='reverted'){const body=say('The fee claim failed. No fees were collected.');link(body,hash);return;}if(attempt<12){setTimeout(()=>void poll(hash,claim,attempt+1),5000);return;}const body=say('Your fee claim is still processing. Say “check fee claim” to check again.');link(body,hash);}catch(error){const body=say('I could not verify the fee claim yet: '+error.message+' No new transaction was sent.');link(body,hash);}};
  try{
   if(record&&!['verified','reverted','rejected'].includes(record.phase)){if(record.hash){say('Checking your previous fee claim…');void poll(record.hash,record.claim);return;}claimRecoveryKey=recordKey;say('I could not confirm whether the previous fee claim went through. Paste its transaction ID here so I can check before you try again.');return;}
   say('Dinn is checking your claimable Pons fees…');const preparedReview=await api('/api/pons/fees/prepare',{address,account:owner});if(epoch!==run||account!==owner)return;
   const review=say('Claim review: '+preparedReview.amount+' '+preparedReview.symbol+' to '+owner+'. Estimated network fee: '+preparedReview.estimatedGas+' ETH. Would you like me to claim these fees now? Reply “yes” or “approve” to send, or “cancel” to stop. Nothing has been sent.');
-  chatPendingApproval={label:'fee claim',run:async body=>{if(claimApprovalBusy)return;claimApprovalBusy=true;let rechecking;try{rechecking=appendChatActionNote(body,'Rechecking the claim amount before sending…',{pending:true});const fresh=await api('/api/pons/fees/prepare',{address,account:owner});if(epoch!==run||account!==owner)return;if(JSON.stringify(fresh.claim)!==JSON.stringify(preparedReview.claim))throw Error('The claimable amount changed. Ask me to refresh the review.');const {requestPonsClaim}=await import('/pons/entry.js');record=await requestPonsClaim({prepared:fresh,provider,sendTransaction:walletSource==='embedded'?walletSendTransaction:null,address:owner,source:walletSource||'unavailable',storage:localStorage,key:recordKey,isCurrent:()=>epoch===run&&account===owner,withLock:navigator.locks?fn=>navigator.locks.request('dinn-wallet:'+owner.toLowerCase(),fn):null});if(epoch!==run)return;if(record.phase==='rejected'){appendChatActionNote(body,'Fee claim was declined. Nothing was sent.');return;}if(record.phase==='unknown'&&record.error)throw Error(record.error);if(record.hash){appendChatActionNote(body,'Fee claim submitted. Waiting for confirmation…',{pending:true});link(body,record.hash);void poll(record.hash,record.claim);}else appendChatActionNote(body,'Wallet result is uncertain. Check wallet activity before trying again.');if(record.storageWarning)appendChatActionNote(body,'Recovery storage failed. Save the transaction hash: '+(record.hash||'unavailable'));}catch(error){if(epoch===run)appendChatActionNote(body,'Fee claim could not be submitted: '+error.message);}finally{rechecking?.classList.remove('chat-action-pending');claimApprovalBusy=false;}}};
+  chatPendingApproval={label:'fee claim',run:async body=>{if(claimApprovalBusy)return;claimApprovalBusy=true;let rechecking;try{rechecking=appendChatActionNote(body,'Rechecking the claim amount before sending…',{pending:true});const fresh=await api('/api/pons/fees/prepare',{address,account:owner});if(epoch!==run||account!==owner)return;if(JSON.stringify(fresh.claim)!==JSON.stringify(preparedReview.claim))throw Error('The claimable amount changed. Ask me to refresh the review.');const {requestPonsClaim}=await import('/pons/entry.js');record=await requestPonsClaim({prepared:fresh,provider,sendTransaction:walletSource==='embedded'?walletSendTransaction:null,address:owner,source:walletSource||'unavailable',storage:accountRecords.scope(),key:recordKey,isCurrent:()=>epoch===run&&account===owner,withLock:navigator.locks?fn=>navigator.locks.request('dinn-wallet:'+owner.toLowerCase(),fn):null});if(epoch!==run)return;if(record.phase==='rejected'){appendChatActionNote(body,'Fee claim was declined. Nothing was sent.');return;}if(record.phase==='unknown'&&record.error)throw Error(record.error);if(record.hash){appendChatActionNote(body,'Fee claim submitted. Waiting for confirmation…',{pending:true});link(body,record.hash);void poll(record.hash,record.claim);}else appendChatActionNote(body,'Wallet result is uncertain. Check wallet activity before trying again.');if(record.storageWarning)appendChatActionNote(body,'Recovery storage failed. Save the transaction hash: '+(record.hash||'unavailable'));}catch(error){if(epoch===run)appendChatActionNote(body,'Fee claim could not be submitted: '+error.message);}finally{rechecking?.classList.remove('chat-action-pending');claimApprovalBusy=false;}}};
  }catch(error){if(epoch===run)say('I could not prepare the fee claim: '+error.message+' No transaction was sent.');}
  finally{claimBusy=false;}
 }
@@ -64,19 +65,25 @@ for(const a of pairCandidates){const o=document.createElement('option');o.value=
 
 function pairAddress(value){if(/^(eth|native eth)$/i.test(value))return '0x'+'0'.repeat(40);const matches=pairCandidates.filter(a=>a.symbol.toLowerCase()===value.toLowerCase());if(matches.length===1)return matches[0].address;if(/^0x[0-9a-f]{40}$/i.test(value))return value;throw Error('Choose ETH, a catalog ticker, or paste the Robinhood pairing-token address.');}
 
+window.addEventListener('unhandledrejection',event=>{if(event.reason?.accountRecordError){event.preventDefault();showRecordError(event.reason);}});
 const key=kind=>'dinn.multi.'+kind+'.v1:'+user;
 
-function read(kind){try{return draftKinds.includes(kind)?draftSync.read(kind,user):localStorage.getItem(key(kind));}catch{return null;}}
+function read(kind){try{return draftKinds.includes(kind)?draftSync.read(kind,user):accountRecords.getItem(key(kind));}catch{return null;}}
 
-function save(kind,value){if(draftKinds.includes(kind))draftSync.write(kind,user,value);else localStorage.setItem(key(kind),JSON.stringify(value));}
+function save(kind,value){if(draftKinds.includes(kind))draftSync.write(kind,user,value);else void accountRecords.setItem(key(kind),JSON.stringify(value)).catch(showRecordError);}
 
+function showRecordError(error){$('feedback').textContent=error?.message||'Account changes could not be saved. Refresh and retry.';}
 const syncHost=document.createElement('div');syncHost.className='draft-sync';syncHost.hidden=true;
 const syncText=document.createElement('span');syncText.setAttribute('role','status');
 const syncRetry=document.createElement('button');syncRetry.type='button';syncRetry.className='subtle';syncRetry.textContent='Retry';
 syncHost.append(syncText,syncRetry);$('draft-sync-controls').append(syncHost);
-const draftSync=createDraftSync({storage:localStorage,request:async(action,data,id)=>{
+async function accountRequest(action,data,id){
  if(user!==id)throw Error('Account changed.');const {getAccessToken}=await import('/auth/entry.js');const token=await getAccessToken();if(user!==id)throw Error('Account changed.');if(!token)throw Error('Sign in again to sync your draft.');
  const response=await fetch('/api/drafts/'+action,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify(data),signal:AbortSignal.timeout(20000)});const result=await response.json();if(!response.ok){const error=Error(result.error||'Could not sync your draft.');error.status=response.status;throw error;}return result;
+}
+const draftSync=createDraftSync({storage:localStorage,request:async(action,data,id)=>{
+ if(action==='get')await accountRecords.start(id,accountRequest,account,localStorage);
+ return accountRequest(action,data,id);
 },onStatus:({state,message})=>{
  if(user&&['loading','saved','error'].includes(state)){
   const loading=state==='loading';$('workspace').hidden=loading;$('workspace').inert=loading;$('session-loading').hidden=!loading;
@@ -84,6 +91,7 @@ const draftSync=createDraftSync({storage:localStorage,request:async(action,data,
  syncHost.hidden=state!=='error';syncText.textContent=message;},onApply:id=>{
  if(id!==user)return;epoch++;controller?.abort();launchBusy=false;setupBusy=false;logoCreator.reset();invalidateLaunch();showLaunchStage(null,false);restore();restoreSettings();renderTokenSummary();renderSetupChoices();
 }});
+window.addEventListener('launchflow:auth',e=>{queueMicrotask(()=>{if(user&&account&&e.detail.authenticated){const id=user,address=account;void accountRecords.start(id,accountRequest,address,localStorage).then(()=>{if(user!==id||account!==address)return;restoreLaunch();if(read('last-deployer')!==JSON.stringify(address))save('last-deployer',address);}).catch(showRecordError);}});});
 syncRetry.onclick=()=>void draftSync.refresh();
 window.addEventListener('focus',()=>void draftSync.refresh());
 window.addEventListener('online',()=>void draftSync.refresh());
@@ -91,7 +99,7 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 
 async function api(path,data,signal){const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data),signal});const v=await r.json();if(!r.ok)throw Error(v.error||'Could not complete the request.');return v;}
 
-function view(name){if(name!=='wallet')walletUI?.leaveAction();showFeedbackFeed(name==='feedback-feed');if(name==='tools'&&activeToolNetwork){activeToolNetwork=null;renderToolDirectory(toolCapabilities);}for(const n of ['assistant','launches','tools','agent-access','integrate','feedback-feed','drafts','wallet'])$(n+'-view').hidden=n!==name;document.querySelectorAll('[data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===name);if(b.dataset.view===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$('view-name').textContent=name==='feedback-feed'?'Feedback':name==='tools'?'Dinn tools':name==='agent-access'?'Agent access':name==='integrate'?'Integrate Dinn':name[0].toUpperCase()+name.slice(1);if(name==='wallet')void walletUI?.refresh();if(name==='launches'){launchesView?.activate();void registerSavedLaunch();}else launchesView?.deactivate();}
+function view(name){if(name!=='wallet')walletUI?.leaveAction();showFeedbackFeed(name==='feedback-feed');if(name==='tools'&&activeToolNetwork){activeToolNetwork=null;renderToolDirectory(toolCapabilities);}for(const n of ['assistant','launches','tools','agent-access','integrate','feedback-feed','drafts','wallet'])$(n+'-view').hidden=n!==name;document.querySelectorAll('[data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===name);if(b.dataset.view===name)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$('view-name').textContent=name==='feedback-feed'?'Research feed':name==='tools'?'Dinn tools':name==='agent-access'?'Agent access':name==='integrate'?'Integrate Dinn':name[0].toUpperCase()+name.slice(1);if(name==='wallet')void walletUI?.refresh();if(name==='launches'){launchesView?.activate();void registerSavedLaunch();}else launchesView?.deactivate();}
 
 function scrollChat(){requestAnimationFrame(()=>$('chat-thread').scrollTop=$('chat-thread').scrollHeight);}
 
@@ -167,7 +175,7 @@ async function handleWebsiteRequest(text,action,websiteBrief='',designBrief='',a
  const owner=user,session=epoch,project=JSON.stringify([brief.name,brief.symbol,brief.description]);
  const current=()=>owner===user&&session===epoch&&project===JSON.stringify([brief.name,brief.symbol,brief.description])&&launchConversationStep==='links'&&launchLinkSteps[launchLinkIndex]?.field==='website';
  const slot=key('creator-preview');let previous,description=websiteBrief||brief.description;
- try{const saved=JSON.parse(localStorage.getItem(slot));if(saved?.project===project){previous=saved.id;description=description||saved.description;}}catch{}
+ try{const saved=JSON.parse(accountRecords.getItem(slot));if(saved?.project===project){previous=saved.id;description=description||saved.description;}}catch{}
  if(action!=='preview'&&!previous){say('Say "create a website" to see a preview first.');return;}
  if(action==='preview'&&(!description||!designBrief)){
   websiteQuestion={owner,project,description,step:description?'design':'facts'};
@@ -190,7 +198,7 @@ async function handleWebsiteRequest(text,action,websiteBrief='',designBrief='',a
   }
   if(!r.ok)throw Error(result.error||'Website request failed.');
   if(action==='publish'){applyLinkReply({action:'set',field:'website',url:result.url},'Use the published website');return;}
-  try{localStorage.setItem(slot,JSON.stringify({project,id:result.id,description}));}catch{throw Error('Allow local storage to keep and approve this preview.');}
+  try{await accountRecords.setItem(slot,JSON.stringify({project,id:result.id,description}));}catch{throw Error('Could not save the preview to your account.');}
   const body=say(result.headline+'\n\n'+result.story+'\n\nProposed URL: '+result.url+'\n\nSay "use this website", "revise website: your change", or "skip".');
   const preview=document.createElement('a');const url=URL.createObjectURL(new Blob([result.html],{type:'text/html;charset=utf-8'}));preview.href=url;preview.target='_blank';preview.rel='noopener noreferrer';preview.textContent='Open private preview';body.append(preview);
   const observer=new MutationObserver(()=>{if(!preview.isConnected){URL.revokeObjectURL(url);observer.disconnect();}});observer.observe($('messages'),{childList:true,subtree:true});
@@ -200,7 +208,7 @@ async function handleWebsiteRequest(text,action,websiteBrief='',designBrief='',a
   if(creatorRequest===job)creatorRequest=null;
  }
 }
-function handleLaunchReply(text){
+async function handleLaunchReply(text){
  if(newChatTask(text)&&!(launchConversationStep==='purchase'&&/^buy\s+\d+(?:\.\d+)?(?:\s+\w+)?$/i.test(text.trim()))){
   if(launchConversationStep)showLaunchStage(null,false);
   return false;
@@ -234,7 +242,7 @@ function handleLaunchReply(text){
  const trimmed=text.trim(),explicitLaunchReply=/^(?:set|change|update|add|use|skip|continue|next|resume|pause|cancel)\b/i.test(trimmed),question=/^(?:what|why|how|explain|suggest|recommend|should|is|are|does|do)\b/i.test(trimmed)||/\?$/.test(trimmed)&&!explicitLaunchReply;
  if(question||/\b(?:balance|balances|portfolio|wallet assets|bridge|swap|send tokens|send|transfer)\b/i.test(trimmed))return false;
 
- if(claimRecoveryKey){if(/^(?:cancel|stop|never mind|nevermind)$/i.test(text)){claimRecoveryKey=null;recordSetupReply(text,'Okay. The saved claim stays unresolved, and no new transaction will be sent.');return true;}const hash=text.trim();if(!/^0x[0-9a-f]{64}$/i.test(hash)){say('Paste the full 0x transaction hash to check the saved fee claim, or say “cancel”.');return true;}try{const record=JSON.parse(localStorage.getItem(claimRecoveryKey)||'null');if(!record?.claim)throw Error('Saved claim review is unavailable.');record.hash=hash;record.phase='submitted';localStorage.setItem(claimRecoveryKey,JSON.stringify(record));claimRecoveryKey=null;recordSetupReply(text,'Thanks. Dinn is checking that fee claim confirmation; it will not submit another transaction.');void openFeeClaim(record.claim.address);}catch(error){claimRecoveryKey=null;say('Could not recover the saved fee claim: '+error.message);}return true;}
+ if(claimRecoveryKey){if(/^(?:cancel|stop|never mind|nevermind)$/i.test(text)){claimRecoveryKey=null;recordSetupReply(text,'Okay. The saved claim stays unresolved, and no new transaction will be sent.');return true;}const hash=text.trim();if(!/^0x[0-9a-f]{64}$/i.test(hash)){say('Paste the full 0x transaction hash to check the saved fee claim, or say “cancel”.');return true;}try{const record=JSON.parse(accountRecords.getItem(claimRecoveryKey)||'null');if(!record?.claim)throw Error('Saved claim review is unavailable.');record.hash=hash;record.phase='submitted';await accountRecords.setItem(claimRecoveryKey,JSON.stringify(record));claimRecoveryKey=null;recordSetupReply(text,'Thanks. Dinn is checking that fee claim confirmation; it will not submit another transaction.');void openFeeClaim(record.claim.address);}catch(error){claimRecoveryKey=null;say('Could not recover the saved fee claim: '+error.message);}return true;}
 
  if(!launchConversationStep)return false;
 
@@ -303,7 +311,7 @@ function handleLaunchReply(text){
 
 function clearConversation(){
 
- try{save('chat',{messages:[]});localStorage.removeItem(key('research-feedback'));}catch{ $('feedback').textContent='Browser storage is unavailable. Chat could not be cleared permanently.';return false;}
+ try{save('chat',{messages:[]});void accountRecords.removeItem(key('research-feedback')).catch(showRecordError);}catch{ $('feedback').textContent='Browser storage is unavailable. Chat could not be cleared permanently.';return false;}
 
  showLaunchStage(null,false);logoCreator.reset();walletUI?.reset();resetDraftPending=false;launchReturnPending=false;chatPendingApproval=null;epoch++;launchBusy=false;controller?.abort();controller=null;setupBusy=false;setupActive=false;history=[];chatResults=[];awaiting=null;launchStep=null;selectedToken=null;launchPair=null;
 
@@ -315,7 +323,7 @@ function clearConversation(){
 
 $('new').onclick=clearConversation;
 
-function conversationalLaunchStatus(text){if(!/^(?:check|status)(?: the)? (?:(?:saved )?launch status|saved launch)[.!]?$/i.test(text))return false;const record=(()=>{try{return JSON.parse(localStorage.getItem(launchKey()));}catch{return null;}})();if(!record){say('There is no saved launch transaction to check.');return true;}recordSetupReply(text,'Dinn is checking the saved launch confirmation.');void launchActivity.refresh(true);return true;}
+function conversationalLaunchStatus(text){if(!/^(?:check|status)(?: the)? (?:(?:saved )?launch status|saved launch)[.!]?$/i.test(text))return false;const record=(()=>{try{return JSON.parse(accountRecords.getItem(launchKey()));}catch{return null;}})();if(!record){say('There is no saved launch transaction to check.');return true;}recordSetupReply(text,'Dinn is checking the saved launch confirmation.');void launchActivity.refresh(true);return true;}
 
 $('stop-response').onclick=()=>controller?.abort();
 
@@ -336,14 +344,14 @@ function startFreshTokenSetup(){
  for(const kind of ['opening-purchase','logo-local-choice','logo-original','launch-conversation'])save(kind,null);
  saveSettings();keepBrief();renderTokenSummary();
 }
-function savedSetupWasLaunched(){try{const record=JSON.parse(localStorage.getItem(launchKey())||'null');return record?.phase==='verified'&&record.result?.state==='verified'&&record.configuration?.name===brief.name&&record.configuration?.symbol===brief.symbol;}catch{return false;}}
+function savedSetupWasLaunched(){try{const record=JSON.parse(accountRecords.getItem(launchKey())||'null');return record?.phase==='verified'&&record.result?.state==='verified'&&record.configuration?.name===brief.name&&record.configuration?.symbol===brief.symbol;}catch{return false;}}
 $('chat').onsubmit=async e=>{
  e.preventDefault();if(!user)return;const text=$('prompt').value.trim();if(!text)return;if(chatApprovalBusy||claimBusy){say('Dinn is still checking or processing the current wallet action. Please wait before starting another one.');$('prompt').value='';return;}
  if(handlePendingChatApproval(text)){$('prompt').value='';return;}
  if(chatPendingApproval){const pending=chatPendingApproval;chatPendingApproval=null;if(pending.action)forgetWalletApproval(pending.action);say('I cleared the earlier approval review before handling this request. Ask me to check the current terms again before proceeding.');}
  if(isSwapStatusQuestion(text)){
-  $('prompt').value='';const record=savedSwap(localStorage,account);
-  if(!record){recordSetupReply(text,'I could not find a recent swap for this wallet on this device.');return;}
+  $('prompt').value='';const record=savedSwap(accountRecords,account);
+  if(!record){recordSetupReply(text,'I could not find a recent swap for this wallet in your account.');return;}
   const pending=swapReceipt(record).text,body=recordSetupReply(text,pending);watchChatSwap(body,record,pending);return;
  }
  if(/^remove my latest feedback[.!]?$/i.test(text)){
@@ -356,7 +364,7 @@ $('chat').onsubmit=async e=>{
   if(!feedback || feedback.done){say('There is no open research feedback request in this chat.');return;}
   if(!reply || reply.length>600){say('Please keep your feedback between 1 and 600 characters.');return;}
   const feedbackOwner=user,feedbackEpoch=epoch;
-  try{const {getAccessToken}=await import('/auth/entry.js');const result=await feedbackChat({...feedback,reply},await getAccessToken());if(epoch!==feedbackEpoch||user!==feedbackOwner)return;localStorage.setItem(key('research-feedback'),JSON.stringify({...feedback,done:true}));$('prompt').value='';recordSetupReply(text,result.published?'Published to Feedback. To remove it, say "remove my latest feedback".':'Feedback saved for the Dinn team. Thank you.');}
+  try{const {getAccessToken}=await import('/auth/entry.js');const result=await feedbackChat({...feedback,reply},await getAccessToken());if(epoch!==feedbackEpoch||user!==feedbackOwner)return;await accountRecords.setItem(key('research-feedback'),JSON.stringify({...feedback,done:true}));$('prompt').value='';recordSetupReply(text,result.published?'Published to Feedback. To remove it, say "remove my latest feedback".':'Feedback saved for the Dinn team. Thank you.');}
   catch{if(epoch===feedbackEpoch)say('Your feedback could not be saved. Your reply is ready to retry.');}return;
  }
  let watch=null;
@@ -373,6 +381,15 @@ $('chat').onsubmit=async e=>{
    recordSetupReply(text,'Stock stories with an available Pons pair. Choose a ticker first: '+ideas.map(i=>i.asset.symbol).join(', ')+'.');$('prompt').value='';return;
   }
  }
+ if(watch?.ideaSource&&/^(?:share (?:this |the )?research|publish to research feed)[.!]?$/i.test(text)){
+  const entry=sharedFinding(watch.ticker,watch.ideaSource);
+  const preview='Research feed preview\n\n'+entry.question+'\n\n'+entry.finding+' ['+entry.source+']('+entry.url+') \u00b7 '+entry.publishedAt.slice(0,10)+'\n\n'+entry.idea+'. '+entry.activity+'\n\n'+entry.followUp+'\n\nPublish this to the public Research feed? Say "publish to research feed" to confirm.';
+  $('prompt').value='';
+  if(!/^publish/i.test(text)||history.at(-1)?.content!==preview){recordSetupReply(text,preview);return;}
+  const id=user,run=epoch;
+  try{const result=await accountRequest('share-finding',entry,id);if(user===id&&epoch===run)recordSetupReply(text,'Published. [View and share the feed entry]('+location.origin+'/feedback#stock-'+result.id+')');}
+  catch(error){if(user===id&&epoch===run)recordSetupReply(text,error.message);}return;
+ }
  const choice=ideaChoice(text,watch,history.at(-1)?.content);
  if(choice&&choice!=='launch'){
   if(controller||setupBusy||launchBusy)return;
@@ -382,7 +399,7 @@ $('chat').onsubmit=async e=>{
   if(choice==='decline')answer='Sure. What else would you like to research?';
   if(choice==='watch-idea'){
    const question=launchAngle(watch).question;
-   localStorage.setItem(key('stock-watch'),JSON.stringify({...watch,question}));
+   await accountRecords.setItem(key('stock-watch'),JSON.stringify({...watch,question}));
    answer='Saved your question: '+question+' Ask "Any update?" to check it again.';
   }
   recordSetupReply(text,answer);$('prompt').value='';return;
@@ -390,8 +407,8 @@ $('chat').onsubmit=async e=>{
  const watchAction=choice==='launch'?{kind:'launch'}:selectedStory?{kind:'research',ticker:selectedStory.asset.symbol}:watchIntent(text,watch);
  if(watchAction&&(controller||setupBusy||launchBusy))return;
  if(watchAction?.kind==='question'){
-  localStorage.setItem(key('stock-watch'),JSON.stringify({...watch,question:watchAction.question}));
-  recordSetupReply(text,'Saved your '+watch.ticker+' question on this device: '+watchAction.question+' Ask "Any update?" to check again.');$('prompt').value='';return;
+  await accountRecords.setItem(key('stock-watch'),JSON.stringify({...watch,question:watchAction.question}));
+  recordSetupReply(text,'Saved your '+watch.ticker+' question to your account: '+watchAction.question+' Ask "Any update?" to check again.');$('prompt').value='';return;
  }
  if(watchAction?.kind==='launch'){
   $('prompt').value='';
@@ -431,7 +448,7 @@ $('chat').onsubmit=async e=>{
   say('Reply “confirm reset” to clear setup, or “keep setup” to cancel.');$('prompt').value='';return;
  }
  if(requestText===text&&conversationalLaunchStatus(text)){$('prompt').value='';return;}
- if(requestText===text&&!asksForLaunchIdeas(text)&&handleLaunchReply(text)){$('prompt').value='';return;}
+ if(requestText===text&&!asksForLaunchIdeas(text)&&await handleLaunchReply(text)){$('prompt').value='';return;}
  if(controller||setupBusy)return;
  const requestUser=user,generation=epoch,draftRevision=launchRevision;controller=new AbortController();const request=controller;let advanceLaunchProfile=false;$('prompt').value='';$('send').disabled=true;$('stop-response').hidden=false;$('feedback').textContent='';message('user',text);const reply=message('assistant','');reply.textContent='Thinking';reply.classList.add('thinking');reply.setAttribute('aria-label','Dinn is thinking');for(let i=0;i<3;i++){const dot=document.createElement('span');dot.className='thinking-dot';dot.textContent='.';dot.setAttribute('aria-hidden','true');reply.append(dot);}let received=false;
  try{
@@ -442,7 +459,7 @@ $('chat').onsubmit=async e=>{
   const result=await receiveChat(r,delta=>{if(epoch===generation&&!['research','update'].includes(watchAction?.kind)){if(!received){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');received=true;}if(!reply.textContent&&/https?:\/\//i.test(delta))renderAssistantText(reply,delta);else reply.append(document.createTextNode(delta));scrollChat();}});
   if(epoch!==generation)return;
   retryChatTurn=null;
-  if(result.toolsUsed?.includes('discover_launch_stories'))localStorage.setItem(key('stock-shortlist'),JSON.stringify(result.data?.ideas||[]));
+  if(result.toolsUsed?.includes('discover_launch_stories'))await accountRecords.setItem(key('stock-shortlist'),JSON.stringify(result.data?.ideas||[]));
   if(['research','update'].includes(watchAction?.kind)){reply.replaceChildren();reply.classList.remove('thinking');reply.removeAttribute('aria-label');}
   if(['research','update'].includes(watchAction?.kind)&&result.data?.ticker===watchAction.ticker&&result.data.checkedAt){
    const current=snapshot(result.data),refresh=watchAction.kind==='update';
@@ -452,7 +469,7 @@ $('chat').onsubmit=async e=>{
    }
    const next=refresh?{...watch,latest:current}:{ticker:current.ticker,original:current,latest:current,question:''};
    result.message=watchReply(next.original,current,next.question,refresh);
-   localStorage.setItem(key('stock-watch'),JSON.stringify(next));
+   await accountRecords.setItem(key('stock-watch'),JSON.stringify(next));
   }
   if(result.launchDraft){try{if(launchRevision!==draftRevision)throw Error('Your token details changed while Dinn was responding. Retry against the current details.');applyLaunchDraft(result.launchDraft);}catch(error){received=false;reply.replaceChildren();throw error;}}
   if(result.inspection){
@@ -474,7 +491,7 @@ $('chat').onsubmit=async e=>{
    try{
     Object.assign(offer,await feedbackChat(offer,accessToken));
     if(epoch!==generation)return;
-    localStorage.setItem(key('research-feedback'),JSON.stringify(offer));
+    await accountRecords.setItem(key('research-feedback'),JSON.stringify(offer));
     result.feedbackPrompt=publicFeedbackPrompt(offer);result.message+='\n\n'+result.feedbackPrompt;
    }catch{/* Keep the research available when optional feedback is offline. */}
   }
@@ -487,7 +504,7 @@ $('chat').onsubmit=async e=>{
    if(hasLaunchEvent(article)&&age>=0&&age<=2*86400000){
     const next={ticker:equity.ticker,original:current,latest:current,question:watch?.ticker===equity.ticker?watch.question:'',ideaSource:article};
     if(watch?.ticker===equity.ticker&&next.question)next.original=watch.original;
-    localStorage.setItem(key('stock-watch'),JSON.stringify(next));
+    await accountRecords.setItem(key('stock-watch'),JSON.stringify(next));
     result.message+='\n\n'+ideaInvite(equity.ticker);
    }
   }
@@ -553,7 +570,7 @@ function startAuthBootTimer(){
   authBootTimer=setTimeout(()=>{if(!authBootResolved)showAuthRecovery('The sign-in service is taking longer than expected.');},65000);
  },25000);
 }
-window.addEventListener('launchflow:auth',e=>{const d=e.detail;if(d.state==='loading'){if(authBootResolved||authBootTimedOut)return;startAuthBootTimer();}else{clearAuthBootTimer();clearBootReload(sessionStorage);authBootResolved=true;}const nextUser=d.authenticated?(d.userId||d.address):null;
+window.addEventListener('launchflow:auth',e=>{const d=e.detail;if(d.state==='loading'){if(authBootResolved||authBootTimedOut)return;startAuthBootTimer();}else{clearAuthBootTimer();authBootResolved=true;}const nextUser=d.authenticated?(d.userId||d.address):null;
 // Wallet/provider refreshes are not account changes: preserve the current chat and stage.
 if(user&&((nextUser===user)||d.state==='loading'&&!nextUser)){
  if(d.state==='loading')return;
@@ -564,7 +581,7 @@ if(user&&((nextUser===user)||d.state==='loading'&&!nextUser)){
   $('wallet-address').textContent=account||'';$('wallet-balance').textContent=' - ETH';$('wallet-status').textContent=d.walletStatus||'';$('wallet-use-dinn').hidden=!d.canUseEmbedded;walletUI?.changed(d.state==='wallet-needed'?d.walletStatus:'',false);if(account&&!$('wallet-view').hidden)void walletUI?.refresh();if(account)queueMicrotask(resumeChatSwap);return;
  }
 }
-if(nextUser===user&&d.state==='connected'&&d.address===account&&d.provider===provider)return;showLaunchStage(null,false);if(!$('pons-review-dialog').hidden)showLaunchStage(null);epoch++;launchBusy=false;logoCreator.reset();controller?.abort();launchActivity.stop();selectedToken=null;confirmedLaunchWallet=null;resetWalletCopy();account=d.address||null;provider=d.provider||null;walletSource=d.source||null;walletSendTransaction=d.sendTransaction||null;invalidateLaunch();launchReturnPending=false;user=d.authenticated?(d.userId||account):null;const loading=d.state==='loading';$('session-loading').hidden=!loading;$('auth-gate').hidden=loading||!!user;$('workspace').hidden=loading||!user;$('workspace').inert=loading||!user;history=[];$('messages').replaceChildren();for(const id of ['feedback','brief-status','wallet-status'])$(id).textContent='';$('wallet-address').textContent=account||'';$('wallet-balance').textContent=' -  ETH';$('wallet-status').textContent=d.walletStatus||'';$('wallet-use-dinn').hidden=!d.canUseEmbedded;if(user){restore();restoreLaunch();restoreSettings();if(account){let prior;try{prior=JSON.parse(read('last-deployer'));}catch{}const recipient=$('launch-recipient');if(prior&&recipient.value.toLowerCase()===prior.toLowerCase()){recipient.value=account;saveSettings();}save('last-deployer',account);}renderTokenSummary();renderSetupChoices();}else {brief={};awaiting=null;syncBrief();}if(!user)for(const f of ['name','symbol','description'])$('brief-'+f).value='';draftSync.start(user);walletUI?.changed(d.state==='wallet-needed'?d.walletStatus:'',d.state==='wallet-changing');if(d.state==='wallet-changing'&&!account)walletUI?.switching();else if(d.state==='wallet-changing'&&account&&!$('wallet-view').hidden)void walletUI?.refresh();});
+if(nextUser===user&&d.state==='connected'&&d.address===account&&d.provider===provider)return;showLaunchStage(null,false);if(!$('pons-review-dialog').hidden)showLaunchStage(null);epoch++;launchBusy=false;logoCreator.reset();controller?.abort();launchActivity.stop();selectedToken=null;confirmedLaunchWallet=null;resetWalletCopy();account=d.address||null;provider=d.provider||null;walletSource=d.source||null;walletSendTransaction=d.sendTransaction||null;invalidateLaunch();launchReturnPending=false;user=d.authenticated?(d.userId||account):null;const loading=d.state==='loading';$('session-loading').hidden=!loading;$('auth-gate').hidden=loading||!!user;$('workspace').hidden=loading||!user;$('workspace').inert=loading||!user;history=[];$('messages').replaceChildren();for(const id of ['feedback','brief-status','wallet-status'])$(id).textContent='';$('wallet-address').textContent=account||'';$('wallet-balance').textContent=' -  ETH';$('wallet-status').textContent=d.walletStatus||'';$('wallet-use-dinn').hidden=!d.canUseEmbedded;if(user){restore();restoreLaunch();restoreSettings();if(account){let prior;try{prior=JSON.parse(read('last-deployer'));}catch{}const recipient=$('launch-recipient');if(prior&&recipient.value.toLowerCase()===prior.toLowerCase()){recipient.value=account;saveSettings();}}renderTokenSummary();renderSetupChoices();}else {brief={};awaiting=null;syncBrief();}if(!user)for(const f of ['name','symbol','description'])$('brief-'+f).value='';if(!user)void accountRecords.start(null);draftSync.start(user);walletUI?.changed(d.state==='wallet-needed'?d.walletStatus:'',d.state==='wallet-changing');if(d.state==='wallet-changing'&&!account)walletUI?.switching();else if(d.state==='wallet-changing'&&account&&!$('wallet-view').hidden)void walletUI?.refresh();});
 
 ﻿let reviewed=null,prepared=null,launchBusy=false,launchRevision=0;
 
@@ -694,7 +711,7 @@ $('continue-launch-purchase').onclick=()=>{const amount=$('purchase-amount').val
 
 function approvalKey(){return 'dinn.pons.approval.v1:4663:'+account?.toLowerCase();}
 
-function approvalRecord(){try{return JSON.parse(localStorage.getItem(approvalKey()));}catch{return null;}}
+function approvalRecord(){try{return JSON.parse(accountRecords.getItem(approvalKey()));}catch{return null;}}
 
 function updateApprovalUI(){const buy=reviewed?.quote.purchase,old=approvalRecord(),pending=old&&!['verified','reverted','rejected'].includes(old.phase);$('approve-purchase').hidden=true;$('approve-purchase').textContent=pending?'Check saved approval':'Approve '+(reviewed?.quote.pair||'purchase asset');$('approval-recovery-label').hidden=!pending||!!old.hash;$('simulate-launch').disabled=!!buy?.approvalRequired||!!pending;}
 
@@ -702,9 +719,9 @@ $('approve-purchase').onclick=async()=>{
 
  if(launchBusy||!reviewed)return;const generation=epoch,revision=launchRevision,key=approvalKey();launchBusy=true;$('approve-purchase').disabled=true;
 
- try{const old=approvalRecord();if(old&&!['verified','reverted','rejected'].includes(old.phase)){const hash=old.hash||$('approval-recovery-hash').value.trim();if(!/^0x[0-9a-f]{64}$/i.test(hash))throw Error('Check your wallet activity and enter the approval transaction hash. Do not submit another approval while the result is unknown.');const r=await api('/api/pons/approval-receipt',{...old,hash});if(generation!==epoch)return;if(['verified','reverted'].includes(r.state)){localStorage.setItem(key,JSON.stringify({...old,hash,phase:r.state}));$('simulation-status').textContent=r.state==='verified'?'Approval confirmed. Refreshing your launch terms…':'Approval failed. You can try again.';say($('simulation-status').textContent);if(r.state==='verified'){launchBusy=false;await openLaunchReview();}}else {$('simulation-status').textContent='Token approval is still being checked. Check again shortly.';say($('simulation-status').textContent);}
+ try{const old=approvalRecord();if(old&&!['verified','reverted','rejected'].includes(old.phase)){const hash=old.hash||$('approval-recovery-hash').value.trim();if(!/^0x[0-9a-f]{64}$/i.test(hash))throw Error('Check your wallet activity and enter the approval transaction hash. Do not submit another approval while the result is unknown.');const r=await api('/api/pons/approval-receipt',{...old,hash});if(generation!==epoch)return;if(['verified','reverted'].includes(r.state)){await accountRecords.setItem(key,JSON.stringify({...old,hash,phase:r.state}));$('simulation-status').textContent=r.state==='verified'?'Approval confirmed. Refreshing your launch terms…':'Approval failed. You can try again.';say($('simulation-status').textContent);if(r.state==='verified'){launchBusy=false;await openLaunchReview();}}else {$('simulation-status').textContent='Token approval is still being checked. Check again shortly.';say($('simulation-status').textContent);}
 
- }else{const p=await api('/api/pons/approval',reviewed);if(generation!==epoch||revision!==launchRevision)return;if(!p.required){launchBusy=false;await openLaunchReview();return;}if(!provider||!['embedded','external'].includes(walletSource)||walletSource==='embedded'&&!walletSendTransaction)throw Error('Your selected launch wallet is not ready. Reconnect it, then review the launch again.');const {requestPonsApproval}=await import('/pons/entry.js');const approvalAction=p.amount==='0'?'clear the old token permission':'approve only the launch buy amount';$('simulation-status').textContent=walletSource==='embedded'?'Dinn is submitting to '+approvalAction+'.':'Your external wallet will ask you to confirm '+approvalAction+'.';say($('simulation-status').textContent);const r=await requestPonsApproval({prepared:p,configuration:reviewed.configuration,provider,sendTransaction:walletSource==='embedded'?walletSendTransaction:null,address:account,source:walletSource||'unavailable',storage:localStorage,key,isCurrent:()=>epoch===generation&&launchRevision===revision,withLock:navigator.locks?fn=>navigator.locks.request('dinn-wallet:'+account.toLowerCase(),fn):null});if(generation!==epoch)return;$('simulation-status').textContent=r.phase==='rejected'?'Approval declined.':r.hash?'Approval sent. Wait for network confirmation before continuing.':'Approval result is uncertain. Check wallet activity before retrying.';if(r.storageWarning)$('simulation-status').textContent+=' Save this hash: '+(r.hash||'unavailable');say($('simulation-status').textContent);}
+ }else{const p=await api('/api/pons/approval',reviewed);if(generation!==epoch||revision!==launchRevision)return;if(!p.required){launchBusy=false;await openLaunchReview();return;}if(!provider||!['embedded','external'].includes(walletSource)||walletSource==='embedded'&&!walletSendTransaction)throw Error('Your selected launch wallet is not ready. Reconnect it, then review the launch again.');const {requestPonsApproval}=await import('/pons/entry.js');const approvalAction=p.amount==='0'?'clear the old token permission':'approve only the launch buy amount';$('simulation-status').textContent=walletSource==='embedded'?'Dinn is submitting to '+approvalAction+'.':'Your external wallet will ask you to confirm '+approvalAction+'.';say($('simulation-status').textContent);const r=await requestPonsApproval({prepared:p,configuration:reviewed.configuration,provider,sendTransaction:walletSource==='embedded'?walletSendTransaction:null,address:account,source:walletSource||'unavailable',storage:accountRecords.scope(),key,isCurrent:()=>epoch===generation&&launchRevision===revision,withLock:navigator.locks?fn=>navigator.locks.request('dinn-wallet:'+account.toLowerCase(),fn):null});if(generation!==epoch)return;$('simulation-status').textContent=r.phase==='rejected'?'Approval declined.':r.hash?'Approval sent. Wait for network confirmation before continuing.':'Approval result is uncertain. Check wallet activity before retrying.';if(r.storageWarning)$('simulation-status').textContent+=' Save this hash: '+(r.hash||'unavailable');say($('simulation-status').textContent);}
 
  }catch(e){if(generation===epoch){$('simulation-status').textContent=e.message;say(e.message);}}finally{launchBusy=false;$('approve-purchase').disabled=false;if(generation===epoch)updateApprovalUI();}
 
@@ -727,10 +744,10 @@ function launchKey(){return 'dinn.pons.pending.v1:4663:'+account?.toLowerCase();
 
 const launchRegistrationInFlight=new Set(),registeredLaunchHashes=new Set();
 async function persistDinnLaunch(record){if(!user||!record?.hash||record.phase!=='verified'||record.result?.state!=='verified'||registeredLaunchHashes.has(record.hash.toLowerCase())||launchRegistrationInFlight.has(record.hash.toLowerCase()))return;const owner=user,generation=epoch,hash=record.hash.toLowerCase();launchRegistrationInFlight.add(hash);try{const {getAccessToken}=await import('/auth/entry.js'),token=await getAccessToken();if(!token||owner!==user||generation!==epoch)return;const response=await fetch('/api/dinn/launches/register',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify({hash:record.hash,configuration:record.configuration,quote:record.quote}),signal:AbortSignal.timeout(30000)}),result=await response.json();if(!response.ok)throw Error(result.error||'Account launch history could not be saved.');if(owner!==user||generation!==epoch)return;registeredLaunchHashes.add(hash);launchesView?.recorded();}catch(error){if(owner===user&&generation===epoch)launchesView?.notice('Launch is verified on Robinhood Chain, but Dinn could not sync it to your account: '+error.message);}finally{launchRegistrationInFlight.delete(hash);}}
-function registerSavedLaunch(){let record;try{record=JSON.parse(localStorage.getItem(launchKey())||'null');}catch{}return persistDinnLaunch(record);}
+function registerSavedLaunch(){let record;try{record=JSON.parse(accountRecords.getItem(launchKey())||'null');}catch{}return persistDinnLaunch(record);}
 
 $('drafts-view').append($('launch-recovery'));$('launch-recovery').classList.add('chat-launch-recovery');
-let lastLaunchStatus='';const launchActivity=mountLaunchActivity({onPonsWallet:()=>{view('wallet');$('pons-wallet-panel').hidden=false;$('pons-wallet-panel').scrollIntoView({block:'nearest'});},getAccount:()=>account,getEpoch:()=>epoch,getRecord:()=>{try{return JSON.parse(localStorage.getItem(launchKey()));}catch{return null;}},setRecord:r=>localStorage.setItem(launchKey(),JSON.stringify(r)),api,onResearch:address=>{selectedToken=address;view('assistant');submitChoice('Research '+address+' on Robinhood Chain');},onDex:address=>{selectedToken=address;view('assistant');submitChoice('Prepare DEX Screener profile for '+address);},onStatus:({result,token,account:owner,hash,error})=>{if(error){const key='error:'+hash;if(key!==lastLaunchStatus){lastLaunchStatus=key;say('Launch status check incomplete: '+error+'. Say “check saved launch” to retry.');}return;}if(!result)return;const key=result.state+':'+hash;if(key===lastLaunchStatus)return;lastLaunchStatus=key;if(result.state==='verified'&&token){void registerSavedLaunch();const body=say('✓ Token launched and verified on Robinhood Chain. Token: '+token+'. Launched from '+owner+'. Pons opens separately; check the connected wallet there before managing this token.');body.parentElement.classList.add('operation-success');const pons=document.createElement('a');pons.href='https://ponsfamily.com/launchpad/'+token;pons.target='_blank';pons.rel='noopener noreferrer';pons.textContent='Open on Pons';const explorer=document.createElement('a');explorer.href='https://robinhoodchain.blockscout.com/token/'+token;explorer.target='_blank';explorer.rel='noopener noreferrer';explorer.textContent='View token';body.append(pons,document.createTextNode(' · '),explorer);}else if(result.state==='reverted')say('The launch failed. No token was confirmed on Robinhood Chain.');else if(result.state==='pending'||result.state==='confirming')say('Launch transaction '+result.state+'. Dinn will continue checking the saved transaction.');}});
+let lastLaunchStatus='';const launchActivity=mountLaunchActivity({onPonsWallet:()=>{view('wallet');$('pons-wallet-panel').hidden=false;$('pons-wallet-panel').scrollIntoView({block:'nearest'});},getAccount:()=>account,getEpoch:()=>epoch,getRecord:()=>{try{return JSON.parse(accountRecords.getItem(launchKey()));}catch{return null;}},setRecord:r=>accountRecords.setItem(launchKey(),JSON.stringify(r)),api,onResearch:address=>{selectedToken=address;view('assistant');submitChoice('Research '+address+' on Robinhood Chain');},onDex:address=>{selectedToken=address;view('assistant');submitChoice('Prepare DEX Screener profile for '+address);},onStatus:({result,token,account:owner,hash,error})=>{if(error){const key='error:'+hash;if(key!==lastLaunchStatus){lastLaunchStatus=key;say('Launch status check incomplete: '+error+'. Say “check saved launch” to retry.');}return;}if(!result)return;const key=result.state+':'+hash;if(key===lastLaunchStatus)return;lastLaunchStatus=key;if(result.state==='verified'&&token){void registerSavedLaunch();const body=say('✓ Token launched and verified on Robinhood Chain. Token: '+token+'. Launched from '+owner+'. Pons opens separately; check the connected wallet there before managing this token.');body.parentElement.classList.add('operation-success');const pons=document.createElement('a');pons.href='https://ponsfamily.com/launchpad/'+token;pons.target='_blank';pons.rel='noopener noreferrer';pons.textContent='Open on Pons';const explorer=document.createElement('a');explorer.href='https://robinhoodchain.blockscout.com/token/'+token;explorer.target='_blank';explorer.rel='noopener noreferrer';explorer.textContent='View token';body.append(pons,document.createTextNode(' · '),explorer);}else if(result.state==='reverted')say('The launch failed. No token was confirmed on Robinhood Chain.');else if(result.state==='pending'||result.state==='confirming')say('Launch transaction '+result.state+'. Dinn will continue checking the saved transaction.');}});
 
 function restoreLaunch(){launchActivity.restore();}
 
@@ -748,7 +765,7 @@ async function openLaunchReview(){if(launchBusy)return;if(!account||confirmedLau
 
 $('simulate-launch').onclick=async()=>{if(!reviewed||launchBusy)return;const generation=epoch,revision=launchRevision;launchBusy=true;$('simulate-launch').disabled=true;$('approve-launch').hidden=true;const checking=say('Dinn is checking the launch and estimating network fees…');checking?.classList.add('chat-action-pending');checking?.setAttribute('aria-busy','true');try{const p=await api('/api/pons/simulate',reviewed);if(generation!==epoch||revision!==launchRevision)return;prepared=p;const body=say('✓ Launch check passed. Estimated network fee: '+p.estimatedGas+' ETH; the amount may change with network fees. This check is valid for 60 seconds. Would you like me to launch with these terms? Reply “yes” or “approve” to send. '+(walletSource==='embedded'?'Dinn will submit from your Dinn wallet.':'Your external wallet will ask you to confirm.')); body.parentElement.classList.add('operation-success');}catch(e){if(epoch===generation)say('Launch check could not complete: '+e.message+(/no transaction was sent/i.test(e.message)?'':' No transaction was sent.'));}finally{checking?.classList.remove('chat-action-pending');checking?.removeAttribute('aria-busy');launchBusy=false;$('simulate-launch').disabled=false;}};
 
-$('approve-launch').onclick=async()=>{if(!prepared||!reviewed||launchBusy)return;const generation=epoch,revision=launchRevision,frozen=reviewed,original=prepared,pendingKey=launchKey();launchBusy=true;$('approve-launch').disabled=true;try{if(!provider||!['embedded','external'].includes(walletSource)||walletSource==='embedded'&&!walletSendTransaction)throw Error('Your selected launch wallet is not ready. Reconnect it, then review the launch again.');const fresh=await api('/api/pons/simulate',frozen);if(generation!==epoch||revision!==launchRevision)return;if(fresh.transaction.data!==original.transaction.data||fresh.transaction.value!==original.transaction.value)throw Error('Launch terms changed. Review again.');const {requestPonsLaunch}=await import('/pons/entry.js');const record=await requestPonsLaunch({prepared:fresh,configuration:frozen.configuration,provider,sendTransaction:walletSource==='embedded'?walletSendTransaction:null,address:frozen.configuration.account,source:walletSource||'unavailable',storage:localStorage,key:pendingKey,isCurrent:()=>epoch===generation&&launchRevision===revision,withLock:navigator.locks?fn=>navigator.locks.request('dinn-wallet:'+frozen.configuration.account.toLowerCase(),fn):null});if(epoch===generation){restoreLaunch();showLaunchStage(null);$('simulation-status').textContent=record.phase==='rejected'?'Wallet request declined.':record.hash?'Launch sent. Dinn is checking network confirmation.':'Wallet result is uncertain. Check wallet activity before trying again.';const body=say($('simulation-status').textContent);if(record.hash){const link=document.createElement('a');link.href='https://robinhoodchain.blockscout.com/tx/'+record.hash;link.target='_blank';link.rel='noopener noreferrer';link.textContent='View transaction';body.append(link);}if(record.storageWarning)say('Recovery storage failed. Save the transaction hash: '+(record.hash||'unavailable'));prepared=null;$('approve-launch').hidden=true;}}catch(e){if(epoch===generation){$('simulation-status').textContent=e.message;say(e.message);}}finally{launchBusy=false;$('approve-launch').disabled=false;}};
+$('approve-launch').onclick=async()=>{if(!prepared||!reviewed||launchBusy)return;const generation=epoch,revision=launchRevision,frozen=reviewed,original=prepared,pendingKey=launchKey();launchBusy=true;$('approve-launch').disabled=true;try{if(!provider||!['embedded','external'].includes(walletSource)||walletSource==='embedded'&&!walletSendTransaction)throw Error('Your selected launch wallet is not ready. Reconnect it, then review the launch again.');const fresh=await api('/api/pons/simulate',frozen);if(generation!==epoch||revision!==launchRevision)return;if(fresh.transaction.data!==original.transaction.data||fresh.transaction.value!==original.transaction.value)throw Error('Launch terms changed. Review again.');const {requestPonsLaunch}=await import('/pons/entry.js');const record=await requestPonsLaunch({prepared:fresh,configuration:frozen.configuration,provider,sendTransaction:walletSource==='embedded'?walletSendTransaction:null,address:frozen.configuration.account,source:walletSource||'unavailable',storage:accountRecords.scope(),key:pendingKey,isCurrent:()=>epoch===generation&&launchRevision===revision,withLock:navigator.locks?fn=>navigator.locks.request('dinn-wallet:'+frozen.configuration.account.toLowerCase(),fn):null});if(epoch===generation){restoreLaunch();showLaunchStage(null);$('simulation-status').textContent=record.phase==='rejected'?'Wallet request declined.':record.hash?'Launch sent. Dinn is checking network confirmation.':'Wallet result is uncertain. Check wallet activity before trying again.';const body=say($('simulation-status').textContent);if(record.hash){const link=document.createElement('a');link.href='https://robinhoodchain.blockscout.com/tx/'+record.hash;link.target='_blank';link.rel='noopener noreferrer';link.textContent='View transaction';body.append(link);}if(record.storageWarning)say('Recovery storage failed. Save the transaction hash: '+(record.hash||'unavailable'));prepared=null;$('approve-launch').hidden=true;}}catch(e){if(epoch===generation){$('simulation-status').textContent=e.message;say(e.message);}}finally{launchBusy=false;$('approve-launch').disabled=false;}};
 
 
 
@@ -827,8 +844,8 @@ function watchChatSwap(body,record,initialText){
    if(!current()){activeSwapChecks.delete(body);return;}
    update=swapReceipt(record,result);
    if(update.done&&['verified','refunded','reverted'].includes(result.state)){
-    const latest=savedSwap(localStorage,account);
-    if(latest?.hash===record.hash)localStorage.setItem('dinn.robinhood.wallet.v1:'+owner.toLowerCase(),JSON.stringify({...latest,state:result.state}));
+    const latest=savedSwap(accountRecords,account);
+    if(latest?.hash===record.hash)await accountRecords.setItem('dinn.robinhood.wallet.v1:'+owner.toLowerCase(),JSON.stringify({...latest,state:result.state}));
    }
   }catch{}
   if(update?.text&&update.text!==prior&&current()){
@@ -845,7 +862,7 @@ function watchChatSwap(body,record,initialText){
  void check();
 }
 function resumeChatSwap(){
- const record=savedSwap(localStorage,account);if(!record)return;
+ const record=savedSwap(accountRecords,account);if(!record)return;
  const pending=swapReceipt(record).text;
  const bodies=$('messages').querySelectorAll('.message.assistant .message-body');
  for(const body of bodies){
@@ -1021,7 +1038,7 @@ async function startSignIn(){
    import('/auth/entry.js').catch(async error=>{
     if(authBootResolved)throw error;
     // The browser caches failed imports, including failed dependencies of this entry.
-    if(!reserveBootReload(sessionStorage))throw error;
+    if(performance.getEntriesByType('navigation')[0]?.type==='reload')throw error;
     reloading=true;await wait(1500);location.reload();throw error;
    })
   ]);

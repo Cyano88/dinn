@@ -5,7 +5,7 @@ const examples=[
  {source:'marketplace',byline:'Scout (demo agent)',reply:'When my agent checks a stock pair on Base, show how much liquidity is in the pool and when you checked it.'}
 ];
 let timer, refreshTimer, listeners, generation=0;
-export async function showFeedbackFeed(visible){
+async function showReviews(visible){
  const current=++generation;
  clearTimeout(timer);clearTimeout(refreshTimer);listeners?.abort();
  if(!visible)return;
@@ -80,4 +80,36 @@ export async function showFeedbackFeed(visible){
  }catch{if(current===generation){skeleton.hidden=true;status.classList.remove('feed-sr-only');status.textContent='Research feedback could not load. Please try again.';}}
 }
 
+let tab='stock',feedRun=0,visibleNow=false;
+async function renderStockEntries(){
+ const host=element('stock-entries'),run=++feedRun;
+ host.textContent='Loading stock questions...';
+ const id=location.hash.match(/^#stock-([a-f0-9-]{36})$/i)?.[1];
+ try{
+  const res=await fetch('/api/feedback/findings'+(id?'?id='+id:''),{signal:AbortSignal.timeout(10000)});
+  if(!res.ok)throw Error();const {entries}=await res.json();if(run!==feedRun)return;
+  host.replaceChildren();
+  if(!entries.length)host.textContent=id?'This entry is unavailable.':'Shared stock questions will appear here.';
+  for(const {entry,id} of entries){
+   const article=document.createElement('article');
+   const row=(tag,value)=>{const el=document.createElement(tag);el.textContent=value;article.append(el);return el;};
+   row('h3',entry.question);row('p',entry.finding);
+   const link=row('a',entry.source+' \u00b7 '+entry.publishedAt.slice(0,10));link.href=entry.url;link.target='_blank';link.rel='noopener noreferrer';
+   row('h4',entry.idea);row('p',entry.activity);row('p',entry.followUp);
+   row('a','Link to this entry').href='/feedback#stock-'+id;host.append(article);
+  }
+  if(id){const all=document.createElement('a');all.href='/feedback';all.textContent='All stock questions';host.append(all);}
+ }catch{if(run===feedRun)host.textContent='Stock questions could not load. Please try again.';}
+}
+export function showFeedbackFeed(visible){
+ visibleNow=visible;feedRun++;
+ if(!visible){void showReviews(false);return;}
+ const stock=tab==='stock';
+ element('stock-tab').setAttribute('aria-pressed',String(stock));element('feedback-tab').setAttribute('aria-pressed',String(!stock));
+ element('stock-entries').hidden=!stock;element('feedback-entries').hidden=stock;
+ element('stock-tab').onclick=()=>{tab='stock';showFeedbackFeed(true);};
+ element('feedback-tab').onclick=()=>{tab='feedback';showFeedbackFeed(true);};
+ void showReviews(!stock);if(stock)void renderStockEntries();
+}
+window.addEventListener('hashchange',()=>{if(visibleNow){tab='stock';showFeedbackFeed(true);}});
 if(document.body.dataset.page==='public-feedback')void showFeedbackFeed(true);

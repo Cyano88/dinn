@@ -1,3 +1,4 @@
+import {accountRecords} from '../public/account-records.js';
 import React,{useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {PONS_CHAIN,PONS_METHODS,verifiedPons,pairingUri,ponsRequest,describePonsRequest} from '../src/pons-wallet-session.mjs';
@@ -6,7 +7,9 @@ async function getClient(projectId,owner){
  const key=projectId+':'+owner;
  if(!clients.has(key))clients.set(key,(async()=>{
   const [{Core},{WalletKit}]=await Promise.all([import('@walletconnect/core'),import('@reown/walletkit')]);
-  return WalletKit.init({core:new Core({projectId,customStoragePrefix:'dinn-pons-'+owner}),metadata:{name:'Dinn',description:'Your Dinn wallet on Pons',url:location.origin,icons:[location.origin+'/favicon.svg']}});
+  const memory=new Map();
+  const storage={getKeys:async()=>[...memory.keys()],getEntries:async()=>[...memory.entries()],getItem:async k=>memory.get(k),setItem:async(k,v)=>{memory.set(k,v);},removeItem:async k=>{memory.delete(k);}};
+  return WalletKit.init({core:new Core({projectId,storage,customStoragePrefix:'dinn-pons-'+owner}),metadata:{name:'Dinn',description:'Your Dinn wallet on Pons',url:location.origin,icons:[location.origin+'/favicon.svg']}});
  })().catch(e=>{clients.delete(key);throw e;}));
  return clients.get(key);
 }
@@ -41,8 +44,8 @@ export default function PonsConnect({projectId,userId,wallet,launchWallet}){
     try{
      const session=kit.getActiveSessions()[event.topic];const req=ponsRequest(event,session,wallet.address);
      if(signing.current||reviewRef.current)throw Error('Finish the current wallet request first.');
-     const key='dinn.pons-request.v1:'+owner+':'+event.topic+':'+event.id;
-     const saved=localStorage.getItem(key);
+     const records=accountRecords.scope();const key='dinn.pons-request.v1:'+owner+':'+event.topic+':'+event.id;
+     const saved=records.getItem(key);
      if(saved){const previous=JSON.parse(saved);if(previous.result!==undefined){await respond(event,{result:previous.result});return;}throw Error('This request may already have reached your wallet. Check wallet activity; Dinn will not send it again.');}
      if(!await ask({title:req.method==='eth_sendTransaction'?'Review Pons transaction':req.method==='personal_sign'?'Review Pons message':'Review Pons request',details:describePonsRequest(req),wallet:wallet.address,method:req.method})||!valid())throw Error('Request declined.');
      ponsRequest(event,kit.getActiveSessions()[event.topic],wallet.address);
@@ -54,12 +57,13 @@ export default function PonsConnect({projectId,userId,wallet,launchWallet}){
      await navigator.locks.request(key,async()=>{
       if(!valid())throw Error('Wallet session changed.');
       ponsRequest(event,kit.getActiveSessions()[event.topic],wallet.address);
-      const existing=localStorage.getItem(key);
+      const existing=records.getItem(key);
       if(existing){const previous=JSON.parse(existing);if(previous.result!==undefined){await respond(event,{result:previous.result});return;}throw Error('Check wallet activity before retrying this request.');}
-      localStorage.setItem(key,JSON.stringify({startedAt:Date.now(),method:req.method}));
+      await records.setItem(key,JSON.stringify({startedAt:Date.now(),method:req.method}));
       let result;
-      try{result=await provider.request(req);}catch(e){if(e.code===4001||e.code==='4001')localStorage.removeItem(key);throw e;}
-      localStorage.setItem(key,JSON.stringify({result}));
+      if(!valid())throw Error('Wallet session changed.');
+      try{result=await provider.request(req);}catch(e){if(e.code===4001||e.code==='4001')await records.removeItem(key);throw e;}
+      await records.setItem(key,JSON.stringify(req.method==='eth_sendTransaction'?{result}:{completed:true}));
       if(!valid())return;
       await respond(event,{result});
      });

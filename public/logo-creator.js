@@ -1,3 +1,4 @@
+import {accountRecords} from './account-records.js';
 export function mountLogoCreator({host,getContext,onAccept,onDiscard,onPreview=()=>{},onStatus=()=>{}}){
 
  const el=(tag,text,cls)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;};
@@ -47,7 +48,7 @@ export function mountLogoCreator({host,getContext,onAccept,onDiscard,onPreview=(
 
    busy=false;pending=null;if(result.accepted&&result.url)await onAccept(result);if(!current(run,c))return;show(result);setStatus(result.accepted&&result.url?'Logo selected. It will be included when you review your launch.':result.state==='ready'?'Select this logo or try another.':result.error||'The result is uncertain. Check before trying again.');
 
-  }catch(error){if(current(run,c)){busy=false;if(error.message==='Logo not found.'){pending=null;candidate=null;localStorage.removeItem(key(c));buttons();setStatus('No saved generation was found for this account. You can create a new preview.');}else{buttons();setStatus(error.message+' Your request is saved; ask me to check it before retrying.');}}}
+  }catch(error){if(current(run,c)){busy=false;if(error.message==='Logo not found.'){pending=null;candidate=null;await accountRecords.removeItem(key(c));buttons();setStatus('No saved generation was found for this account. You can create a new preview.');}else{buttons();setStatus(error.message+' Your request is saved; ask me to check it before retrying.');}}}
 
  }
 
@@ -61,7 +62,7 @@ export function mountLogoCreator({host,getContext,onAccept,onDiscard,onPreview=(
 
   // Save before sending so a lost connection can recover the same charged request.
 
-  try{localStorage.setItem(key(c),JSON.stringify({id:data.requestId,data}));const result=await api('generate',data);if(!current(run,c))return;await poll(result.id,run,c);}
+  try{await accountRecords.setItem(key(c),JSON.stringify({id:data.requestId,data}));const result=await api('generate',data);if(!current(run,c))return;await poll(result.id,run,c);}
 
   catch(error){if(current(run,c)){busy=false;buttons();setStatus(error.message+' No logo has been replaced.');}}
 
@@ -73,7 +74,7 @@ export function mountLogoCreator({host,getContext,onAccept,onDiscard,onPreview=(
 
  accept.onclick=async()=>{const c=getContext(),run=epoch,id=candidate?.id;if(!id||busy)return;busy=true;buttons();try{const result=await api('accept',{id});if(!current(run,c))return;await onAccept(result);show(result);setStatus(result.url?'Logo selected. It will be included when you review your launch.':'Saved for this local test. It needs a public image URL before launch.');}catch(error){if(current(run,c))setStatus(error.message);}finally{if(current(run,c)){busy=false;buttons();}}};
 
- discard.onclick=()=>{clearTimeout(timer);epoch++;busy=false;candidate=null;pending=null;image.hidden=true;download.hidden=true;localStorage.removeItem(key(getContext()));onDiscard();setStatus('Your existing logo is unchanged.');buttons();};
+ discard.onclick=async()=>{clearTimeout(timer);epoch++;busy=false;candidate=null;pending=null;image.hidden=true;download.hidden=true;await accountRecords.removeItem(key(getContext()));onDiscard();setStatus('Your existing logo is unchanged.');buttons();};
 
  async function open(){
 
@@ -81,7 +82,7 @@ export function mountLogoCreator({host,getContext,onAccept,onDiscard,onPreview=(
 
   try{config=await api('config');if(!current(run,c)||!config.enabled||!config.eligible)return;box.hidden=false;title.textContent='Create with Dinn';info.textContent='Powered by 0G · '+config.model+' · Up to '+config.dailyLimit+' previews per day. Each new preview uses your allowance.';
 
-   let saved;try{saved=JSON.parse(localStorage.getItem(key(c)));}catch{}
+   let saved;try{saved=JSON.parse(accountRecords.getItem(key(c)));}catch{}
 
    setStatus(config.publicHosting?'Only your accepted logo becomes public.':'This preview is saved on this PC. It needs a public URL before launch.');
 

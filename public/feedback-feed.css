@@ -16,3 +16,5 @@
 @media(prefers-reduced-motion:reduce){#feed-skeleton i{animation:none}}
 .feed-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 #feed-slide figcaption strong{font-weight:600;overflow-wrap:anywhere}
+
+.research-feed-tabs{display:flex;gap:.5rem;margin:1rem 0}.research-feed-tabs button{border:0;background:transparent;padding:.45rem .7rem;cursor:pointer;color:inherit}.research-feed-tabs [aria-pressed=true]{font-weight:700;border-bottom:2px solid currentColor}#stock-entries article{max-width:65ch;padding:1rem 0;border-bottom:1px solid #ddd}#stock-entries article p{line-height:1.55}#stock-entries article a{text-decoration:underline}

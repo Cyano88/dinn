@@ -58,7 +58,7 @@ export function launchAngle(watch){
 }
 export function ideaReply(watch){
  const idea=launchAngle(watch);if(!idea)return 'Which stock story would you like to research first?';
- return '**'+idea.name+'**\n\n'+idea.activity+'\n\n**The starting point**\n'+label(idea.article)+'\n\n**First question to track**\n'+idea.question+'\n\nWant to check this pair on Pons, prepare a brief for Bankr, or just watch the story?';
+ return '**'+idea.name+'**\n\n'+idea.activity+'\n\n**The starting point**\n'+label(idea.article)+'\n\n**First question to track**\n'+idea.question+'\n\nSay "Share research" to preview this for the Research feed. Or choose Pons, Bankr, or watch the story.';
 }
 export function ideaChoice(text,watch,last){
  if(!watch?.ideaSource)return null;
@@ -115,4 +115,9 @@ export function ideaDescription(i){
  const note=' ('+source+', '+date+')';
  const ending=i.article.url.length<200?note+' '+i.article.url:note;
  return (i.activity+' Starting point: '+i.article.title).slice(0,500-ending.length)+ending;
+}
+
+export function sharedFinding(ticker,article){
+ const idea=launchAngle({ticker,ideaSource:article});
+ return {ticker,question:'What is the launch idea around '+ticker+'?',finding:article.title,source:article.source,url:article.url,publishedAt:article.publishedAt,idea:idea.name,activity:idea.activity,followUp:idea.question};
 }

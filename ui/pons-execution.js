@@ -13,9 +13,9 @@ export async function requestPonsLaunch({prepared,configuration,provider,sendTra
  if(!same(accounts?.[0],configuration.account)||Number(chain)!==4663||!isCurrent())throw Error('Wallet or draft changed. Review again.');
  assertPrepared(prepared,configuration);
  const record={phase:'awaiting-wallet',hash:null,configuration,quote:prepared.quote,transaction:tx};
- storage.setItem(key,JSON.stringify(record));
- try{const hash=await sendReviewedTransaction({transaction:tx,provider,sendTransaction,address,chainId:4663,source});record.hash=hashValid(hash)?hash:null;record.phase=record.hash?'submitted':'unknown';}catch(e){record.error=e.message;record.phase=e.code===4001||e.code==='ACTION_REJECTED'?'rejected':'unknown';}
- try{storage.setItem(key,JSON.stringify(record));}catch{record.storageWarning=true;}return record;
+ await storage.setItem(key,JSON.stringify(record));
+ if(!isCurrent()){record.phase='rejected';await storage.setItem(key,JSON.stringify(record));throw Error('Wallet changed. Review again.');}try{const hash=await sendReviewedTransaction({transaction:tx,provider,sendTransaction,address,chainId:4663,source});record.hash=hashValid(hash)?hash:null;record.phase=record.hash?'submitted':'unknown';}catch(e){record.error=e.message;record.phase=e.code===4001||e.code==='ACTION_REJECTED'?'rejected':'unknown';}
+ try{await storage.setItem(key,JSON.stringify(record));}catch{record.storageWarning=true;}return record;
  });
 }
 
@@ -31,8 +31,8 @@ export async function requestPonsApproval({prepared,configuration,provider,sendT
  const tx=approvalTransaction(configuration,prepared.amount);for(const k of Object.keys(tx))if(!same(tx[k],prepared.transaction?.[k]))throw Error('Approval differs from reviewed purchase.');
  const [accounts,chain]=await Promise.all([provider.request({method:'eth_accounts'}),provider.request({method:'eth_chainId'})]);
  if(!same(accounts?.[0],configuration.account)||Number(chain)!==4663||!isCurrent()||prepared.expiresAt<Date.now())throw Error('Wallet or draft changed. Review again.');
- const record={phase:'awaiting-wallet',hash:null,configuration,quote:prepared.quote,amount:prepared.amount};storage.setItem(key,JSON.stringify(record));
- try{const hash=await sendReviewedTransaction({transaction:tx,provider,sendTransaction,address,chainId:4663,source});record.hash=hashValid(hash)?hash:null;record.phase=record.hash?'submitted':'unknown';}catch(e){record.error=e.message;record.phase=e.code===4001||e.code==='ACTION_REJECTED'?'rejected':'unknown';}
- try{storage.setItem(key,JSON.stringify(record));}catch{record.storageWarning=true;}return record;
+ const record={phase:'awaiting-wallet',hash:null,configuration,quote:prepared.quote,amount:prepared.amount};await storage.setItem(key,JSON.stringify(record));
+ if(!isCurrent()){record.phase='rejected';await storage.setItem(key,JSON.stringify(record));throw Error('Wallet changed. Review again.');}try{const hash=await sendReviewedTransaction({transaction:tx,provider,sendTransaction,address,chainId:4663,source});record.hash=hashValid(hash)?hash:null;record.phase=record.hash?'submitted':'unknown';}catch(e){record.error=e.message;record.phase=e.code===4001||e.code==='ACTION_REJECTED'?'rejected':'unknown';}
+ try{await storage.setItem(key,JSON.stringify(record));}catch{record.storageWarning=true;}return record;
  });
 }
