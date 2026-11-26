@@ -67,7 +67,7 @@ In Dinn's November 22, 2026 NVDAc report, a holder with **12.15% of total supply
 | Which sampled Bankr stock pairs have the most liquidity or trading volume? | `base.stock-paired.discover` | `metric` set to `liquidity` or `volume` |
 | What do the curve, holders and available lock records show for this Pons token on Robinhood Chain? | `token.research` | Token contract in `address` |
 
-All six services use the same Base payment flow. Coverage depends on the token and available sources. Trading decisions stay with the buyer.
+These services use the same Base payment flow. Coverage depends on the token and available sources. Trading decisions stay with the buyer.
 
 ## Robinhood stock tokens and Pons stock pairs
 
