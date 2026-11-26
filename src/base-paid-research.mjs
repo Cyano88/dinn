@@ -228,9 +228,14 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
   const saved=await client.query(`INSERT INTO ${table}(payer,request_id,nonce,proof,request_hash,report,start_block,valid_before) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING RETURNING request_id`,[payer,requestId,nonce,proof,requestHash,result,startBlock.toString(),auth.validBefore]);
   if(!saved.rowCount)return retry();
   let receipt;
+  let settlementError;
   try{receipt=await server.settlePayment(payment,requirements,discovery);}
-  catch(error){if(!okx)throw error;}
+  catch(error){if(!okx)throw error;settlementError=error;}
   if(okx){
+   // Record only structured facilitator diagnostics. Never log its raw payload or buyer signature.
+   const code=settlementError?.errorReason??receipt?.errorReason??receipt?.code;
+   const reason=typeof code==='string'&&/^[a-z][a-z0-9_]{1,63}$/i.test(code)?code:null;
+   const facilitatorStatus=['pending','success','failed','timeout'].includes(receipt?.status)?receipt.status:null;
    // The facilitator can broadcast before its response or the RPC head reflects settlement.
    // Match this authorization and transfer on chain before releasing the stored report.
    for(let attempt=0;attempt<5;attempt++){
@@ -238,6 +243,11 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
     receipt=await recoverPaymentReceipt(state.chain,{start_block:startBlock,payer,nonce},requirements);
     if(receipt)break;
    }
+   if(!receipt)console.warn('OKX research settlement unconfirmed',{
+    request:hash(requestId).slice(0,16),reason,facilitatorStatus,
+    httpStatus:Number.isInteger(settlementError?.statusCode)?settlementError.statusCode:null,
+    facilitatorThrew:Boolean(settlementError)
+   });
   }
   if(!receipt?.success||(receipt.status&&receipt.status!=='success')||receipt.network!==network||receipt.payer?.toLowerCase()!==payer||!/^0x[0-9a-f]{64}$/i.test(receipt.transaction||''))return retry();
   await client.query(`UPDATE ${table} SET receipt=$3 WHERE payer=$1 AND request_id=$2`,[payer,requestId,receipt]);
