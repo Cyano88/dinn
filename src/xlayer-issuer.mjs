@@ -32,7 +32,20 @@ async function catalog(fetchImpl){
 
 export async function issuerStock(query,fetchImpl=fetch){
  const needle=query.toLowerCase();
- const assets=await catalog(fetchImpl);
+ // The issuer publishes a single-asset record for canonical stock tickers.
+ // Accept it only when both issuer symbols match, then verify the deployment below.
+ let direct;
+ if(/^[a-z][a-z0-9.-]{0,9}$/i.test(query)&&!(fetchImpl===fetch&&cachedCatalog?.expires>Date.now())){
+  const ticker=query.toUpperCase();
+  try{
+   const response=await fetchImpl(issuer+'/'+encodeURIComponent(ticker+'x'),{signal:AbortSignal.timeout(3000)});
+   if(response.ok){
+    const record=await response.json();
+    if(record.symbol===ticker+'x'&&record.underlyingSymbol===ticker&&Array.isArray(record.deployments))direct=record;
+   }
+  }catch{ /* Resolve aliases and unavailable individual records via the catalog. */ }
+ }
+ const assets=direct?[direct]:await catalog(fetchImpl);
  // Prefer exact underlying tickers before interpreting OKX's X prefix.
  const exact=assets.filter(row=>row.underlyingSymbol.toLowerCase()===needle);
  const matches=exact.length?exact:assets.filter(row=>[row.symbol,row.underlyingSymbol,'X'+row.underlyingSymbol,

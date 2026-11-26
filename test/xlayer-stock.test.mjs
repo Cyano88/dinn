@@ -46,3 +46,14 @@ test('wrong deployment, wrong chain and mismatched contract symbols cannot verif
  assert.equal((await issuerStock('NFLX',source({asset:{...stock,deployments:[{...stock.deployments[0],chainId:1}]}}))).identity,null);
  for(const options of [{chain:'0x1'},{symbol:'FAKE'}])await assert.rejects(xLayerTarget('NFLX',source(options)));
 });
+test('an exact issuer record skips pagination and still checks the chain and deployed symbol',async()=>{
+ const calls=[];
+ const read=async(url,opts)=>{
+  if(url.endsWith('/NFLXx'))return Response.json(stock);
+  assert.ok(!url.includes('api.xstocks.fi'));
+  calls.push(JSON.parse(opts.body).method);
+  return source()(url,opts);
+ };
+ assert.equal((await issuerStock('NFLX',read)).identity.blockNumber,'16');
+ assert.deepEqual(calls.sort(),['eth_blockNumber','eth_call','eth_chainId']);
+});
