@@ -43,14 +43,22 @@ export function launchStory(ticker, articles, checkedAt){
  })||null;
 }
 export const ideaInvite=ticker=>'Want a launch idea around this '+ticker+' story?';
+const panelQuestion='What new detail would belong in the next panel?';
+export function storyQuestion(article){
+ const title=article.title.trim();
+ if(/\bnvidia\b/i.test(title)&&/\bserver shipments? to Southeast Asia\b/i.test(title)&&/\b(?:halts?|pauses?|suspends?)\b/i.test(title))return 'Has NVIDIA confirmed the reported halt to server shipments to Southeast Asia or given a date for shipments to resume?';
+ return 'Has the company published an update confirming or correcting this report: ?'+title+'??';
+}
+export function currentConcept(concept,article){
+ return concept.question===panelQuestion?{...concept,question:storyQuestion(article)}:concept;
+}
 export function launchAngle(watch){
  const a=watch.ideaSource;
  if(!a)return null;
- if(watch.concept)return {...watch.concept,article:a};
- if(watch.concept)return {...watch.concept,article:a};
+ if(watch.concept)return {...currentConcept(watch.concept,a),article:a};
  const t=a.title;
  const ticker=watch.ticker;
- let name=ticker+' Front Page',activity='Ask everyone to draw a four-panel comic explaining this headline to someone seeing it for the first time. Pin the clearest strip next to the original story, then invite readers to draw the sequel when a new fact lands.',question='What new detail would belong in the next panel?';
+ let name=ticker+' Front Page',activity='Ask everyone to draw a four-panel comic explaining this headline to someone seeing it for the first time. Pin the clearest strip next to the original story, then invite readers to draw the sequel when a new fact lands.',question=storyQuestion(a);
  if(/\b(?:orbit\w*|space|satellite\w*)\b/i.test(t)&&/\bdata cent(?:er|re)s?\b/i.test(t)){
   name='Server Room in Space';
   activity='Give the community one design challenge: draw a mission patch for an AI data center in orbit. Let people vote for the patch they would put on the first server rack. Pin the winning design beside the original report.';
@@ -78,7 +86,7 @@ export const setupInvite='Would you like to set up your token on Robinhood Chain
 export const conceptLabel=idea=>idea.symbol?idea.name+' ($'+idea.symbol+')':idea.name;
 export function ideaReply(watch){
  const idea=launchAngle(watch);if(!idea)return 'Which stock story would you like to research first?';
- return '**'+conceptLabel(idea)+'**\n\n'+idea.activity+'\n\nInspired by '+label(idea.article)+'\n\n'+(watch.launchChainId===8453?'Would you like to check the Bankr launch terms on Base?':watch.launchChainId===4663?'Would you like to start your Pons launch setup on Robinhood Chain?':setupInvite);
+ return '**'+conceptLabel(idea)+'**\n\n'+idea.activity+'\n\nInspired by '+label(idea.article)+(watch.reference?'\n\nWhat to watch: '+idea.question:'')+'\n\n'+(watch.launchChainId===8453?'Would you like to check the Bankr launch terms on Base?':watch.launchChainId===4663?'Would you like to start your Pons launch setup on Robinhood Chain?':setupInvite);
 }
 export function ideaChoice(text,watch,last){
  if(!watch?.ideaSource)return null;
@@ -89,7 +97,7 @@ export function ideaChoice(text,watch,last){
  }
  if((last?.endsWith(ideaInvite(watch.ticker))||last===ideaReply(watch)||last?.endsWith('Or choose Pons, Bankr, or watch the story.'))&&/^what (?:could|can|should) (?:i|we) launch around (?:this|that)(?: story| finding| research)?$/.test(t))return 'idea';
  if(last?.endsWith(ideaInvite(watch.ticker))&&/^(?:can (?:i|you)|give me|show me|suggest|create|build).*\blaunch idea\b/.test(t))return 'idea';
- const currentIdea=last===ideaReply(watch)||last===setupInvite;
+ const currentIdea=last===ideaReply(watch)||last===setupInvite||Boolean(watch.reference&&last===ideaReply({...watch,reference:null}));
  const previousIdea=last?.endsWith(formerInvite);
  if((currentIdea||previousIdea)&&/^(?:yes|yep|yeah|sure|go ahead|yes please|let.s do it|start setup|use this idea)$/.test(t))return previousIdea?'launch':watch.launchChainId===8453?'bankr':watch.launchChainId===4663?'launch':'choose-network';
  if(currentIdea&&/^(?:no|no thanks|not now|maybe later)$/.test(t))return 'decline';

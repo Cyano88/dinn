@@ -1,4 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
+import {currentConcept} from '../public/stock-watch.js';
 import {Pool} from 'pg';
 import {discoverBaseLaunchStories,discoverLaunchStories} from './launch-story-discovery.mjs';
 import {chooseFormats,composeLore,loreKey,similarActivity,storyKey} from './creator-lore.mjs';
@@ -17,7 +18,9 @@ export async function saveBrief(brief,env,db){
 }
 export async function openBrief(id,env,db){
  if(!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id||''))return null;
- return (await (db??database(env)).query('SELECT reference,brief FROM dinn_agent_ideas WHERE id=$1',[id])).rows[0]||null;
+ const row=(await (db??database(env)).query('SELECT reference,brief FROM dinn_agent_ideas WHERE id=$1',[id])).rows[0];
+ if(!row)return null;
+ return {...row,brief:{...row.brief,concept:currentConcept(row.brief.concept,row.brief.article)}};
 }
 export async function linkVerifiedBrief(reference,item,env,connection){
  const db=connection??database(env);
@@ -29,7 +32,7 @@ export async function originalFinding(token,env,connection){
  const row=(await db.query('SELECT brief,transaction_hash FROM dinn_idea_launches JOIN dinn_agent_ideas USING(reference) WHERE token=$1',[token.toLowerCase()])).rows[0];
  if(!row)return null;
  const {article,checkedAt,concept}=row.brief;
- return {article,checkedAt,concept,transactionHash:row.transaction_hash};
+ return {article,checkedAt,concept:currentConcept(concept,article),transactionHash:row.transaction_hash};
 }
 async function priorIdeas(story,env){return (await database(env).query('SELECT * FROM public.dinn_prior_ideas($1)',[story])).rows;}
 export async function communityBrief({env,chainId,discover,generate=composeLore,prior=priorIdeas,save=saveBrief,fetchImpl=fetch}){

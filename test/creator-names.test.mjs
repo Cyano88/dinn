@@ -18,3 +18,14 @@ test('adding a ticker to a saved idea preserves its established name and activit
  const old={name:'Orbital Office Huddles',activity:'Draw a floating server rack.',question:'Has hardware shipped?'};
  assert.deepEqual(await nameSavedConcept('SPCX',old,reply('rack')),{...old,symbol:'RACK'});
 });
+
+test('a reopened marketplace brief watches the reported event and keeps the launch choice',()=>{
+ const story={...article,title:'Nvidia Halts Server Shipments to Southeast Asia: Report. The Stock Can’t Catch a Break.'};
+ const concept={name:'Paper Heat Sink',symbol:'COOL',activity:'Make a paper fan.',question:'What new detail would belong in the next panel?'};
+ const watch={ticker:'NVDA',ideaSource:story,concept,reference:'saved',launchChainId:8453};
+ const text=ideaReply(watch);
+ assert.match(text,/Has NVIDIA confirmed the reported halt to server shipments to Southeast Asia/);
+ assert.match(text,/Would you like to check the Bankr launch terms on Base\?$/);
+ assert.doesNotMatch(text,/next panel/);
+ assert.equal(concept.question,'What new detail would belong in the next panel?');
+});
