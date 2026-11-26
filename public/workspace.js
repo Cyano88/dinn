@@ -415,7 +415,11 @@ $('chat').onsubmit=async e=>{
   try{const result=await accountRequest('share-finding',entry,id);if(user===id&&epoch===run)recordSetupReply(text,'Published. [View and share the feed entry]('+location.origin+'/feedback#stock-'+result.id+')');}
   catch(error){if(user===id&&epoch===run)recordSetupReply(text,error.message);}return;
  }
- const choice=ideaChoice(text,watch,history.at(-1)?.content);
+ const bankrValuation=watch?.concept&&history.at(-1)?.content?.endsWith('enter a starting value in '+watch.ticker+'c, or say cancel.');
+ const valuationAmount=bankrValuation&&text.trim().match(/^(\d{1,18}(?:\.\d{1,18})?)(?:\s+([a-z0-9.]+))?$/i);
+ if(bankrValuation&&/^cancel[.!]?$/i.test(text)){recordSetupReply(text,'Base launch preview canceled.');$('prompt').value='';return;}
+ if(valuationAmount?.[2]&&valuationAmount[2].toLowerCase()!==(watch.ticker+'c').toLowerCase()){recordSetupReply(text,'To use these preview terms, enter a starting value in '+watch.ticker+'c, or say cancel.');$('prompt').value='';return;}
+ const choice=valuationAmount?'bankr':ideaChoice(text,watch,history.at(-1)?.content);
  if(choice&&choice!=='launch'){
   if(controller||setupBusy||launchBusy)return;
   let answer;
@@ -434,7 +438,7 @@ $('chat').onsubmit=async e=>{
    const owner=user,run=epoch;setupBusy=true;
    try{
     const idea=launchAngle(watch);
-    const preview=idea.symbol?await accountRequest('bankr-preview',{ticker:watch.ticker,name:idea.name,symbol:idea.symbol,launcher:account},owner):{message:'Ask for a named token idea to check its Base launch terms.'};
+    const preview=idea.symbol?await accountRequest('bankr-preview',{ticker:watch.ticker,name:idea.name,symbol:idea.symbol,launcher:account,...(valuationAmount?{startFdv:valuationAmount[1]}:{})},owner):{message:'Ask for a named token idea to check its Base launch terms.'};
     if(user!==owner||run!==epoch)return;answer=bankrBrief(watch,preview.message);
    }catch{if(user!==owner||run!==epoch)return;answer=bankrBrief(watch,'Bankr launch terms could not be checked. Try again shortly.');}
    finally{if(user===owner)setupBusy=false;}

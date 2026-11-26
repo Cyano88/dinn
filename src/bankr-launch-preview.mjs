@@ -1,5 +1,5 @@
 import {createLaunchClient} from '@bankr/launch-sdk';
-import {isAddress,zeroAddress} from 'viem';
+import {isAddress,parseUnits,zeroAddress} from 'viem';
 import {baseStockLookup} from './base-stock-data.mjs';
 import {serverRpcUrl} from './rpc-config.mjs';
 
@@ -12,7 +12,7 @@ function matchesDinnFee(terms,treasury){
   &&matches(terms.steadySharesWad)&&(terms.decay?.on===false||terms.decay?.on===true&&matches(terms.decay.sharesWad));
 }
 
-export async function bankrLaunchPreview({ticker,name,symbol,launcher},{env=process.env,lookup=baseStockLookup,client}={}){
+export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv},{env=process.env,lookup=baseStockLookup,client}={}){
  if(typeof ticker!=='string'||!/^[A-Z][A-Z0-9.-]{0,12}$/.test(ticker)||typeof name!=='string'||!name.trim()||name.length>40||typeof symbol!=='string'||!/^[A-Z0-9]{1,12}$/.test(symbol))throw Error('Invalid creator brief');
  client??=createLaunchClient({chain:'base',rpcUrl:serverRpcUrl(8453,env)});
  const state=await client.status();
@@ -28,9 +28,21 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher},{env=proc
  const launchpadId=BigInt(pad);
  if(!(await client.contracts().settings.padQuote(launchpadId,stock.address)).launches)return {status:'unsupported',message:'This launchpad does not currently allow '+stock.symbol+' as the pairing asset.'};
  if(!isAddress(launcher||''))return {status:'wallet',message:'Select your Base launch wallet to check this launch.'};
- const plan=await client.plan({launchpadId,launcher,feeRecipient:launcher,name,symbol,quote:stock.address});
+ const input={launchpadId,launcher,feeRecipient:launcher,name,symbol,quote:stock.address};
+ let plan;
+ try{
+  if(startFdv!==undefined){
+   if(typeof startFdv!=='string'||!/^\d{1,18}(?:\.\d{1,18})?$/.test(startFdv)||!Number.isInteger(stock.decimals)||(startFdv.split('.')[1]?.length||0)>stock.decimals)throw Error('Invalid starting value.');
+   input.startFdv=parseUnits(startFdv,stock.decimals);if(input.startFdv<=0n)throw Error('Invalid starting value.');
+   input.autoLpBps=0;
+  }
+  plan=await client.plan(input);
+ }catch(e){
+  if(startFdv===undefined&&e?.code==='INVALID_PARAMS'&&e.detail?.includes('set startFdv'))return {status:'valuation',message:'Bankr needs a starting value for the full token supply in '+stock.symbol+'. This preview turns off automatic liquidity additions. To try those terms, enter a starting value in '+stock.symbol+', or say cancel.'};
+  throw e;
+ }
  if(!matchesDinnFee(plan.resolved?.padTerms,treasury))return {status:'fee-mismatch',message:'The launchpad fee terms differ from the approved Dinn split. This launch preview is unavailable.'};
  const sim=await client.simulate(plan);
  if(sim.assumedApprovals||!isAddress(sim.token)||!/^0x[a-f0-9]{64}$/i.test(sim.poolId))throw Error('Incomplete launch simulation');
- return {status:'simulated',chainId:8453,launchpadId:pad,quote:stock.address,launcher,predictedToken:sim.token,poolId:sim.poolId,creatorFeeRecipient:launcher,dinnFeeRecipient:treasury,dinnShareBps,creatorSideShareBps:10000-dinnShareBps,message:'Launch on Base with Dinn, powered by Bankr.\nBankr simulated '+name+' ($'+symbol+') paired with '+stock.symbol+' on Base. After Bankr and any referral fee, Dinn receives 10% of the remaining trading fees. The other 90% goes to creator-side allocations. Creator fee wallet: '+launcher+'. This is a preview; nothing was signed or sent.'};
+ return {status:'simulated',chainId:8453,launchpadId:pad,quote:stock.address,launcher,predictedToken:sim.token,poolId:sim.poolId,creatorFeeRecipient:launcher,dinnFeeRecipient:treasury,dinnShareBps,creatorSideShareBps:10000-dinnShareBps,message:'Launch on Base with Dinn, powered by Bankr.\nBankr simulated '+name+' ($'+symbol+') paired with '+stock.symbol+' on Base. '+(startFdv?'Starting value for the full supply: '+startFdv+' '+stock.symbol+'. Automatic liquidity additions: off. ':'')+'After Bankr and any referral fee, Dinn receives 10% of the remaining trading fees. The other 90% goes to creator-side allocations. Creator fee wallet: '+launcher+'. This is a preview; nothing was signed or sent.'};
 }
