@@ -24,7 +24,7 @@ function supportedResearchJobSurface(brief,job){
  if(job.origin===null)return job.jobKind==='standard'&&job.isPrivate===false||job.jobKind==='instant'&&job.isPrivate===true;
  return job.origin==='a2a'&&job.jobKind==='instant'&&job.isPrivate===true;
 }
-const researchScope='Robinhood Chain: Pons launches and stock pairs by launch address, or Robinhood stock tokens by ticker or address. Base: Coinbase stock tokens by ticker or address, or Bankr stock pairs by launch address. Dinn provides research only.';
+const researchScope='Robinhood Chain: Pons launches and stock pairs by launch address, or Robinhood stock tokens by ticker or address. Base: Coinbase stock tokens by ticker or address, or Bankr stock pairs by launch address. For a fresh community concept, ask “Find a stock-inspired token launch idea for my community.” Dinn provides research only.';
 const scopeNotice='Dinn does not cover this request today. '+researchScope+' Research has not started. You can cancel this job.';
 export function outsideResearchScope(text){
  if(typeof text!=='string')return false;
@@ -46,6 +46,12 @@ function requestedResearchInput(row,job){
  if(outsideResearchScope(text))return null;
  const serviceLines=[...text.matchAll(/^\s*service\s*:\s*([a-z][a-z0-9.-]*)\s*$/gim)].map(match=>match[1].toLowerCase());
  if([...text.matchAll(/^\s*service\s*:/gim)].length!==serviceLines.length)return null;
+ // Launch ideas screen the Pons universe. Never silently substitute it for a named stock or a Base-only brief.
+ const ideaRequest=/^(?:please )?(?:find|suggest|propose) (?:me |us )?(?:a|one) stock[- ]inspired token launch idea for (?:my|our) community[.!?]?$/i;
+ const ideaLines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+ if(ideaLines.some(s=>ideaRequest.test(s)||/^service:\s*stock\.launch-idea$/i.test(s)) &&
+    ideaLines.every(s=>ideaRequest.test(s)||/^service:\s*stock\.launch-idea$/i.test(s)||/^hire: dinn labs$/i.test(s)) &&
+    job.isTestRun===false)return {service:'stock.launch-idea'};
  const services=[...new Set(serviceLines)];if(services.length>1||services.some(value=>!['pons.stock.research','pons.stock-paired.research','token.research','token.inspect','base.stock-paired.research','base.stock.research'].includes(value)))return null;
  const addresses=[...new Set(sources.flatMap(value=>typeof value==='string'?[...value.matchAll(TOKEN_RE)].map(match=>match[0].toLowerCase()):[]))];
  const chainLines=[...text.matchAll(/^\s*chain\s*:\s*(\d+)\s*$/gim)].map(match=>Number(match[1]));
@@ -274,7 +280,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     if(!input){await store.save(lock,{...lock.data,phase:'stopped-before-research'});await event('stopped-before-research');return {assignmentId:a.assignmentId,state:'stopped-before-research'};}
     assertLease();
     const {service,...reportInput}=input;
-    if(service!=='base.stock-paired.discover'){
+    if(!['base.stock-paired.discover','stock.launch-idea'].includes(service)){
      const buyer=current.latestMessage;
      const brief=[current.job?.description,buyer?.senderSide==='buyer'&&buyer.origin==='direct'&&!buyer.truncated?buyer.body:''].filter(Boolean).join(' ');
      const focus=requestedLockFocus(brief);
@@ -296,7 +302,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
     const firstSnapshot=refresh?data.firstSnapshot:currentSnapshot;
     const comparison=refresh&&service!=='base.stock-paired.discover'?refreshSummary(firstSnapshot,currentSnapshot)+'\n\n':'';
     data={firstSnapshot,...(data.guidedInput?{guidedInput:data.guidedInput}:{}),refresh,phase:'prepared',markdown:comparison+made.deliverableMarkdown,evidenceHash:made.evidence.sha256,service,tokenAddress:input.address,stockQuery:input.query,testRun:full.isTestRun===true,preparedAt:now().toISOString()};
-    if(feedbackEnabled && full.isPrivate===true && service!=='base.stock-paired.discover'){
+    if(feedbackEnabled && full.isPrivate===true && !['base.stock-paired.discover','stock.launch-idea'].includes(service)){
      const code=randomBytes(32).toString('hex');
      data.feedbackDigest=createHash('sha256').update(code).digest('hex');
      data.feedbackTarget=(service.startsWith('base.')?'8453':'4663')+':'+(made.result?.address||input.address||input.query);

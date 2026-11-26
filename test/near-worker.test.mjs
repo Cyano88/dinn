@@ -391,3 +391,31 @@ test('trade instructions are out of scope and trading evidence remains researcha
  assert.equal(outsideResearchScope('Sell pressure for a Pons launch'),false);
  assert.equal(outsideResearchScope('Research BONK on Solana'),true);
 });
+
+test('funded marketplace idea is actionable from the first brief',()=>{
+ const phrase='Find a stock-inspired token launch idea for my community.';
+ for(const description of [phrase,'Service: stock.launch-idea']){
+  const {row,fullJob}=fixture({description});
+  assert.deepEqual(eligibleNearResearchJob(row,fullJob,agentId,options),{service:'stock.launch-idea'});
+  fullJob.isTestRun=true;
+  assert.equal(eligibleNearResearchJob(row,fullJob,agentId,options),null);
+ }
+ for(const description of [phrase+' Only on Base.',phrase+' Buy it for me.']){
+  const {row,fullJob}=fixture({description});
+  assert.equal(eligibleNearResearchJob(row,fullJob,agentId,options),null);
+ }
+});
+
+test('a paid idea hire submits its report in one call without a ticker or follow-up',async()=>{
+ const description='Suggest one stock-inspired token launch idea for our community.';
+ const {row,fullJob}=fixture({description,title:description,jobKind:'instant',origin:'a2a',isPrivate:true,assignment:{escrowToken:'X402',escrowAmount:'0.1000'},latestMessage:{senderSide:'buyer',origin:'direct',body:description,truncated:false,attachments:[]}});
+ const calls=[],lock={data:null};
+ const store={acquire:async()=>lock,renew:async()=>{},save:async(_,v)=>{lock.data=v;},event:async()=>{},release:async()=>{}};
+ const client={job:async()=>fullJob,assignment:async()=>row,start:async()=>calls.push('start'),submit:async()=>{calls.push('submit');return {assignmentId,status:'accepted'};}};
+ const worker=createNearWorker({agentId,...options,minimumEscrow:'0.1000',store,client,wait:async()=>{},report:async(req,context)=>{
+  assert.equal(req.service,'stock.launch-idea');assert.deepEqual(req.input,{});assert.equal(context.paidMarketplaceHire,true);
+  return {status:'completed',result:{outcome:'wait'},deliverableMarkdown:'No qualifying story in the checked sample.',evidence:{sha256:'a'.repeat(64)}};
+ }});
+ assert.equal((await worker.process(row)).state,'accepted-payout-pending');
+ assert.deepEqual(calls,['start','submit']);
+});

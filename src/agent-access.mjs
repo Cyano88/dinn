@@ -20,7 +20,9 @@ import {researchBaseStock} from './base-stock-research.mjs';
 import {robinhoodStock} from './robinhood-stock.mjs';
 import {purchaseUsdReference} from './purchase-usd.mjs';
 const account={type:'string',pattern:'^0x[0-9a-fA-F]{40}$'};
+import {communityBrief,ideaService,originalFinding} from './agent-launch-idea.mjs';
 export const agentServices={
+ [ideaService]:{description:'Find a stock-inspired token launch idea for my community. Powered by Dinn Research. Paid marketplace buyers receive one sourced idea from the approved Pons stock pairs checked, or a dated wait finding.',required:[],properties:{}},
  'pons.stock.research':{description:'Research a Robinhood stock token by exact ticker or chain 4663 address, including available contract, holder and lock evidence.',required:['query'],properties:{query:{type:'string',pattern:'^(?:0x[0-9a-fA-F]{40}|[a-zA-Z][a-zA-Z0-9.-]{0,19})$'}}},
  'pons.stock-paired.research':{description:'Research a Pons launch by address. Match its onchain pairing asset to the Robinhood stock registry and report launch activity and available lock schedules.',required:['address'],properties:{address:account}},
  'base.stock-paired.discover':{description:'Compare a rotating sample of verified Bankr stock pairs on Base by reported USD liquidity or 24-hour USD volume.',required:['metric'],properties:{metric:{type:'string',enum:['liquidity','volume']}}},
@@ -219,7 +221,12 @@ export async function agentAccessRequest(request,dependencies={}){
  const missing=validateAgentRequest(request),base={schemaVersion:'5',requestId:request.requestId||randomUUID(),service:request.service,broadcast:false,charged:false,ownershipVerified:false};
  if(missing.length)return {...base,status:'needs_input',missingFields:missing,next:{type:'collect_fields',message:'Supply the missing fields explicitly. No wallet or financial choices were inferred.'}};
  const {focus,...i}=request.input;let result,deliverable;
- if(request.service==='base.stock-paired.discover'){result=await (dependencies.discoverStockPairs||discoverStockPairs)(i.metric,{env});deliverable=discoveryMessage(result);}
+ if(request.service===ideaService){
+  if(dependencies.paidMarketplaceHire!==true && dependencies.paidResearch!==true)throw Error('This creator brief requires a funded marketplace request.');
+  const brief=await communityBrief({env,...dependencies.ideaDependencies});
+  result=brief.result;deliverable=brief.markdown;
+ }
+ else if(request.service==='base.stock-paired.discover'){result=await (dependencies.discoverStockPairs||discoverStockPairs)(i.metric,{env});deliverable=discoveryMessage(result);}
  else if(['pons.stock.research','pons.stock-paired.research'].includes(request.service)){
   const paired=request.service==='pons.stock-paired.research';
   const inspect=address=>agentAccessRequest({service:'token.research',input:{address}},dependencies);
@@ -279,6 +286,11 @@ export async function agentAccessRequest(request,dependencies={}){
   const quote=await (dependencies.quote||robinhoodRouteQuote)({...i,kind:request.service==='swap.quote'?'swap':'bridge'},{env});
   const stockToken=/^0x[0-9a-f]{40}$/i.test(quote.baseStockPair?.tokenAddress||'')?quote.baseStockPair.tokenAddress.toLowerCase():null;
   result={kind:quote.kind,chainId:quote.chainId,destinationChainId:quote.destinationChainId,account:quote.account,amount:quote.amount,asset:{address:quote.asset.address,symbol:quote.asset.symbol,decimals:quote.asset.decimals},outputAsset:{address:quote.outputAsset.address,symbol:quote.outputAsset.symbol,decimals:quote.outputAsset.decimals},expectedAmount:quote.expectedAmount,minimumAmount:quote.minimumAmount,fee:quote.fee,impactPercent:quote.impactPercent,provider:quote.provider,expiresAt:quote.quoteExpiresAt||quote.expiresAt,...(quote.quoteBlockNumber?{quoteBlockNumber:quote.quoteBlockNumber}:{}),...(stockToken?{baseStockPair:{tokenAddress:stockToken,stockAddress:quote.baseStockPair.stockAddress,bankrPoolId:quote.baseStockPair.bankrPoolId,checkedAt:quote.baseStockPair.checkedAt,classification:quote.baseStockPair.classification},bankrTradeUrl:'https://bankr.bot/trade/'+stockToken,executionNote:'Reference quote only. Bankr must provide its executable quote and verify location eligibility.'}:{})};
+ }
+ if(request.service==='token.research' && result.protocol?.name==='Pons v2' && env.DATABASE_URL){
+  try{const original=await originalFinding(i.address,env);
+   if(original){result.originalResearch=original;deliverable+='\n\nOriginal Dinn research: '+safeLine(original.article.title)+' · '+original.article.url+' · '+original.checkedAt;}
+  }catch{result.originalResearchCoverage='unavailable';}
  }
  if(result.equityContext)deliverable=[deliverable,'## Underlying U.S. stock',equityMessage(result.equityContext)].join('\n\n');
  deliverable=leadWithLockFinding(result,focus,deliverable);

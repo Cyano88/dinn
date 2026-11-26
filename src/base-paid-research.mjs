@@ -15,6 +15,7 @@ const network='eip155:8453';
 const usdc='0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const path='/api/paid/research';
 const examples={
+ 'stock.launch-idea':{},
  'pons.stock.research':{query:'NVDA'},
  'pons.stock-paired.research':{address:'0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4'},
  'base.stock.research':{query:'NVDAc'},
@@ -25,7 +26,7 @@ const examples={
 const inputSchema={type:'object',additionalProperties:false,required:['requestId','service','input'],
  properties:{
   requestId:{type:'string',pattern:'^[A-Za-z0-9._-]{1,100}$',description:'Choose an ID for this report. Reuse it when retrying the same payment.',examples:['research-001']},
-  service:{type:'string',enum:Object.keys(examples),description:'Choose Base stock research, Bankr stock-pair research or discovery, or Robinhood stock, Pons stock-pair or general Pons launch research.',examples:['base.stock.research']},
+  service:{type:'string',enum:Object.keys(examples),description:'Choose a stock-inspired community launch idea (stock.launch-idea with empty input), Base stock research, Bankr stock-pair research or discovery, or Robinhood stock, Pons stock-pair or general Pons launch research.',examples:['base.stock.research']},
   input:{type:'object',description:'For a Base or Robinhood stock, send its ticker as query. For a Bankr or Pons token report, send its contract address as address. For discovery, send metric as liquidity or volume.',examples:[examples['base.stock.research']]}
  },
  oneOf:Object.keys(examples).map(service=>({properties:{service:{const:service},input:{
@@ -81,7 +82,7 @@ async function initialize(env){
   url:origin.origin+path,mimeType:'application/json',serviceName:'Dinn Labs',
   iconUrl:new URL('/brand/dinn-icon.png',origin).href,
   tags:['Token research','Tokenized stocks','Base','Bankr','Pons'],
-  description:'Research Coinbase tokenized stocks on Base: verify identity, dated reference values, liquidity and holder evidence. Discover Bankr stock-paired launches or check a launch for creator vesting, locked amounts, cliff and end dates. Research Pons launches on Robinhood Chain for curve activity, fees, holder trades and supported PinkLock unlock dates or vesting schedules. Base reports check PinkLock V2, legacy UNCX and Clanker v4 vaults for each verified asset. Each call buys one sourced report.'
+  description:'Find a stock-inspired token launch idea for my community, powered by Dinn Research. Screen approved Pons stock pairs for a recent story and get a creator brief or a dated wait finding. Research Coinbase tokenized stocks on Base: verify identity, dated reference values, liquidity and holder evidence. Discover Bankr stock-paired launches or check a launch for creator vesting, locked amounts, cliff and end dates. Research Pons launches on Robinhood Chain for curve activity, fees, holder trades and supported PinkLock unlock dates or vesting schedules. Base reports check PinkLock V2, legacy UNCX and Clanker v4 vaults for each verified asset. Each call buys one sourced report.'
  };
  const facilitator=new HTTPFacilitatorClient(createFacilitatorConfig(env.CDP_API_KEY_ID,env.CDP_API_KEY_SECRET));
  const server=new x402ResourceServer(facilitator).register(network,new ExactEvmScheme());
@@ -160,7 +161,10 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
   }
   const verification=await server.verifyPayment(payment,requirements,extension);
   if(!verification.isValid||verification.payer?.toLowerCase()!==payer)return problem(402,'Payment authorization was not verified.');
-  const result=await report(request,{paidResearch:true,env});
+  let result;
+  try{result=await report(request,{paidResearch:true,env});}
+  catch(error){if(service!=='stock.launch-idea')throw error;return problem(503,'The sourced idea brief is unavailable. No settlement was requested.');}
+  if(service==='stock.launch-idea' && !['idea','wait'].includes(result?.result?.outcome))return problem(422,'No supported idea brief was delivered. No settlement was requested.');
   if(result.status!=='completed'||service==='token.research'&&result.result?.protocol?.name!=='Pons v2'||
     service==='pons.stock.research'&&(result.result?.classification!=='verified-robinhood-stock'||![result.result?.stock?.address,result.result?.stock?.symbol].some(v=>v?.toLowerCase()===input.query.toLowerCase()))||
     service==='pons.stock-paired.research'&&(result.result?.classification!=='verified-pons-stock-pair'||result.result?.address?.toLowerCase()!==input.address.toLowerCase()||result.result?.ponsState?.pair?.address?.toLowerCase()!==result.result?.stock?.address?.toLowerCase())||

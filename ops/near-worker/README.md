@@ -59,3 +59,7 @@ The worker polls the Agent Market API every 45 seconds; this is the sole assignm
 ## Rollback
 
 Stop and disable only `dinn-near-worker.service`. Do not restart or modify PolyDesk, Pocket Concierge, or perps-agent services during Dinn worker maintenance.
+
+### Community idea briefs
+
+Before enabling stock.launch-idea, apply migrations/20261126_agent_ideas.sql on Dinn’s shared Render Postgres database as its owner. Render and the worker must use the same database. The worker needs its existing research providers and configured 0G inference (OG_MODEL, OG_API_KEY, and OG_BASE_URL if applicable). No signing keys are required. Funding on Base or in NEAR Market buys one read-only brief. A quiet screen is a paid wait finding; provider failures do not qualify as a report. Verify the owner handoff with a fresh hire before changing marketplace listing copy.

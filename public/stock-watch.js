@@ -136,11 +136,11 @@ export function researchDescription(watch){
  return a.title.slice(0,500-citation.length)+citation;
 }
 
-export function ideaDescription(i){
+export function ideaDescription(i,reference){
  const source=i.article.source||'Source';
  const date=i.article.publishedAt.slice(0,10);
  const note=' ('+source+', '+date+')';
- const ending=i.article.url.length<200?note+' '+i.article.url:note;
+ const ending=(i.article.url.length<200?note+' '+i.article.url:note)+(/^[a-f0-9]{24}$/.test(reference||'')?' · Dinn research '+reference:'');
  return (i.activity+' Starting point: '+i.article.title).slice(0,500-ending.length)+ending;
 }
 

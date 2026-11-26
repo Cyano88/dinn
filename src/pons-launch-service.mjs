@@ -1,3 +1,4 @@
+import {linkVerifiedBrief} from './agent-launch-idea.mjs';
 import {getClient,PONS_FACTORY,snapshot} from './pons.mjs';
 import {factoryAbi} from './pons-fee-abi.mjs';
 import {blockscoutRead} from './blockscout.mjs';
@@ -89,6 +90,8 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
   if(!validAddress(configuration.account)||!Number.isFinite(Number(result.blockTimestamp)))return {status:400,body:{error:'Verified launch details are incomplete.'}};
   const item={website:configuration.socials?.website||'',hash:data.hash,token:result.token,curve:result.curve,account:configuration.account,name:configuration.name,symbol:configuration.symbol,logo:configuration.logo||'',pairToken:configuration.pairToken,pairSymbol:configuration.pairToken.toLowerCase()==='0x'+'0'.repeat(40)?'ETH':'Pair token',blockNumber:Number(result.blockNumber),launchedAtSeconds:Number(result.blockTimestamp)};
   const saved=await (await getStore()).put(owner,item);
+  const reference=configuration.description?.match(/ · Dinn research ([a-f0-9]{24})$/)?.[1];
+  if(reference)await linkVerifiedBrief(reference,item,env);
   return {status:200,body:{saved:true,item:saved,source:'Dinn verified Pons launch receipt'}};
  }};
 }

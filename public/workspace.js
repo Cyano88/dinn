@@ -391,6 +391,21 @@ $('chat').onsubmit=async e=>{
   try{const {getAccessToken}=await import('/auth/entry.js');const result=await feedbackChat({...feedback,reply},await getAccessToken());if(epoch!==feedbackEpoch||user!==feedbackOwner)return;await accountRecords.setItem(key('research-feedback'),JSON.stringify({...feedback,done:true}));$('prompt').value='';recordSetupReply(text,result.published?'Published to Feedback. To remove it, say "remove my latest feedback".':'Feedback saved for the Dinn team. Thank you.');}
   catch{if(epoch===feedbackEpoch)say('Your feedback could not be saved. Your reply is ready to retry.');}return;
  }
+ const imported=text.toLowerCase()==='open my marketplace launch idea' && /^[a-f0-9-]{36}$/i.test(ideaTarget||'');
+ if(imported){
+  if(setupBusy||controller||launchBusy)return;
+  const owner=user,generation=epoch;setupBusy=true;
+  try{
+   const {brief:idea,reference}=await accountRequest('open-idea',{id:ideaTarget},owner);
+   if(user!==owner||epoch!==generation)return;
+   const ticker=idea.asset.symbol,current={ticker,checkedAt:idea.checkedAt,articles:[idea.article],sources:[]};
+   const next={ticker,original:current,latest:current,question:'',ideaSource:idea.article,concept:idea.concept,reference};
+   await accountRecords.setItem(key('stock-watch'),JSON.stringify(next));
+   if(user===owner&&epoch===generation){recordSetupReply('Open my marketplace launch idea',ideaReply(next));$('prompt').value='';}
+  }catch{if(user===owner&&epoch===generation)say('I could not open that launch brief. Retry opening it.');}
+  finally{if(user===owner)setupBusy=false;}
+  return;
+ }
  let watch=null;
  try{watch=JSON.parse(read('stock-watch')||'null');}catch{}
  if(history.at(-1)?.content?.startsWith('I found no fresh story with a verified Pons pair')&&/^(?:launch this pair|research deeper|watch this story)[.!?]?$/i.test(text)){
@@ -474,7 +489,7 @@ $('chat').onsubmit=async e=>{
    if(pair.chainId!==4663||pair.symbol!==watch.ticker||pair.address?.toLowerCase()!==candidate.address.toLowerCase())throw Error('The pair identity did not match.');
    if(savedSetupWasLaunched())startFreshTokenSetup();
    const idea=watch.concept||choice==='launch'?launchAngle(watch):null;
-   const description=idea?ideaDescription(idea):researchDescription(watch);
+   const description=idea?ideaDescription(idea,watch.reference):researchDescription(watch);
    const identity=idea?.symbol?{name:idea.name,symbol:idea.symbol}:{};
    const nextField=identity.symbol?(description?'configId':'description'):'name';
    applyLaunchDraft({active:true,brief:{...identity,...(description?{description}:{})},settings:{pairToken:candidate.address},nextField,logo:'',pair});
@@ -1064,6 +1079,7 @@ function renderAgentAccess(manifest,checking=false){
    meta.append(link);detail.append(title,intro,meta);
    for(const [title,body] of [
     ['Stock tokens on Base','Look up a Coinbase stock token by ticker or address. Check its identity, dated reference price, trading activity, holders and available lock records.'],
+    ['Find a stock-inspired token launch idea for my community','Powered by Dinn Research. Get a sourced story, a token concept and a brief to open in Dinn. The search checks approved Pons stock pairs. Quiet coverage returns a reason to wait.'],
     ['Bankr stock pairs','Research a launch by address to check its paired stock, liquidity, trading activity and creator vesting. Or ask for a shortlist ranked by liquidity or trading volume from the launches Dinn checks.'],
     ['Stock tokens on Robinhood Chain','Look up a stock token such as NVDA. Check its identity, available holder data and reported lock schedules.'],
     ['Pons launches and stock pairs','Send a launch address to check its age, curve progress, trading volume, fees and sampled holder activity. For a stock pair, Dinn checks which stock backs the pair and reports available unlock dates for each token separately.']
@@ -1109,6 +1125,10 @@ void (async()=>{const {mountRobinhoodWallet}=await import('/pons/entry.js');wall
 launchesView=mountDinnLaunches({host:$('launches-view'),getAccessToken:async()=>{const {getAccessToken}=await import('/auth/entry.js');return getAccessToken();},onStart:()=>{view('assistant');submitChoice('create a token');},onResearch:address=>{selectedToken=address;view('assistant');submitChoice('Research '+address+' on Robinhood Chain');}});
 let launchesOwner=user;window.addEventListener('launchflow:auth',event=>{const detail=event.detail||{},next=detail.authenticated?(detail.userId||detail.address):null;if(next!==launchesOwner){launchesView?.reset();launchesOwner=next;}});
 
+const ideaTarget=new URLSearchParams(location.hash.slice(1)).get('idea');
+if(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(ideaTarget||'')&&!$('prompt').value){
+ $('prompt').value='Open my marketplace launch idea';$('prompt').dispatchEvent(new Event('input'));
+}
 const researchTarget=new URLSearchParams(location.search).get('research');
 if(/^0x[0-9a-f]{40}$/i.test(researchTarget||'')&&!$('prompt').value){
  $('prompt').value='Research '+researchTarget+' on Robinhood Chain';$('prompt').dispatchEvent(new Event('input'));

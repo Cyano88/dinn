@@ -10,6 +10,7 @@ const usdc='0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',network='eip155:8453';
 const resource={url:'https://example.test/api/paid/research'};
 const terms={scheme:'exact',network,asset:usdc,amount:'100000',payTo,maxTimeoutSeconds:180,extra:{}};
 const services=[
+ ['stock.launch-idea',{},{outcome:'wait'}],
  ['pons.stock.research',{query:'NVDA'},{classification:'verified-robinhood-stock',stock:{symbol:'NVDA'}}],
  ['pons.stock-paired.research',{address:payer},{address:payer,classification:'verified-pons-stock-pair',ponsState:{pair:{address:payTo}},stock:{address:payTo}}],
  ['base.stock.research',{query:'NVDAc'},{identity:{status:'matched',symbol:'NVDAc'}}],

@@ -6,6 +6,10 @@ Buying a report on Agentic.Market? [Start with the Base buyer quickstart](/agent
 
 Discover `/.well-known/dinn.json` and `/api/agent/schema`. The old `/.well-known/launchflow.json` URL remains an alias. Send JSON to `POST /api/agent/request` with `{service,input,requestId?}`.
 
+## Community launch ideas on the marketplaces
+
+**Find a stock-inspired token launch idea for my community.** Powered by Dinn Research. Send that sentence as the NEAR hire brief, or request `stock.launch-idea` with empty input on Base. This paid service screens approved Robinhood Chain stock pairs for a sourced story from the past 48 hours. It returns one creator brief or a dated wait finding. Give the owner the Open in Dinn link to continue with the same concept. An account is required to import the brief. The link can be forwarded. The hire does not authorize a launch.
+
 ## Current read-only services
 
 Provider-cost boundary: GoldRush holder queries run for signed-in Dinn chat and verified, paid NEAR marketplace hires when the server key is configured. Free public API previews, zero-cost marketplace test runs and `/api/tools/run` skip those queries; reports label holder coverage as not requested. Public chain and market references remain available.

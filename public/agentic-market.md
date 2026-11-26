@@ -4,6 +4,14 @@ Research **Coinbase tokenized stocks on Base** by ticker, name or contract addre
 
 Choose a research example below for your agent. Send a JSON POST to `https://dinn-pasy.onrender.com/api/paid/research` with `Content-Type: application/json` and a fresh request ID.
 
+## Find a stock-inspired token launch idea for my community
+
+Powered by Dinn Research. One funded request screens recent news for approved Pons stock pairs on Robinhood Chain. A qualifying story comes with its source, date, a proposed token name and ticker, a community activity, and a link that opens the same brief in Dinn. A checked but quiet market returns a paid **wait** finding. Source or inference failures do not settle a payment. The owner reviews launch terms in Dinn.
+
+```json
+{"service":"stock.launch-idea","requestId":"community-idea-001","input":{}}
+```
+
 ## Research a Coinbase tokenized stock on Base
 
 > Research NVDAc on Base with Dinn Labs. Verify its token address, show the Coinbase reference value and its timestamp if available, and compare that with trading activity in its most liquid reported pool. Show me the quote before paying. My maximum is 0.10 USDC for this report.
