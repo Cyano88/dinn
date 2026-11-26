@@ -23,7 +23,7 @@ const examples={
  'xlayer.stock.research':{query:'COIN'},
  'stock.launch-idea':{chainId:8453},
  'pons.stock.research':{query:'NVDA'},
- 'pons.stock-paired.research':{address:'0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4'},
+ 'pons.stock-paired.research':{address:'0x451b42a15100c340ca12f7c66de06fac5ea2d751'},
  'base.stock.research':{query:'NVDAc'},
  'base.stock-paired.research':{address:'0x8f277eee1254d3319355e76a8c6594e7d3e2eba3'},
  'base.stock-paired.discover':{metric:'liquidity'},
