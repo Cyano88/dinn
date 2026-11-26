@@ -1,3 +1,4 @@
+import {researchXLayerStock,xLayerSummary,launchGuidance} from './xlayer-stock.mjs';
 import {comparisonMessage} from './base-stock-comparison.mjs';
 import {equityContext,equityMessage} from './equity-context.mjs';
 import {leadWithLockFinding} from './research-finding.mjs';
@@ -22,6 +23,7 @@ import {purchaseUsdReference} from './purchase-usd.mjs';
 const account={type:'string',pattern:'^0x[0-9a-fA-F]{40}$'};
 import {communityBrief,ideaService,originalFinding} from './agent-launch-idea.mjs';
 export const agentServices={
+ 'xlayer.stock.research':{description:'Tokenized Research on X Layer. Match a stock to its issuer-listed X Layer contract, check OKXICE pools separately, and read available company news and filings.',required:['query'],properties:{query:{type:'string',pattern:'^[A-Za-z][A-Za-z0-9 .-]{0,59}$'}}},
  [ideaService]:{description:'Find a stock-inspired token launch idea for my community. Powered by Dinn Research. Paid marketplace buyers receive one sourced idea from eligible stock pairs on the requested chain, or a dated wait finding. Ask the owner which chain before hiring.',required:['chainId'],properties:{chainId:{type:'integer',enum:[8453,4663]}}},
  'pons.stock.research':{description:'Research a Robinhood stock token by exact ticker or chain 4663 address, including available contract, holder and lock evidence.',required:['query'],properties:{query:{type:'string',pattern:'^(?:0x[0-9a-fA-F]{40}|[a-zA-Z][a-zA-Z0-9.-]{0,19})$'}}},
  'pons.stock-paired.research':{description:'Research a Pons launch by address. Match its onchain pairing asset to the Robinhood stock registry and report launch activity and available lock schedules.',required:['address'],properties:{address:account}},
@@ -261,6 +263,9 @@ export async function agentAccessRequest(request,dependencies={}){
   if(result.classification==='verified-bankr-stock-paired-token'&&(!same(result.stock?.address,result.launch?.pairedStock?.address)||result.verification?.status!=='verified'||typeof result.launch?.poolId!=='string'||!/^0x[0-9a-f]{64}$/i.test(result.launch.poolId)))throw Error('Verified Base stock-pair evidence is internally inconsistent.');
   result={...result,tradeHandoff:baseQuoteHandoff(result)};
   deliverable=baseStockResearchDeliverable(result);
+ }else if(request.service==='xlayer.stock.research'){
+  result=await researchXLayerStock(i.query,{fetchImpl:dependencies.fetchImpl,env});
+  deliverable=xLayerSummary(result);
  }else if(request.service==='base.stock.research'){
   result=await (dependencies.baseStockAssetResearch||researchBaseStock)({query:i.query},{fetchImpl:dependencies.fetchImpl||fetch,env,holderSnapshotEnabled:dependencies.paidMarketplaceHire===true||dependencies.paidResearch===true});
   if(!result||result.chainId!==8453||!Number.isFinite(Date.parse(result.checkedAt))||!/^0x[0-9a-f]{40}$/i.test(result.address||'')||!['matched','mismatch'].includes(result.identity?.status)||result.contract?.address?.toLowerCase()!==result.address.toLowerCase()||!/^\d+$/.test(result.contract?.blockNumber||'')||!/^0x[0-9a-f]{64}$/i.test(result.contract?.blockHash||''))throw Error('Coinbase stock evidence does not match the requested Base token or checked block.');
@@ -293,6 +298,7 @@ export async function agentAccessRequest(request,dependencies={}){
   }catch{result.originalResearchCoverage='unavailable';}
  }
  if(result.equityContext)deliverable=[deliverable,'## Underlying U.S. stock',equityMessage(result.equityContext)].join('\n\n');
+ if(request.service==='xlayer.stock.research')deliverable+='\n\n'+launchGuidance(result.launchOptions);
  deliverable=leadWithLockFinding(result,focus,deliverable);
  const evidence={service:request.service,input:request.input,result,...(deliverable?{deliverableMarkdown:deliverable}:{})};
  const content=JSON.stringify(evidence),sha256=createHash('sha256').update(content).digest('hex');

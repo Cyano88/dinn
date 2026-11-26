@@ -1,3 +1,4 @@
+import {xLayerTarget,stockCode,stockLaunchOptions,launchGuidance} from './xlayer-stock.mjs';
 import {createHash} from 'node:crypto';
 import {Pool} from 'pg';
 import {createPublicClient,decodeEventLog,http,isAddress,parseAbiItem,zeroAddress} from 'viem';
@@ -15,6 +16,7 @@ const network='eip155:8453';
 const usdc='0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const path='/api/paid/research';
 const examples={
+ 'xlayer.stock.research':{query:'COIN'},
  'stock.launch-idea':{chainId:8453},
  'pons.stock.research':{query:'NVDA'},
  'pons.stock-paired.research':{address:'0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4'},
@@ -26,8 +28,8 @@ const examples={
 const inputSchema={type:'object',additionalProperties:false,required:['requestId','service','input'],
  properties:{
   requestId:{type:'string',pattern:'^[A-Za-z0-9._-]{1,100}$',description:'Choose an ID for this report. Reuse it when retrying the same payment.',examples:['research-001']},
-  service:{type:'string',enum:Object.keys(examples),description:'Choose a stock-inspired community launch idea (stock.launch-idea with chainId 8453 for Base or 4663 for Robinhood Chain), Base stock research, Bankr stock-pair research or discovery, or Robinhood stock, Pons stock-pair or general Pons launch research.',examples:['base.stock.research']},
-  input:{type:'object',description:'For a Base or Robinhood stock, send its ticker as query. For a Bankr or Pons token report, send its contract address as address. For discovery, send metric as liquidity or volume.',examples:[examples['base.stock.research']]}
+  service:{type:'string',enum:Object.keys(examples),description:'Choose X Layer tokenized stock research (xlayer.stock.research), a stock-inspired community launch idea (stock.launch-idea with chainId 8453 for Base or 4663 for Robinhood Chain), Base stock research, Bankr stock-pair research or discovery, or Robinhood stock, Pons stock-pair or general Pons launch research.',examples:['base.stock.research']},
+  input:{type:'object',description:'For an X Layer, Base or Robinhood stock, send its ticker as query. For a Bankr or Pons token report, send its contract address as address. For discovery, send metric as liquidity or volume.',examples:[examples['base.stock.research']]}
  },
  oneOf:Object.keys(examples).map(service=>({properties:{service:{const:service},input:{
   type:'object',additionalProperties:false,required:agentServices[service].required,properties:agentServices[service].properties
@@ -81,8 +83,8 @@ async function initialize(env){
  const resource={
   url:origin.origin+path,mimeType:'application/json',serviceName:'Dinn Labs',
   iconUrl:new URL('/brand/dinn-icon.png',origin).href,
-  tags:['Token research','Tokenized stocks','Base','Bankr','Pons'],
-  description:'Research tokenized stocks and stock-paired tokens on Base and Robinhood Chain. Read dated company news and available SEC filings alongside market activity, holder data and lock schedules for supported assets. Ask for a stock-inspired community launch idea on either chain and get a sourced brief or a dated wait finding. One report per call.'
+  tags:['Token research','Tokenized stocks','Base','Bankr','Pons','X Layer'],
+  description:'Research tokenized stocks and stock-paired tokens on Base and Robinhood Chain. Verify X Layer xStocks deployments and check OKXICE pools independently. Read dated company news and available SEC filings alongside market activity, holder data and lock schedules for supported assets. Ask for a stock-inspired community launch idea on either chain and get a sourced brief or a dated wait finding. One report per call.'
  };
  const facilitator=new HTTPFacilitatorClient(createFacilitatorConfig(env.CDP_API_KEY_ID,env.CDP_API_KEY_SECRET));
  const server=new x402ResourceServer(facilitator).register(network,new ExactEvmScheme());
@@ -112,7 +114,7 @@ async function paidStockTarget(input,lookup){
  if(matches.length!==1||!isAddress(matches[0].address||''))return {error:problem(422,'Use a company name, exact stock ticker or Base contract address that identifies one Coinbase stock token.')};
  return {address:matches[0].address.toLowerCase()};
 }
-export async function paidResearch(request,signature,{env=process.env,lookup=baseStockLookup,report=agentAccessRequest,runtime}={}){
+export async function paidResearch(request,signature,{env=process.env,lookup=baseStockLookup,xlayerLookup=xLayerTarget,launchLookup=stockLaunchOptions,report=agentAccessRequest,runtime}={}){
  if(!runtime&&!paidResearchConfigured(env))return problem(503,'Direct Base payments are not enabled.');
  if(!Object.hasOwn(examples,request?.service)||!request.requestId)return problem(400,'Choose a supported research service and supply a stable requestId.');
  // Some x402 buyers send each CLI parameter as a string, including nested input.
@@ -125,6 +127,16 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
  const state=runtime||await (setup??=initialize(env).catch(error=>{setup=undefined;throw error;}));
  const {server,requirements,resource,db}=state;
  if(!signature){
+  if(service==='xlayer.stock.research'){
+   try{stockCode(input.query);}catch{return problem(422,'Use an exact company name or stock ticker.');}
+   try{
+    const directory=await xlayerLookup(input.query);
+    if(!directory.pools.length&&!directory.issuerIdentity){
+     const launchOptions=await launchLookup(directory.symbol,{env});
+     return reply(422,{charged:false,symbol:directory.symbol,source:directory.source,error:'No matching X Layer deployment or OKXICE pool was found in the sources checked.',launchOptions,guidance:launchGuidance(launchOptions)});
+    }
+   }catch{return problem(503,'X Layer stock sources could not be verified.');}
+  }
   if(service==='base.stock.research'){
    const target=await paidStockTarget(input,lookup);
    if(target.error)return target.error;
@@ -179,7 +191,8 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
   try{result=await report(reportRequest,{paidResearch:true,env});}
   catch(error){if(service!=='stock.launch-idea')throw error;return problem(503,'The sourced idea brief is unavailable. No settlement was requested.');}
   if(service==='stock.launch-idea' && (!['idea','wait'].includes(result?.result?.outcome)||result?.result?.chainId!==input.chainId))return problem(422,'No supported idea brief was delivered. No settlement was requested.');
-  if(result.status!=='completed'||service==='token.research'&&result.result?.protocol?.name!=='Pons v2'||
+  if(result.status!=='completed'||
+    service==='xlayer.stock.research'&&(result.result?.chainId!==196||result.result.query!==input.query||(!result.result.pools?.length&&result.result.issuerIdentity?.status!=='verified'))||service==='token.research'&&result.result?.protocol?.name!=='Pons v2'||
     service==='pons.stock.research'&&(result.result?.classification!=='verified-robinhood-stock'||![result.result?.stock?.address,result.result?.stock?.symbol].some(v=>v?.toLowerCase()===input.query.toLowerCase()))||
     service==='pons.stock-paired.research'&&(result.result?.classification!=='verified-pons-stock-pair'||result.result?.address?.toLowerCase()!==input.address.toLowerCase()||result.result?.ponsState?.pair?.address?.toLowerCase()!==result.result?.stock?.address?.toLowerCase())||
     service==='base.stock.research'&&(result.result?.identity?.status!=='matched'||result.result.address?.toLowerCase()!==target.address)||

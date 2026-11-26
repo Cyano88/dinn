@@ -10,6 +10,7 @@ const usdc='0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',network='eip155:8453';
 const resource={url:'https://example.test/api/paid/research'};
 const terms={scheme:'exact',network,asset:usdc,amount:'100000',payTo,maxTimeoutSeconds:180,extra:{}};
 const services=[
+ ['xlayer.stock.research',{query:'Tesla'},{query:'Tesla',symbol:'TSLA',chainId:196,pools:[],issuerIdentity:{status:'verified'}}],
  ['stock.launch-idea',{chainId:8453},{outcome:'wait',chainId:8453}],
  ['pons.stock.research',{query:'NVDA'},{classification:'verified-robinhood-stock',stock:{symbol:'NVDA'}}],
  ['pons.stock-paired.research',{address:payer},{address:payer,classification:'verified-pons-stock-pair',ponsState:{pair:{address:payTo}},stock:{address:payTo}}],
@@ -39,7 +40,7 @@ test('all supported report types use the same settlement and recovery path',asyn
   chain:{getBlockNumber:async()=>50n,getLogs:async()=>[{transactionHash:tx}],getTransactionReceipt:async()=>({status:'success',logs:[{
    address:usdc,topics:encodeEventTopics({abi:[parseAbiItem('event Transfer(address indexed from,address indexed to,uint256 value)')],args:{from:payer,to:payTo}}),
    data:encodeAbiParameters([{type:'uint256'}],[100000n])}]})}};
- const deps={runtime,lookup:async()=>({sources:{coinbase:{status:'available'}},stocks:[{address:payTo,symbol:'NVDAc',name:'NVIDIA Corporation'}]}),
+ const deps={runtime,xlayerLookup:async()=>({symbol:'TSLA',pools:[],issuerIdentity:{status:'verified'}}),lookup:async()=>({sources:{coinbase:{status:'available'}},stocks:[{address:payTo,symbol:'NVDAc',name:'NVIDIA Corporation'}]}),
   report:async(req,{paidResearch:paid})=>{assert.equal(paid,true);reportCalls++;return {status:'completed',service:req.service,result:services.find(s=>s[0]===req.service)[2]};}};
  try{
   for(const [i,[service,input]] of services.entries()){
