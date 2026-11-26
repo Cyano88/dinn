@@ -22,8 +22,8 @@ import {robinhoodStock} from './robinhood-stock.mjs';
 import {purchaseUsdReference} from './purchase-usd.mjs';
 const account={type:'string',pattern:'^0x[0-9a-fA-F]{40}$'};
 import {communityBrief,ideaService,originalFinding} from './agent-launch-idea.mjs';
+const okxStockSpec={description:'Tokenized Research on X Layer. Match a stock to its issuer-listed X Layer contract, check OKXICE pools separately, and read available company news and filings.',required:['query'],properties:{query:{type:'string',pattern:'^[A-Za-z][A-Za-z0-9 .-]{0,59}$'}}};
 export const agentServices={
- 'xlayer.stock.research':{description:'Tokenized Research on X Layer. Match a stock to its issuer-listed X Layer contract, check OKXICE pools separately, and read available company news and filings.',required:['query'],properties:{query:{type:'string',pattern:'^[A-Za-z][A-Za-z0-9 .-]{0,59}$'}}},
  [ideaService]:{description:'Find a stock-inspired token launch idea for my community. Powered by Dinn Research. Paid marketplace buyers receive one sourced idea from eligible stock pairs on the requested chain, or a dated wait finding. Ask the owner which chain before hiring.',required:['chainId'],properties:{chainId:{type:'integer',enum:[8453,4663]}}},
  'pons.stock.research':{description:'Research a Robinhood stock token by exact ticker or chain 4663 address, including available contract, holder and lock evidence.',required:['query'],properties:{query:{type:'string',pattern:'^(?:0x[0-9a-fA-F]{40}|[a-zA-Z][a-zA-Z0-9.-]{0,19})$'}}},
  'pons.stock-paired.research':{description:'Research a Pons launch by address. Match its onchain pairing asset to the Robinhood stock registry and report launch activity and available lock schedules.',required:['address'],properties:{address:account}},
@@ -44,10 +44,10 @@ const nearMarket={provider:'NEAR Agent Market',status:'live',listingUrl:'https:/
 const baseMarket={provider:'Agentic Market',status:'live',listingUrl:'https://agentic.market/services/dinn-pasy-onrender-com',pricePerCallUsdc:'0.10',network:'Base',endpoint:'/api/paid/research'};
 export function agentAccessManifest(){return {name:'Dinn',version:'6',services:['plan','pons.brief',...Object.keys(agentServices)],discovery:{instructions:'/agent-guide.md',schema:'/api/agent/schema',tools:'/api/tools'},transport:{type:'http-json',endpoint:'/api/agent/request'},broadcastEnabled:false,canSign:false,acceptsPrivateKeys:false,payment:{mode:'free-public-preview',charged:false},marketplace:nearMarket,marketplaces:{near:nearMarket,base:baseMarket},notes:['Public account input is a query target, not proof of ownership.','Research is a dated chain snapshot, not a security audit.','Base tradeHandoff only indicates whether the report supports asking another provider for a fresh quote; it does not confirm a route or recommend a trade.','Dinn never chooses trade side or size, prepares a transaction, signs or broadcasts.','Marketplace payment never grants wallet authority.']};}
 export function agentAccessSchema(){return {type:'object',required:['service','input'],additionalProperties:false,properties:{service:{enum:['plan','pons.brief',...Object.keys(agentServices)]},input:{type:'object'},requestId:{type:'string',pattern:'^[A-Za-z0-9._-]{1,100}$'}},serviceInputs:Object.fromEntries(Object.entries(agentServices).map(([k,v])=>[k,{type:'object',additionalProperties:false,...v}]))};}
-export function validateAgentRequest(request){
+export function validateAgentRequest(request,{okx=false}={}){
  if(!request||typeof request!=='object'||Array.isArray(request)||Object.keys(request).some(k=>!['service','input','requestId'].includes(k)))throw Error('Expected service, input and optional requestId only.');
  if(request.requestId!==undefined&&(typeof request.requestId!=='string'||!/^[A-Za-z0-9._-]{1,100}$/.test(request.requestId)))throw Error('Invalid requestId.');
- const spec=agentServices[request.service];if(!spec)throw Error('Unsupported agent service.');const i=request.input;
+ const spec=okx&&request.service==='xlayer.stock.research'?okxStockSpec:agentServices[request.service];if(!spec)throw Error('Unsupported agent service.');const i=request.input;
  if(!i||typeof i!=='object'||Array.isArray(i)||Object.keys(i).some(k=>!Object.hasOwn(spec.properties,k)))throw Error('Unsupported input field. Never send keys, wallet permissions or execution flags.');
  const missing=spec.required.filter(k=>i[k]===undefined||i[k]==='');if(missing.length)return missing;
  for(const [k,v]of Object.entries(i)){const s=spec.properties[k];if(s.type==='integer'?!Number.isSafeInteger(v):typeof v!=='string')throw Error('Invalid '+k+'.');if(s.enum&&!s.enum.includes(v)||s.pattern&&!new RegExp(s.pattern).test(v))throw Error('Invalid '+k+'.');if(['address','account'].includes(k)&&!address(v))throw Error('Use a nonzero '+k+'.');}
@@ -220,7 +220,7 @@ function inspectionDeliverable(report,ponsState,ponsStateUnavailable=false){
 }
 export async function agentAccessRequest(request,dependencies={}){
  const env=dependencies.env||process.env;
- const missing=validateAgentRequest(request),base={schemaVersion:'5',requestId:request.requestId||randomUUID(),service:request.service,broadcast:false,charged:false,ownershipVerified:false};
+ const missing=validateAgentRequest(request,{okx:dependencies.okx===true}),base={schemaVersion:'5',requestId:request.requestId||randomUUID(),service:request.service,broadcast:false,charged:false,ownershipVerified:false};
  if(missing.length)return {...base,status:'needs_input',missingFields:missing,next:{type:'collect_fields',message:'Supply the missing fields explicitly. No wallet or financial choices were inferred.'}};
  const {focus,...i}=request.input;let result,deliverable;
  if(request.service===ideaService){

@@ -14,7 +14,7 @@ test('unlisted and unavailable X Layer pools never trigger a payment challenge',
    assert.equal(new URL(url).searchParams.get('stockCode'),'TSLA');
    return Response.json(payload);
   });
-  const reply=await paidResearch(request,null,{runtime:{},xlayerLookup,launchLookup:async()=>({xLayer:'coming_soon',routes:[]})});
+  const reply=await paidResearch(request,null,{runtime:{},okx:true,xlayerLookup,launchLookup:async()=>({xLayer:'coming_soon',routes:[]})});
   assert.equal(reply.status,status);
   assert.equal(reply.headers['PAYMENT-REQUIRED'],undefined);
  }

@@ -20,7 +20,6 @@ const baseRail={network:'eip155:8453',asset:'0x833589fCD6eDb6E08f4c7C32D4f71b54b
 const okxRail={network:'eip155:196',asset:'0x779ded0c9e1022225f8e0630b35a9b54be713736',path:'/api/okx/research',table:'dinn_okx_research_payments'};
 
 const examples={
- 'xlayer.stock.research':{query:'COIN'},
  'stock.launch-idea':{chainId:8453},
  'pons.stock.research':{query:'NVDA'},
  'pons.stock-paired.research':{address:'0x451b42a15100c340ca12f7c66de06fac5ea2d751'},
@@ -29,11 +28,12 @@ const examples={
  'base.stock-paired.discover':{metric:'liquidity'},
  'token.research':{address:'0x43468fc21c46d30cf765e1a1d0ed32ecb6bd89a4'}
 };
+const okxExamples={...examples,'xlayer.stock.research':{query:'COIN'}};
 const inputSchema={type:'object',additionalProperties:false,required:['requestId','service','input'],
  properties:{
   requestId:{type:'string',pattern:'^[A-Za-z0-9._-]{1,100}$',description:'Choose an ID for this report. Reuse it when retrying the same payment.',examples:['research-001']},
-  service:{type:'string',enum:Object.keys(examples),description:'Choose X Layer tokenized stock research (xlayer.stock.research), a stock-inspired community launch idea (stock.launch-idea with chainId 8453 for Base or 4663 for Robinhood Chain), Base stock research, Bankr stock-pair research or discovery, or Robinhood stock, Pons stock-pair or general Pons launch research.',examples:['base.stock.research']},
-  input:{type:'object',description:'For an X Layer, Base or Robinhood stock, send its ticker as query. For a Bankr or Pons token report, send its contract address as address. For discovery, send metric as liquidity or volume.',examples:[examples['base.stock.research']]}
+  service:{type:'string',enum:Object.keys(examples),description:'Choose a stock-inspired community launch idea (stock.launch-idea with chainId 8453 for Base or 4663 for Robinhood Chain), Base stock research, Bankr stock-pair research or discovery, or Robinhood stock, Pons stock-pair or general Pons launch research.',examples:['base.stock.research']},
+  input:{type:'object',description:'For a Base or Robinhood stock, send its ticker as query. For a Bankr or Pons token report, send its contract address as address. For discovery, send metric as liquidity or volume.',examples:[examples['base.stock.research']]}
  },
  oneOf:Object.keys(examples).map(service=>({properties:{service:{const:service},input:{
   type:'object',additionalProperties:false,required:agentServices[service].required,properties:agentServices[service].properties
@@ -96,8 +96,8 @@ async function initialize(env,rail){
  const resource={
   url:origin.origin+path,mimeType:'application/json',serviceName:'Dinn Labs',
   iconUrl:new URL('/brand/dinn-icon.png',origin).href,
-  tags:['Token research','Tokenized stocks','Base','Bankr','Pons','X Layer'],
-  description:'Research tokenized stocks and stock-paired tokens on Base and Robinhood Chain. Verify X Layer xStocks deployments and check OKXICE pools independently. Read dated company news and available SEC filings alongside market activity, holder data and lock schedules for supported assets. Ask for a stock-inspired community launch idea on either chain and get a sourced brief or a dated wait finding. One report per call.'
+  tags:['Token research','Tokenized stocks','Base','Bankr','Pons',...(okx?['X Layer']:[])],
+  description:'Research tokenized stocks and stock-paired tokens on Base and Robinhood Chain.'+(okx?' Verify X Layer xStocks deployments and check OKXICE pools independently.':'')+' Read dated company news and available SEC filings alongside market activity, holder data and lock schedules for supported assets. Ask for a stock-inspired community launch idea on either chain and get a sourced brief or a dated wait finding. One report per call.'
  };
  const facilitator=okx?new OKXFacilitatorClient({apiKey:env.OKX_API_KEY,secretKey:env.OKX_SECRET_KEY,passphrase:env.OKX_PASSPHRASE,syncSettle:true}):new HTTPFacilitatorClient(createFacilitatorConfig(env.CDP_API_KEY_ID,env.CDP_API_KEY_SECRET));
  const server=new x402ResourceServer(facilitator).register(network,new ExactEvmScheme());
@@ -131,7 +131,9 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
  const rail=okx?okxRail:baseRail;
  const {table,asset,path,network}=rail;
  if(!runtime&&!(okx?okxConfigured(env):paidResearchConfigured(env)))return problem(503,okx?'X Layer USDT0 payments are not enabled.':'Direct Base payments are not enabled.');
- if(!Object.hasOwn(examples,request?.service)||!request.requestId)return problem(400,'Choose a supported research service and supply a stable requestId.');
+ const allowed=okx?okxExamples:examples;
+ const legacyReplay=!okx&&!!signature&&request?.service==='xlayer.stock.research';
+ if((!legacyReplay&&!Object.hasOwn(allowed,request?.service))||!request.requestId)return problem(400,'Choose a supported research service and supply a stable requestId.');
  // Some x402 buyers send each CLI parameter as a string, including nested input.
  try{
   if(typeof request.input==='string'){
@@ -140,9 +142,9 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
    request={...request,input:JSON.parse(inputText)};
   }
   if(request.service==='stock.launch-idea'&&![8453,4663].includes(request.input?.chainId))return problem(400,'Which launch chain? Send chainId 8453 for Base or 4663 for Robinhood Chain before paying.');
-  const missing=validateAgentRequest(request);
+  const missing=validateAgentRequest(request,{okx:okx||legacyReplay});
   if(missing.length)return problem(400,'Supply the required research input: '+missing.join(', ')+'.');}
- catch{return problem(400,'Check requestId and the input fields. Example input for '+request.service+': '+JSON.stringify(examples[request.service])+'.');}
+ catch{return problem(400,'Check requestId and the input fields. Example input for '+request.service+': '+JSON.stringify(okxExamples[request.service])+'.');}
  const {service,input,requestId}=request;
  if(!runtime&&!setups.has(rail))setups.set(rail,initialize(env,rail).catch(error=>{setups.delete(rail);throw error;}));
  const state=runtime||await setups.get(rail);
@@ -230,13 +232,14 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
    await client.query(`UPDATE ${table} SET receipt=$3 WHERE payer=$1 AND request_id=$2`,[payer,requestId,recovered]);
    return delivered(prev.report,recovered);
   }
+  if(legacyReplay)return problem(400,'This research service is unavailable on Base.');
   const verification=await server.verifyPayment(payment,requirements,discovery);
   if(!verification.isValid||verification.payer?.toLowerCase()!==payer)return problem(402,'Payment authorization was not verified.');
   const target=service==='base.stock.research'?await paidStockTarget(input,lookup):null;
   if(target?.error)return target.error;
   const reportRequest=target?{...request,input:{...input,query:target.address}}:request;
   let result;
-  try{result=await report(reportRequest,{paidResearch:true,env});}
+  try{result=await report(reportRequest,{paidResearch:true,okx,env});}
   catch(error){if(service!=='stock.launch-idea')throw error;return problem(503,'The sourced idea brief is unavailable. No settlement was requested.');}
   if(service==='stock.launch-idea' && (!['idea','wait'].includes(result?.result?.outcome)||result?.result?.chainId!==input.chainId))return problem(422,'No supported idea brief was delivered. No settlement was requested.');
   if(result.status!=='completed'||

@@ -9,8 +9,8 @@ const payer='0x'+'1'.repeat(40),payTo='0x'+'2'.repeat(40),tx='0x'+'3'.repeat(64)
 const usdc='0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',network='eip155:8453';
 const resource={url:'https://example.test/api/paid/research'};
 const terms={scheme:'exact',network,asset:usdc,amount:'100000',payTo,maxTimeoutSeconds:180,extra:{}};
+const xlayerExample=['xlayer.stock.research',{query:'Tesla'},{query:'Tesla',symbol:'TSLA',chainId:196,pools:[],issuerIdentity:{status:'verified'}}];
 const services=[
- ['xlayer.stock.research',{query:'Tesla'},{query:'Tesla',symbol:'TSLA',chainId:196,pools:[],issuerIdentity:{status:'verified'}}],
  ['stock.launch-idea',{chainId:8453},{outcome:'wait',chainId:8453}],
  ['pons.stock.research',{query:'NVDA'},{classification:'verified-robinhood-stock',stock:{symbol:'NVDA'}}],
  ['pons.stock-paired.research',{address:payer},{address:payer,classification:'verified-pons-stock-pair',ponsState:{pair:{address:payTo}},stock:{address:payTo}}],
@@ -41,7 +41,7 @@ test('all supported report types use the same settlement and recovery path',asyn
    address:usdc,topics:encodeEventTopics({abi:[parseAbiItem('event Transfer(address indexed from,address indexed to,uint256 value)')],args:{from:payer,to:payTo}}),
    data:encodeAbiParameters([{type:'uint256'}],[100000n])}]})}};
  const deps={runtime,xlayerLookup:async()=>({symbol:'TSLA',pools:[],issuerIdentity:{status:'verified'}}),lookup:async()=>({sources:{coinbase:{status:'available'}},stocks:[{address:payTo,symbol:'NVDAc',name:'NVIDIA Corporation'}]}),
-  report:async(req,{paidResearch:paid})=>{assert.equal(paid,true);reportCalls++;return {status:'completed',service:req.service,result:services.find(s=>s[0]===req.service)[2]};}};
+  report:async(req,{paidResearch:paid})=>{assert.equal(paid,true);reportCalls++;return {status:'completed',service:req.service,result:[...services,xlayerExample].find(s=>s[0]===req.service)[2]};}};
  try{
   for(const [i,[service,input]] of services.entries()){
    const req={requestId:'order-'+i,service,input};
@@ -89,7 +89,7 @@ test('all supported report types use the same settlement and recovery path',asyn
   assert.equal((await paidResearch(req,signed(20),deps)).status,200);
   assert.equal(settlements,services.length+2);assert.equal(reportCalls,services.length+2);
   uncertain=false;
-  const queryRequest={service:'xlayer.stock.research',requestId:'query-replay',input:{query:'Tesla'}};
+  let queryRequest={service:'base.stock.research',requestId:'query-replay',input:{query:'NVDAc'}};
   const queryUrl='/api/paid/research?'+new URLSearchParams({...queryRequest,input:JSON.stringify(queryRequest.input)});
   const queryDeps={...deps,queryUrl,runtime:{...runtime,server:{...server,
    createPaymentRequiredResponse:async(accepts,resource)=>({x402Version:2,resource,accepts})}}};
@@ -105,7 +105,9 @@ test('all supported report types use the same settlement and recovery path',asyn
   // Same buyer, nonce and request ID on another chain have a separate settlement record.
   await db.query('CREATE TABLE dinn_okx_research_payments (LIKE dinn_base_research_payments INCLUDING ALL)');
   const okxTerms={...terms,network:'eip155:196',asset:'0x779ded0c9e1022225f8e0630b35a9b54be713736'};
-  const okxPath=queryUrl.replace('/api/paid/', '/api/okx/');
+  queryRequest={...queryRequest,service:'xlayer.stock.research',input:{query:'Tesla'}};
+  assert.equal((await paidResearch(queryRequest,null,queryDeps)).status,400);
+  const okxPath='/api/okx/research?'+new URLSearchParams({...queryRequest,input:JSON.stringify(queryRequest.input)});
   const okxResource={url:'https://example.test/api/okx/research'};
   const okxServer={...queryDeps.runtime.server,findMatchingRequirements:(_,p)=>p.accepted.network===okxTerms.network?okxTerms:null,
    settlePayment:async()=>({status:'pending'})};
