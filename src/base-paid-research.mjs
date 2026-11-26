@@ -53,9 +53,10 @@ const transfer=parseAbiItem('event Transfer(address indexed from, address indexe
 export async function recoverPaymentReceipt(chain,row,requirements){
  const {asset,network}=requirements;
  const first=BigInt(row.start_block);
- const latest=await chain.getBlockNumber();
- for(let from=first;from<=latest && from<first+4096n;from+=512n){
-  const to=from+511n<latest?from+511n:latest;
+ const latest=await chain.getBlockNumber({cacheTime:0});
+ const step=network===okxRail.network?100n:512n;
+ for(let from=first;from<=latest && from<first+4096n;from+=step){
+  const to=from+step-1n<latest?from+step-1n:latest;
   const logs=await chain.getLogs({address:asset,event:authorizationUsed,args:{authorizer:row.payer,nonce:row.nonce},fromBlock:from,toBlock:to});
   for(const log of logs){
    const tx=await chain.getTransactionReceipt({hash:log.transactionHash});
@@ -222,12 +223,19 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
   const startBlock=await state.chain.getBlockNumber();
   const saved=await client.query(`INSERT INTO ${table}(payer,request_id,nonce,proof,request_hash,report,start_block,valid_before) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING RETURNING request_id`,[payer,requestId,nonce,proof,requestHash,result,startBlock.toString(),auth.validBefore]);
   if(!saved.rowCount)return retry();
-  const receipt=await server.settlePayment(payment,requirements,discovery);
-  if(!receipt.success||(receipt.status&&receipt.status!=='success')||receipt.network!==network||receipt.payer?.toLowerCase()!==payer||!/^0x[0-9a-f]{64}$/i.test(receipt.transaction||''))return retry();
+  let receipt;
+  try{receipt=await server.settlePayment(payment,requirements,discovery);}
+  catch(error){if(!okx)throw error;}
   if(okx){
-   const confirmed=await recoverPaymentReceipt(state.chain,{start_block:startBlock,payer,nonce},requirements);
-   if(confirmed?.transaction.toLowerCase()!==receipt.transaction.toLowerCase())return retry();
+   // The facilitator can broadcast before its response or the RPC head reflects settlement.
+   // Match this authorization and transfer on chain before releasing the stored report.
+   for(let attempt=0;attempt<5;attempt++){
+    if(attempt)await new Promise(resolve=>setTimeout(resolve,1000));
+    receipt=await recoverPaymentReceipt(state.chain,{start_block:startBlock,payer,nonce},requirements);
+    if(receipt)break;
+   }
   }
+  if(!receipt?.success||(receipt.status&&receipt.status!=='success')||receipt.network!==network||receipt.payer?.toLowerCase()!==payer||!/^0x[0-9a-f]{64}$/i.test(receipt.transaction||''))return retry();
   await client.query(`UPDATE ${table} SET receipt=$3 WHERE payer=$1 AND request_id=$2`,[payer,requestId,receipt]);
   return delivered(result,receipt);
  }finally{

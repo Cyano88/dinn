@@ -108,8 +108,9 @@ test('all supported report types use the same settlement and recovery path',asyn
   const okxPath=queryUrl.replace('/api/paid/', '/api/okx/');
   const okxResource={url:'https://example.test/api/okx/research'};
   const okxServer={...queryDeps.runtime.server,findMatchingRequirements:(_,p)=>p.accepted.network===okxTerms.network?okxTerms:null,
-   settlePayment:async()=>({...receipt,network:okxTerms.network,status:'success'})};
-  const okxChain={...runtime.chain,getLogs:async({address})=>{
+   settlePayment:async()=>({status:'pending'})};
+  const okxChain={...runtime.chain,getBlockNumber:async options=>options?550n:50n,getLogs:async({address,fromBlock,toBlock})=>{
+   assert.ok(toBlock-fromBlock<100n);
    assert.equal(address,okxTerms.asset);return [{transactionHash:tx}];
   },getTransactionReceipt:async()=>{
    const receipt=await runtime.chain.getTransactionReceipt();
