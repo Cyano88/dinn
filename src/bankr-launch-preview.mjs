@@ -2,6 +2,7 @@ import {createLaunchClient} from '@bankr/launch-sdk';
 import {encodeFunctionData,erc20Abi,formatUnits,formatEther,isAddress,keccak256,parseUnits,zeroAddress} from 'viem';
 import {readContract,estimateGas,getGasPrice} from 'viem/actions';
 import {valuationQuestion} from '../public/stock-watch.js';
+import {firstBuySimulation} from './bankr-first-buy-simulation.mjs';
 import {marketSnapshot} from './base-stock-research.mjs';
 import {baseStockLookup} from './base-stock-data.mjs';
 import {serverRpcUrl} from './rpc-config.mjs';
@@ -28,6 +29,8 @@ export function purchaseUsdEstimate(stock,amount,market,now=Date.now()){
 
 export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,expectedPair,assets,openingPurchase},{readMarket=marketSnapshot,readBalance=async(client,address,owner)=>readContract(client,{address,abi:erc20Abi,functionName:'balanceOf',args:[owner]}),publishMetadata,env=process.env,lookup=baseStockLookup,client}={}){
  if(typeof ticker!=='string'||!/^[A-Z][A-Z0-9.-]{0,12}$/.test(ticker)||typeof name!=='string'||!name.trim()||name.length>40||typeof symbol!=='string'||!/^[A-Z0-9]{1,12}$/.test(symbol))throw Error('Invalid creator brief');
+ const providedClient=client;
+ let simulatedPermission=false;
  client??=createLaunchClient({chain:'base',rpcUrl:serverRpcUrl(8453,env)});
  const state=await client.status();
  if(!state.deployed||state.fork)return {status:'unavailable',message:'Bankr launch contracts could not be verified on Base.'};
@@ -55,6 +58,10 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,e
   usdEstimate=purchaseUsdEstimate(stock,openingPurchase,market);
   if(balance<amount)return {status:'purchase',message:openingPurchase+' '+stock.symbol+'. '+usdEstimate+'\n\nYour Base wallet holds '+formatUnits(balance,stock.decimals)+' '+stock.symbol+'. '+(balance===0n?'Fund your wallet with '+stock.symbol+' and retry,':'Enter a smaller amount')+' or say "skip purchase".'};
   input.devBuy={amount,slippageBps:100};
+  if(!providedClient){
+   const simulated=await firstBuySimulation(client,launcher,stock.address,amount);
+   simulatedPermission=simulated!==client;client=simulated;
+  }
  }
  let metadata;
  if(assets){
@@ -72,6 +79,7 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,e
   plan=await client.plan(input);
  }catch(e){
   if(startFdv===undefined&&e?.code==='INVALID_PARAMS'&&e.detail?.includes('set startFdv'))return {status:'valuation',message:'Your token would trade against '+stock.symbol+' on Base through Bankr. The starting value sets the opening price for your token. You can try a value here without spending funds.\n\n'+valuationQuestion(stock.symbol)};
+  if(buying&&simulatedPermission)return {status:'purchase',message:'Bankr could not verify a first-buy quote for this amount. Try another amount or say "skip purchase". No spending permission has been requested.'};
   if(buying&&['CREATOR_CAP_EXCEEDED','DEV_BUY_UNAVAILABLE'].includes(e?.code))return {status:'purchase',message:e.code==='CREATOR_CAP_EXCEEDED'?'That purchase exceeds the permitted size. Try a smaller amount or say "skip purchase".':'Bankr could not include this purchase in the launch. Say "skip purchase" to review a launch without it.'};
   throw e;
  }
@@ -92,6 +100,7 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,e
   }
  }
 
+ if(simulatedPermission)return {status:'purchase',message:'Your spending permission changed during the check. Enter the amount again for a fresh launch review.'};
  if(sim.assumedApprovals||!isAddress(sim.token)||!/^0x[a-f0-9]{64}$/i.test(sim.poolId))throw Error('Incomplete launch simulation');
  let feeSummary='',execution;
  const percent=pips=>Number((pips/10000).toFixed(6));

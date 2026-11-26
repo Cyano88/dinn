@@ -54,3 +54,23 @@ test('stale, inactive and mismatched prices never become dollar estimates',()=>{
   assert.equal(purchaseUsdEstimate(stock,'0.01',{checkedAt:new Date(now-age).toISOString(),pairs:[{...pool,...changes}]},now),'USD estimate unavailable.');
  }
 });
+test('stock simulation calls approve and launch sequentially without submitting either',async()=>{
+ const {firstBuySimulation}=await import('../src/bankr-first-buy-simulation.mjs');
+ const {createPublicClient,custom}=await import('viem');
+ const {base}=await import('viem/chains');
+ const {BANKR_V4_LAUNCH_ADDRESSES}=await import('@bankr/launch-sdk');
+ const actualFactory=BANKR_V4_LAUNCH_ADDRESSES.base.factory,methods=[];
+ const rpc=createPublicClient({chain:base,transport:custom({request:async req=>{
+  methods.push(req.method);
+  if(req.method==='eth_call')return '0x'+'0'.repeat(64);
+  assert.equal(req.method,'eth_simulateV1');
+  const [approval,launch]=req.params[0].blockStateCalls[0].calls;
+  assert.equal(approval.from,launcher);assert.equal(approval.to,quote);
+  assert.equal(approval.data,encodeFunctionData({abi:erc20Abi,functionName:'approve',args:[actualFactory,100n]}));
+  assert.equal(launch.to,actualFactory);
+  return [{calls:[{status:'0x1',returnData:'0x'+'1'.padStart(64,'0')},{status:'0x1',returnData:'0x1234',gasUsed:'0x123'}]}];
+ }})});
+ const c=await firstBuySimulation({publicClient:rpc},launcher,quote,100n);
+ const result=await c.publicClient.request({method:'eth_call',params:[{from:launcher,to:actualFactory,data:'0x3dea0225',value:'0x0'},'latest']});
+ assert.equal(result,'0x1234');assert.deepEqual(methods,['eth_call','eth_simulateV1']);
+});
