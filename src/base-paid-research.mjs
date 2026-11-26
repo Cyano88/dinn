@@ -114,7 +114,7 @@ async function paidStockTarget(input,lookup){
  if(matches.length!==1||!isAddress(matches[0].address||''))return {error:problem(422,'Use a company name, exact stock ticker or Base contract address that identifies one Coinbase stock token.')};
  return {address:matches[0].address.toLowerCase()};
 }
-export async function paidResearch(request,signature,{env=process.env,lookup=baseStockLookup,xlayerLookup=xLayerTarget,launchLookup=stockLaunchOptions,report=agentAccessRequest,runtime}={}){
+export async function paidResearch(request,signature,{env=process.env,lookup=baseStockLookup,xlayerLookup=xLayerTarget,launchLookup=stockLaunchOptions,report=agentAccessRequest,runtime,queryUrl}={}){
  if(!runtime&&!paidResearchConfigured(env))return problem(503,'Direct Base payments are not enabled.');
  if(!Object.hasOwn(examples,request?.service)||!request.requestId)return problem(400,'Choose a supported research service and supply a stable requestId.');
  // Some x402 buyers send each CLI parameter as a string, including nested input.
@@ -125,7 +125,17 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
  catch{return problem(400,'Invalid research request.');}
  const {service,input,requestId}=request;
  const state=runtime||await (setup??=initialize(env).catch(error=>{setup=undefined;throw error;}));
- const {server,requirements,resource,db}=state;
+ const {server,requirements,db}=state;
+ let {challenge,resource}=state;
+ let discovery=extension;
+ if(queryUrl){
+  const url=new URL(queryUrl,resource.url);
+  if(url.origin!==new URL(resource.url).origin||url.pathname!==path)return problem(400,'Invalid research URL.');
+  resource={...resource,url:url.href};
+  // Each GET URL is a specific buyer request. Only the stable POST route is advertised in Bazaar.
+  discovery={};
+  challenge=await server.createPaymentRequiredResponse([requirements],resource,undefined,discovery);
+ }
  if(!signature){
   if(service==='xlayer.stock.research'){
    try{stockCode(input.query);}catch{return problem(422,'Use an exact company name or stock ticker.');}
@@ -141,16 +151,16 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
    const target=await paidStockTarget(input,lookup);
    if(target.error)return target.error;
   }
-  return reply(402,state.challenge,{'PAYMENT-REQUIRED':encodePaymentRequiredHeader(state.challenge)});
+  return reply(402,challenge,{'PAYMENT-REQUIRED':encodePaymentRequiredHeader(challenge)});
  }
  let payment;
  try{payment=decodePaymentSignatureHeader(signature);}catch{return problem(400,'Invalid payment header.');}
  const auth=payment?.payload?.authorization;
  if(!payment || payment.x402Version!==2||payment.resource?.url!==resource.url||!server.findMatchingRequirements([requirements],payment)||
   !/^[0-9]{1,18}$/.test(auth?.validBefore||'')||!isAddress(auth?.from||'')||!/^0x[0-9a-f]{64}$/i.test(auth?.nonce||'')||!/^0x[0-9a-f]+$/i.test(payment.payload?.signature||''))return problem(400,'Expected a Base USDC authorization for this research endpoint.');
- if(!server.validateExtensions(state.challenge,payment).valid)return problem(400,'Invalid service metadata.');
+ if(!server.validateExtensions(challenge,payment).valid)return problem(400,'Invalid service metadata.');
  // Only the merchant's resource and discovery declaration may reach the facilitator.
- payment={...payment,resource,extensions:state.challenge.extensions};
+ payment={...payment,resource,extensions:challenge.extensions};
  const payer=auth.from.toLowerCase(),nonce=auth.nonce.toLowerCase();
  const proof=hash(payment.payload.signature.toLowerCase());
  const requestHash=hash([service,Object.entries(input).sort(([a],[b])=>a.localeCompare(b))]);
@@ -182,7 +192,7 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
    await client.query('UPDATE dinn_base_research_payments SET receipt=$3 WHERE payer=$1 AND request_id=$2',[payer,requestId,recovered]);
    return delivered(prev.report,recovered);
   }
-  const verification=await server.verifyPayment(payment,requirements,extension);
+  const verification=await server.verifyPayment(payment,requirements,discovery);
   if(!verification.isValid||verification.payer?.toLowerCase()!==payer)return problem(402,'Payment authorization was not verified.');
   const target=service==='base.stock.research'?await paidStockTarget(input,lookup):null;
   if(target?.error)return target.error;
@@ -200,7 +210,7 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
   const startBlock=await state.chain.getBlockNumber();
   const saved=await client.query('INSERT INTO dinn_base_research_payments(payer,request_id,nonce,proof,request_hash,report,start_block,valid_before) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING RETURNING request_id',[payer,requestId,nonce,proof,requestHash,result,startBlock.toString(),auth.validBefore]);
   if(!saved.rowCount)return retry();
-  const receipt=await server.settlePayment(payment,requirements,extension);
+  const receipt=await server.settlePayment(payment,requirements,discovery);
   if(!receipt.success||receipt.network!==network||receipt.payer?.toLowerCase()!==payer||!/^0x[0-9a-f]{64}$/i.test(receipt.transaction||''))return retry();
   await client.query('UPDATE dinn_base_research_payments SET receipt=$3 WHERE payer=$1 AND request_id=$2',[payer,requestId,receipt]);
   return delivered(result,receipt);

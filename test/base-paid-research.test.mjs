@@ -19,8 +19,8 @@ const services=[
  ['base.stock-paired.discover',{metric:'liquidity'},{candidates:[]}],
  ['token.research',{address:payer},{protocol:{name:'Pons v2'}}]
 ];
-function signed(id){
- return encodePaymentSignatureHeader({x402Version:2,resource,accepted:terms,payload:{
+function signed(id,target=resource){
+ return encodePaymentSignatureHeader({x402Version:2,resource:target,accepted:terms,payload:{
   signature:'0x'+id.toString(16).padStart(130,'0'),authorization:{from:payer,to:payTo,value:'100000',validAfter:'0',validBefore:'9999999999',nonce:'0x'+id.toString(16).padStart(64,'0')}
  }});
 }
@@ -88,6 +88,20 @@ test('all supported report types use the same settlement and recovery path',asyn
   await assert.rejects(paidResearch(req,signed(20),deps),/Lost settlement response/);
   assert.equal((await paidResearch(req,signed(20),deps)).status,200);
   assert.equal(settlements,services.length+2);assert.equal(reportCalls,services.length+2);
+  uncertain=false;
+  const queryRequest={service:'xlayer.stock.research',requestId:'query-replay',input:{query:'Tesla'}};
+  const queryUrl='/api/paid/research?'+new URLSearchParams({...queryRequest,input:JSON.stringify(queryRequest.input)});
+  const queryDeps={...deps,queryUrl,runtime:{...runtime,server:{...server,
+   createPaymentRequiredResponse:async(accepts,resource)=>({x402Version:2,resource,accepts})}}};
+  const challenge=await paidResearch(queryRequest,null,queryDeps);
+  assert.equal(challenge.status,402);
+  assert.equal(challenge.body.resource.url,'https://example.test'+queryUrl);
+  assert.equal((await paidResearch(queryRequest,signed(41),queryDeps)).status,400);
+  const authorization=signed(41,challenge.body.resource);
+  const firstGet=await paidResearch(queryRequest,authorization,queryDeps);
+  assert.equal(firstGet.status,200);
+  assert.deepEqual((await paidResearch(queryRequest,authorization,queryDeps)).body,firstGet.body);
+  assert.equal(settlements,services.length+3);
  }finally{await db.close();}
 });
 

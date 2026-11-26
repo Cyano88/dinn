@@ -71,6 +71,18 @@ For a paid NEAR hire, put the whole brief in the first message. Examples include
 
 `POST /api/paid/research` is available only when the operator enables a USDC recipient and Coinbase facilitator. HTTP 503 means the service is unavailable. The public preview remains at `/api/agent/request`.
 
+For OKX clients that replay a payment without its POST body, use GET on the same endpoint. Put the three fields in the URL before requesting the quote. Reuse the exact URL on the paid retry.
+
+```js
+const url = new URL('https://dinn-pasy.onrender.com/api/paid/research');
+url.search = new URLSearchParams({
+  requestId: crypto.randomUUID(),
+  service: 'xlayer.stock.research',
+  input: JSON.stringify({query: 'Tesla'})
+}).toString();
+```
+
+
 Provide a unique stable `requestId`, one `service`, and its `input`. Supported services are `base.stock.research`, `base.stock-paired.research`, `base.stock-paired.discover`, `pons.stock.research` for a Robinhood stock token, `pons.stock-paired.research` for a Pons stock pair, and `token.research` for a general Pons report. Example body:
 
 ```json

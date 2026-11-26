@@ -81,6 +81,17 @@ const launchEnabled=ascendLaunchEnabled();
 function json(res,status,data){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(data));}
 async function body(req,limit=16000){const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>limit)throw new Error('Request too large.');chunks.push(chunk);}return JSON.parse(Buffer.concat(chunks).toString('utf8'));}
 async function buildPlan(message){let result;for await(const event of streamChat({message},{productMode:true})){if(event.type==='done')result=event.result;}return result;}
+async function servePaidResearch(req,res,data,queryUrl){
+ paidResearchStarts=paidResearchStarts.filter(t=>Date.now()-t<60000);
+ if(paidResearchStarts.length>=60)return json(res,429,{error:'Research requests are busy. Retry shortly.'});
+ paidResearchStarts.push(Date.now());
+ try{
+  const {paidResearch}=await import('./src/base-paid-research.mjs');
+  const result=await paidResearch(data,req.headers['payment-signature'],{queryUrl});
+  for(const [key,value] of Object.entries(result.headers))res.setHeader(key,value);
+  return json(res,result.status,result.body);
+ }catch{return json(res,503,{error:'Research or payment verification unavailable. Retry the same request ID and signed payment.'});}
+}
 let walletReadStarts=[],paidResearchStarts=[];
 const server=createServer(async(req,res)=>{
  try{
@@ -121,6 +132,14 @@ const server=createServer(async(req,res)=>{
   if(req.method==='GET' && path==='/api/feedback/feed'){
    try{return json(res,200,await feedbackFeed());}catch{return json(res,503,{error:'Feedback could not load.'});}
   }
+  if(req.method==='GET'&&path==='/api/paid/research'){
+   if(req.url.length>8192)return json(res,414,{error:'Research URL too long.'});
+   const url=new URL(req.url,'http://localhost');
+   const fields=['requestId','service','input'];
+   if([...url.searchParams].length!==3||fields.some(k=>url.searchParams.getAll(k).length!==1))
+    return json(res,400,{error:'Supply requestId, service and JSON-encoded input in the URL.'});
+   return servePaidResearch(req,res,Object.fromEntries(url.searchParams),url.pathname+url.search);
+  }
   if(req.method==='POST'){
    if(path.startsWith('/api/drafts/')){if(req.headers.origin&&!allowedOrigins.has(req.headers.origin))return json(res,403,{error:'Origin rejected.'});if(req.headers['content-type']?.split(';')[0]!=='application/json')return json(res,415,{error:'JSON required.'});try{const result=await draftService.handle(req,path,await body(req,350000));return json(res,result.status,result.body);}catch{return json(res,503,{error:'Account storage is unavailable.'});}}
    if(path.startsWith('/api/dinn/launches/')){if(req.headers.origin&&!allowedOrigins.has(req.headers.origin))return json(res,403,{error:'Origin rejected.'});if(req.headers['content-type']?.split(';')[0]!=='application/json')return json(res,415,{error:'JSON required.'});if(path.endsWith('/list')){walletReadStarts=walletReadStarts.filter(t=>Date.now()-t<60000);if(walletReadStarts.length>=30)return json(res,429,{error:'Launch data is busy. Try again shortly.'});walletReadStarts.push(Date.now());}try{const result=await ponsLaunchService.handle(req,path,await body(req,16000));return json(res,result.status,result.body);}catch{return json(res,503,{error:'Dinn launch history could not be loaded. Try again shortly.'});}}
@@ -137,17 +156,7 @@ const server=createServer(async(req,res)=>{
     try{return json(res,200,await creatorPages.handle(req,path.split('/').pop(),data));}
     catch(e){return json(res,e.status||503,{error:e.status?e.message:'The website service is unavailable.',...(e.needsArtwork?{needsArtwork:true}:{}),...(e.needsDirection?{needsDirection:true}:{}),...(e.retryPreview?{retryPreview:true}:{}),...(e.availableAt?{availableAt:e.availableAt,pendingSlot:e.pendingSlot}:{})});}
    }
-   if(path==='/api/paid/research'){
-    paidResearchStarts=paidResearchStarts.filter(t=>Date.now()-t<60000);
-    if(paidResearchStarts.length>=60)return json(res,429,{error:'Research requests are busy. Retry shortly.'});
-    paidResearchStarts.push(Date.now());
-    try{
-     const {paidResearch}=await import('./src/base-paid-research.mjs');
-     const result=await paidResearch(data,req.headers['payment-signature']);
-     for(const [key,value] of Object.entries(result.headers))res.setHeader(key,value);
-     return json(res,result.status,result.body);
-    }catch{return json(res,503,{error:'Research or payment verification unavailable. Retry the same request ID and signed payment.'});}
-   }
+   if(path==='/api/paid/research')return servePaidResearch(req,res,data);
    if(path.startsWith('/api/feedback/')){
     try{const result=await feedbackRequest(req,path,data);return json(res,result.status,result.body);}
     catch{return json(res,503,{error:'Feedback is temporarily unavailable. Please try again.'});}
