@@ -114,7 +114,7 @@ async function geckoPoolMarket(poolId,token,quoteAddress,launch,stock,fetchImpl,
  const value={source:'GeckoTerminal',pairAddress:poolId,poolName:text(attributes.name,120),baseToken,quoteToken,priceUsd:noReserves?null:finite(baseIsToken?attributes.base_token_price_usd:attributes.quote_token_price_usd),priceNative:noReserves?null:finite(baseIsToken?attributes.base_token_price_quote_token:attributes.quote_token_price_base_token),volumeUsd:numericSeries(attributes.volume_usd,['m5','h1','h6','h24']),transactions:transactionSeries(attributes.transactions),liquidityUsd:reserves,fdvUsd:noReserves?null:finite(attributes.fdv_usd),marketCapUsd:noReserves?null:finite(attributes.market_cap_usd),pairCreatedAt:typeof attributes.pool_created_at==='string'&&Number.isFinite(Date.parse(attributes.pool_created_at))?new Date(attributes.pool_created_at).getTime():null,url:'https://www.geckoterminal.com/base/pools/'+poolId};
  if(geckoPoolCache.size>=300)geckoPoolCache.delete(geckoPoolCache.keys().next().value);geckoPoolCache.set(cacheKey,{value,expiresAt:Date.now()+60_000});return value;
 }
-async function researchBaseStockPairedTokenUncached(input,{fetchImpl=fetch,baseStockOptionsImpl=baseStockOptions,inspectTokenImpl=inspectToken,holderSnapshotImpl=baseHolderSnapshot,holderSnapshotEnabled=true,env=process.env}={}){
+async function researchBaseStockPairedTokenUncached(input,{fetchImpl=fetch,baseStockOptionsImpl=baseStockOptions,inspectTokenImpl=inspectToken,holderSnapshotImpl=baseHolderSnapshot,holderSnapshotEnabled=true,verifyPairOnly=false,env=process.env}={}){
  const token=typeof input?.address==='string'?input.address.trim().toLowerCase():'';
  if(!addr(token)||/^0x0{40}$/i.test(token))throw new Error('Enter a valid Base token contract address.');
  const baseRpc=serverRpcUrl(8453,env);
@@ -122,10 +122,10 @@ async function researchBaseStockPairedTokenUncached(input,{fetchImpl=fetch,baseS
  const [launchesResult,feesResult,marketsResult,stocksResult,contractResult,holdersResult]=await Promise.allSettled([
   json(BANKR+'/token-launches',fetchImpl,signal),
   json(BANKR+'/token-launches/'+token+'/fees',fetchImpl,signal),
-  json(DEX+'/token-pairs/v1/base/'+token,fetchImpl,signal),
+  verifyPairOnly?null:json(DEX+'/token-pairs/v1/base/'+token,fetchImpl,signal),
   baseStockOptionsImpl({fetchImpl,signal}),
-  inspectTokenImpl(token,{rpc:baseRpc,chainId:8453,fetchImpl,signal}),
-  holderSnapshotEnabled?holderSnapshotImpl(token,fetchImpl,holderSignal,baseRpc,env):Promise.resolve(null)
+  verifyPairOnly?null:inspectTokenImpl(token,{rpc:baseRpc,chainId:8453,fetchImpl,signal}),
+  !verifyPairOnly&&holderSnapshotEnabled?holderSnapshotImpl(token,fetchImpl,holderSignal,baseRpc,env):null
  ]);
  const launchList=launchesResult.status==='fulfilled'&&Array.isArray(launchesResult.value?.launches)?launchesResult.value.launches:[];
  let launch=launchList.find(row=>row?.chain==='base'&&row?.status==='deployed'&&row?.tokenAddress?.toLowerCase()===token)||null,launchSource=launch?'recent Bankr launch feed':null,launchLookupStatus='not needed';
@@ -150,7 +150,7 @@ async function researchBaseStockPairedTokenUncached(input,{fetchImpl=fetch,baseS
  const dexPairMatchesBankr=!!(launchPoolId&&typeof market?.pairAddress==='string'&&market.pairAddress.toLowerCase()===launchPoolId);
  if(launchPoolId&&quoteAddress&&(!dexPairMatchesBankr||!hasMarketStats(market))){try{const exactMarket=await geckoPoolMarket(launchPoolId,token,quoteAddress,launch,stock,fetchImpl,signal);if(exactMarket&&(hasMarketStats(exactMarket)||!hasMarketStats(market)))market=exactMarket;}catch{}}
  const holders=holdersResult.status==='fulfilled'?holdersResult.value:null;
- const contractReport=contractResult.status==='fulfilled'?{address:contractResult.value.address,chainId:contractResult.value.chainId,network:contractResult.value.network,blockNumber:contractResult.value.blockNumber,blockHash:contractResult.value.blockHash,checkedAt:contractResult.value.checkedAt,tokenName:contractResult.value.tokenName,symbol:contractResult.value.symbol,decimals:contractResult.value.decimals,rawSupply:contractResult.value.rawSupply,implementationAddress:contractResult.value.implementationAddress,checks:contractResult.value.checks.filter(item=>['Contract code','Total supply (TS)','Source verification','Reported owner','Proxy indicators','Control functions'].includes(item.label)),sources:contractResult.value.sources}:null;
+ const contractReport=!verifyPairOnly&&contractResult.status==='fulfilled'?{address:contractResult.value.address,chainId:contractResult.value.chainId,network:contractResult.value.network,blockNumber:contractResult.value.blockNumber,blockHash:contractResult.value.blockHash,checkedAt:contractResult.value.checkedAt,tokenName:contractResult.value.tokenName,symbol:contractResult.value.symbol,decimals:contractResult.value.decimals,rawSupply:contractResult.value.rawSupply,implementationAddress:contractResult.value.implementationAddress,checks:contractResult.value.checks.filter(item=>['Contract code','Total supply (TS)','Source verification','Reported owner','Proxy indicators','Control functions'].includes(item.label)),sources:contractResult.value.sources}:null;
  let chainCheck={status:'unavailable',source:'Base JSON-RPC transaction receipt'};
  if(launch&&HASH.test(launch.txHash||'')){
   try{
@@ -162,6 +162,10 @@ async function researchBaseStockPairedTokenUncached(input,{fetchImpl=fetch,baseS
  const feeConsistent=!fee||(feeNumeraire===declaredStockAddress&&feePoolId===launchPoolId);
  const feeHistory=(()=>{const payload=feesResult.status==='fulfilled'?feesResult.value:null,rows=Array.isArray(payload?.allTimeDailyEarnings)?payload.allTimeDailyEarnings:null,launchTime=finite(launch?.timestamp),total=finite(payload?.lifetimeEarnedWeth),days=payload?.lifetimeDays;if(!fee||!feeConsistent||!rows||launchTime===null||total===null||!Number.isSafeInteger(days)||days<0)return {status:'unavailable',reason:'Bankr lifetime earnings could not be checked against a matching launch and complete daily history.'};const launchDate=new Date(launchTime).toISOString().slice(0,10),validRows=rows.every(row=>typeof row?.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(row.date)&&finite(row.weth)!==null&&finite(row.weth)>=0),positive=rows.filter(row=>finite(row.weth)>0),sum=rows.reduce((value,row)=>value+(finite(row.weth)||0),0),best=payload.lifetimeBestDay;if(!validRows||positive.some(row=>row.date<launchDate)||positive.length!==days||Math.abs(sum-total)>0.00011||best&&(typeof best.date!=='string'||best.date<launchDate||finite(best.weth)===null))return {status:'unavailable',reason:'Bankr lifetime earnings did not reconcile with its daily history and verified launch date.'};return {status:'reported',lifetimeEarnedWeth:String(payload.lifetimeEarnedWeth),earningDays:days,bestDay:best?{date:best.date,weth:String(best.weth)}:null,source:'Bankr public fee history'};})();
  const pairVerified=!!(launch&&declaredStockAddress&&stock&&stock.address===declaredStockAddress&&launchPoolId&&chainCheck.poolId===launchPoolId&&chainCheck.computedPoolId===launchPoolId&&chainCheck.status==='verified'&&feeConsistent);
+ if(verifyPairOnly){
+  if(!pairVerified&&(!stockData||stockData.sources?.coinbase?.status==='unavailable'||(!launch&&launchLookupStatus==='unavailable')||(launch&&chainCheck.status==='unavailable')))throw Error('Pair verification sources unavailable.');
+  return {classification:pairVerified?'verified-bankr-stock-paired-token':'unverified'};
+ }
  if(pairVerified && env.DATABASE_URL && env.RENDER){
   try{const catalog=await pairCatalog(env);await catalog.remember([launch]);}
   catch{console.error('Base discovery could not save a verified launch.');}
@@ -178,7 +182,7 @@ async function researchBaseStockPairedTokenUncached(input,{fetchImpl=fetch,baseS
 export async function researchBaseStockPairedToken(input,options={}){
  const token=typeof input?.address==='string'?input.address.trim().toLowerCase():'';
  if(!addr(token)||/^0x0{40}$/i.test(token))throw new Error('Enter a valid Base token contract address.');
- const key=token+(options.holderSnapshotEnabled===false?':public':':holders');
+ const key=token+(options.verifyPairOnly?':pair':options.holderSnapshotEnabled===false?':public':':holders');
  const active=researchPending.get(key);if(active)return active;
  const pending=researchBaseStockPairedTokenUncached({address:token},options);
  researchPending.set(key,pending);

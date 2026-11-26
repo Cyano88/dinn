@@ -12,6 +12,9 @@ import {declareDiscoveryExtension} from '@x402/extensions/bazaar';
 import {createFacilitatorConfig} from '@coinbase/x402';
 import {agentAccessRequest,agentServices,validateAgentRequest} from './agent-access.mjs';
 import {baseStockLookup} from './base-stock-data.mjs';
+import {robinhoodStock} from './robinhood-stock.mjs';
+import {ponsTradePair} from './pons-trading.mjs';
+import {researchBaseStockPairedToken} from './base-stock-paired-research.mjs';
 
 const baseRail={network:'eip155:8453',asset:'0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',path:'/api/paid/research',table:'dinn_base_research_payments'};
 const okxRail={network:'eip155:196',asset:'0x779ded0c9e1022225f8e0630b35a9b54be713736',path:'/api/okx/research',table:'dinn_okx_research_payments'};
@@ -124,7 +127,7 @@ async function paidStockTarget(input,lookup){
  if(matches.length!==1||!isAddress(matches[0].address||''))return {error:problem(422,'Use a company name, exact stock ticker or Base contract address that identifies one Coinbase stock token.')};
  return {address:matches[0].address.toLowerCase()};
 }
-export async function paidResearch(request,signature,{env=process.env,lookup=baseStockLookup,xlayerLookup=xLayerTarget,launchLookup=stockLaunchOptions,report=agentAccessRequest,runtime,queryUrl,okx=false}={}){
+export async function paidResearch(request,signature,{env=process.env,lookup=baseStockLookup,xlayerLookup=xLayerTarget,launchLookup=stockLaunchOptions,stockLookup=robinhoodStock,ponsLookup=ponsTradePair,bankrLookup=researchBaseStockPairedToken,report=agentAccessRequest,runtime,queryUrl,okx=false}={}){
  const rail=okx?okxRail:baseRail;
  const {table,asset,path,network}=rail;
  if(!runtime&&!(okx?okxConfigured(env):paidResearchConfigured(env)))return problem(503,okx?'X Layer USDT0 payments are not enabled.':'Direct Base payments are not enabled.');
@@ -137,8 +140,9 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
    request={...request,input:JSON.parse(inputText)};
   }
   if(request.service==='stock.launch-idea'&&![8453,4663].includes(request.input?.chainId))return problem(400,'Which launch chain? Send chainId 8453 for Base or 4663 for Robinhood Chain before paying.');
-  if(validateAgentRequest(request).length)return problem(400,'Supply the required research inputs.');}
- catch{return problem(400,'Invalid research request.');}
+  const missing=validateAgentRequest(request);
+  if(missing.length)return problem(400,'Supply the required research input: '+missing.join(', ')+'.');}
+ catch{return problem(400,'Check requestId and the input fields. Example input for '+request.service+': '+JSON.stringify(examples[request.service])+'.');}
  const {service,input,requestId}=request;
  if(!runtime&&!setups.has(rail))setups.set(rail,initialize(env,rail).catch(error=>{setups.delete(rail);throw error;}));
  const state=runtime||await setups.get(rail);
@@ -154,6 +158,23 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
   challenge=await server.createPaymentRequiredResponse([requirements],resource,undefined,discovery);
  }
  if(!signature){
+  if(okx){
+   try{
+    if(service==='pons.stock.research')await stockLookup(input.query);
+    if(service==='token.research'||service==='pons.stock-paired.research'){
+     const launch=await ponsLookup({token:input.address});
+     if(service==='pons.stock-paired.research')await stockLookup(launch.pair.address);
+    }
+    if(service==='base.stock-paired.research'){
+     const launch=await bankrLookup(input,{env,verifyPairOnly:true});
+     if(launch.classification!=='verified-bankr-stock-paired-token')return problem(422,'Use the Base contract of a verified Bankr stock-paired launch. For a stock token itself, use base.stock.research.');
+    }
+   }catch(error){
+    if(error.message?.startsWith('No unique active Robinhood stock'))return problem(422,'Use an active Robinhood stock ticker or contract. For a Pons stock pair, its pairing asset must be a Robinhood stock.');
+    if(error.message?.includes('not a registered Pons'))return problem(422,'Use the contract of a registered Pons v2 launch on Robinhood Chain.');
+    return problem(503,'Dinn could not verify this research target with its sources. Check the chain and contract, then retry.');
+   }
+  }
   if(service==='xlayer.stock.research'){
    try{stockCode(input.query);}catch{return problem(422,'Use an exact company name or stock ticker.');}
    try{

@@ -142,3 +142,21 @@ test('launch ideas clarify a missing or unsupported chain before requesting paym
   assert.equal(reply.headers?.['PAYMENT-REQUIRED'],undefined);
  }
 });
+
+test('OKX checks Pons and Bankr targets before advertising a price',async()=>{
+ const deps={runtime:{challenge:{},resource:{}},okx:true};
+ const missingPons=async()=>{throw Error('This address is not a registered Pons v2 token on Robinhood Chain.');};
+ const missingStock=async()=>{throw Error('No unique active Robinhood stock token matches.');};
+ const unavailable=async()=>{throw Error('Provider unavailable');};
+ for(const [service,input,lookups,status] of [
+  ['token.research',{address:payer},{ponsLookup:missingPons},422],
+  ['pons.stock.research',{query:'UNKNOWN'},{stockLookup:missingStock},422],
+  ['pons.stock-paired.research',{address:payer},{ponsLookup:async()=>({pair:{address:payTo}}),stockLookup:missingStock},422],
+  ['base.stock-paired.research',{address:payer},{bankrLookup:async(_input,opts)=>{assert.equal(opts.verifyPairOnly,true);return {classification:'unverified'};}},422],
+  ['base.stock-paired.research',{address:payer},{bankrLookup:unavailable},503]
+ ]){
+  const r=await paidResearch({requestId:'check',service,input},null,{...deps,...lookups});
+  assert.equal(r.status,status);
+  assert.equal(r.headers['PAYMENT-REQUIRED'],undefined);
+ }
+});
