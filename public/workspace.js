@@ -1,6 +1,6 @@
 import {accountRecords} from './account-records.js';
 import {loadAuthConfig} from './auth-boot.js';
-import {setupInvite,sharedFinding,launchStory,ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
+import {setupInvite,sharedFinding,launchStory,ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,awaitingValuation,valuationQuestion,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
 import {newChatTask} from './flow.js';
 import {firstLockPreview,lockCoverageText} from './token-report.js';
 import {showFeedbackFeed} from '/feedback-feed.js';
@@ -430,10 +430,11 @@ $('chat').onsubmit=async e=>{
   try{const result=await accountRequest('share-finding',entry,id);if(user===id&&epoch===run)recordSetupReply(text,'Published. [View and share the feed entry]('+location.origin+'/feedback#stock-'+result.id+')');}
   catch(error){if(user===id&&epoch===run)recordSetupReply(text,error.message);}return;
  }
- const bankrValuation=watch?.concept&&history.at(-1)?.content?.endsWith('enter a starting value in '+watch.ticker+'c, or say cancel.');
+ const bankrValuation=watch?.concept&&awaitingValuation(history.at(-1)?.content,watch.ticker+'c');
  const valuationAmount=bankrValuation&&text.trim().match(/^(\d{1,18}(?:\.\d{1,18})?)(?:\s+([a-z0-9.]+))?$/i);
  if(bankrValuation&&/^cancel[.!]?$/i.test(text)){recordSetupReply(text,'Base launch preview canceled.');$('prompt').value='';return;}
- if(valuationAmount?.[2]&&valuationAmount[2].toLowerCase()!==(watch.ticker+'c').toLowerCase()){recordSetupReply(text,'To use these preview terms, enter a starting value in '+watch.ticker+'c, or say cancel.');$('prompt').value='';return;}
+ if(bankrValuation&&/^(?:what (?:does (?:that|this) mean|is (?:the |a )?starting value)|how (?:does (?:that|this) work|much do i (?:pay|spend)))[?.!]*$/i.test(text.trim())){recordSetupReply(text,'For example, a starting value of 100 '+watch.ticker+'c would price the entire supply at 100 '+watch.ticker+'c at launch. Trying that number here costs nothing. '+valuationQuestion(watch.ticker+'c'));$('prompt').value='';return;}
+ if(valuationAmount?.[2]&&valuationAmount[2].toLowerCase()!==(watch.ticker+'c').toLowerCase()){recordSetupReply(text,'This pair uses '+watch.ticker+'c. '+valuationQuestion(watch.ticker+'c'));$('prompt').value='';return;}
  const choice=valuationAmount?'bankr':ideaChoice(text,watch,history.at(-1)?.content);
  if(choice&&choice!=='launch'){
   if(controller||setupBusy||launchBusy)return;

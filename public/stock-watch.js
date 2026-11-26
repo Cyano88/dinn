@@ -102,9 +102,15 @@ export function ideaChoice(text,watch,last){
  }
  return null;
 }
+export function valuationQuestion(pair){
+ return 'What starting value would you like to preview for the whole supply? Reply with an amount in '+pair+', or say cancel.';
+}
+export function awaitingValuation(last,pair){
+ return Boolean(last&&(last.endsWith(valuationQuestion(pair))||last.endsWith('enter a starting value in '+pair+', or say cancel.')));
+}
 export function bankrBrief(watch,availability){
  const i=launchAngle(watch);
- return '**Base creator brief: '+conceptLabel(i)+'**\n\n'+i.activity+'\n\nStory: '+label(i.article)+'\n\nFirst milestone: '+i.question+'\n\nProposed pairing asset: the Base stock token for '+watch.ticker+'. '+(availability||'Check current pair support with Bankr.');
+ return '**'+conceptLabel(i)+' on Base**\n\n'+(availability||'Check current pair support with Bankr.');
 }
 function findings(original,current,question){
  const known=new Set(original.articles.map(a=>a.url));

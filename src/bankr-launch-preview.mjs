@@ -1,5 +1,6 @@
 import {createLaunchClient} from '@bankr/launch-sdk';
 import {isAddress,parseUnits,zeroAddress} from 'viem';
+import {valuationQuestion} from '../public/stock-watch.js';
 import {baseStockLookup} from './base-stock-data.mjs';
 import {serverRpcUrl} from './rpc-config.mjs';
 
@@ -39,7 +40,7 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,e
   }
   plan=await client.plan(input);
  }catch(e){
-  if(startFdv===undefined&&e?.code==='INVALID_PARAMS'&&e.detail?.includes('set startFdv'))return {status:'valuation',message:'Bankr needs a starting value for the full token supply in '+stock.symbol+'. This preview turns off automatic liquidity additions. To try those terms, enter a starting value in '+stock.symbol+', or say cancel.'};
+  if(startFdv===undefined&&e?.code==='INVALID_PARAMS'&&e.detail?.includes('set startFdv'))return {status:'valuation',message:'Your token would trade against '+stock.symbol+' on Base through Bankr. The starting value sets the opening price for your token. You can try a value here without spending funds.\n\n'+valuationQuestion(stock.symbol)};
   throw e;
  }
  if(!matchesDinnFee(plan.resolved?.padTerms,treasury))return {status:'fee-mismatch',message:'The launchpad fee terms differ from the approved Dinn split. This launch preview is unavailable.'};
