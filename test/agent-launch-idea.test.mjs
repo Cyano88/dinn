@@ -10,7 +10,7 @@ const article={title:'Test milestone',publishedAt:'2026-11-25T10:00:00Z',source:
 const concept={name:'Test concept',symbol:'EXM',activity:'Draw a new mascot for the community.',question:'Was the next milestone reported?'};
 const coverage={screened:1,quiet:0,eligible:1};
 const data={ideas:[{asset,article,blockNumber:123}],checkedAt:'2026-11-26T10:00:00Z',coverage,missing:[],unchecked:[]};
-const request={service:'stock.launch-idea',input:{}};
+const request={service:'stock.launch-idea',input:{chainId:4663}};
 test('one paid report carries the same sourced concept into the owner brief and a pair-matched verified receipt',async()=>{
  const db=new PGlite();
  try{
@@ -28,7 +28,7 @@ test('one paid report carries the same sourced concept into the owner brief and 
  }finally{await db.close();}
 });
 test('quiet checked coverage can return wait; outages cannot become a paid wait finding',async()=>{
- const options={generate:()=>assert.fail(),save:()=>assert.fail()};
+ const options={chainId:4663,generate:()=>assert.fail(),save:()=>assert.fail()};
  const quiet={...data,ideas:[],coverage:{...coverage,quiet:1}};
  assert.equal((await communityBrief({...options,discover:async()=>({data:quiet})})).result.outcome,'wait');
  await assert.rejects(communityBrief({...options,discover:async()=>({data:{...quiet,coverage:{...coverage,screened:0}}})}),/unavailable/);

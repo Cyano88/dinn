@@ -6,10 +6,10 @@ Choose a research example below for your agent. Send a JSON POST to `https://din
 
 ## Find a stock-inspired token launch idea for my community
 
-Powered by Dinn Research. One funded request screens recent news for approved Pons stock pairs on Robinhood Chain. A qualifying story comes with its source, date, a proposed token name and ticker, a community activity, and a link that opens the same brief in Dinn. A checked but quiet market returns a paid **wait** finding. Source or inference failures do not settle a payment. The owner reviews launch terms in Dinn.
+Powered by Dinn Research. Ask the owner which launch chain to research before paying. Use `chainId: 8453` for Bankr on Base, or `chainId: 4663` for Pons on Robinhood Chain. Each request screens recent news only for eligible stock pairs on that chain. A qualifying story comes with its source, date, a proposed token name and ticker, a community activity, and a link that opens the same brief in Dinn. A checked but quiet market returns a paid **wait** finding. Source or inference failures do not settle a payment. The owner reviews launch terms in Dinn.
 
 ```json
-{"service":"stock.launch-idea","requestId":"community-idea-001","input":{}}
+{"service":"stock.launch-idea","requestId":"community-idea-001","input":{"chainId":8453}}
 ```
 
 ## Research a Coinbase tokenized stock on Base

@@ -399,7 +399,7 @@ $('chat').onsubmit=async e=>{
    const {brief:idea,reference}=await accountRequest('open-idea',{id:ideaTarget},owner);
    if(user!==owner||epoch!==generation)return;
    const ticker=idea.asset.symbol,current={ticker,checkedAt:idea.checkedAt,articles:[idea.article],sources:[]};
-   const next={ticker,original:current,latest:current,question:'',ideaSource:idea.article,concept:idea.concept,reference};
+   const next={ticker,launchChainId:idea.chainId,pairAddress:idea.asset.address,original:current,latest:current,question:'',ideaSource:idea.article,concept:idea.concept,reference};
    await accountRecords.setItem(key('stock-watch'),JSON.stringify(next));
    if(user===owner&&epoch===generation){recordSetupReply('Open my marketplace launch idea',ideaReply(next));$('prompt').value='';}
   }catch{if(user===owner&&epoch===generation)say('I could not open that launch brief. Retry opening it.');}
@@ -453,7 +453,7 @@ $('chat').onsubmit=async e=>{
    const owner=user,run=epoch;setupBusy=true;
    try{
     const idea=launchAngle(watch);
-    const preview=idea.symbol?await accountRequest('bankr-preview',{ticker:watch.ticker,name:idea.name,symbol:idea.symbol,launcher:account,...(valuationAmount?{startFdv:valuationAmount[1]}:{})},owner):{message:'Ask for a named token idea to check its Base launch terms.'};
+    const preview=idea.symbol?await accountRequest('bankr-preview',{ticker:watch.ticker,name:idea.name,symbol:idea.symbol,launcher:account,...(watch.launchChainId===8453?{expectedPair:watch.pairAddress}:{}),...(valuationAmount?{startFdv:valuationAmount[1]}:{})},owner):{message:'Ask for a named token idea to check its Base launch terms.'};
     if(user!==owner||run!==epoch)return;answer=bankrBrief(watch,preview.message);
    }catch{if(user!==owner||run!==epoch)return;answer=bankrBrief(watch,'Bankr launch terms could not be checked. Try again shortly.');}
    finally{if(user===owner)setupBusy=false;}
@@ -536,7 +536,7 @@ $('chat').onsubmit=async e=>{
     const match=current.articles.find(a=>a.url===selectedStory.article.url);
     if(match)current.articles=[match,...current.articles.filter(a=>a!==match)];
    }
-   const next=refresh?{...watch,latest:current}:{ticker:current.ticker,original:current,latest:current,question:''};
+   const next=refresh?{...watch,latest:current}:{ticker:current.ticker,original:current,latest:current,question:'',...(selectedStory?.asset?.chainId===8453?{launchChainId:8453,pairAddress:selectedStory.asset.address}:{})};
    result.message=watchReply(next.original,current,next.question,refresh);
    await accountRecords.setItem(key('stock-watch'),JSON.stringify(next));
   }
@@ -1079,7 +1079,7 @@ function renderAgentAccess(manifest,checking=false){
    meta.append(link);detail.append(title,intro,meta);
    for(const [title,body] of [
     ['Stock tokens on Base','Look up a Coinbase stock token by ticker or address. Check its identity, dated reference price, trading activity, holders and available lock records.'],
-    ['Find a stock-inspired token launch idea for my community','Powered by Dinn Research. Get a sourced story, a token concept and a brief to open in Dinn. The search checks approved Pons stock pairs. Quiet coverage returns a reason to wait.'],
+    ['Find a stock-inspired token launch idea for my community','Powered by Dinn Research. Get a sourced story, a token concept and a brief to open in Dinn. Choose Bankr on Base or Pons on Robinhood Chain before hiring. Quiet coverage returns a reason to wait.'],
     ['Bankr stock pairs','Research a launch by address to check its paired stock, liquidity, trading activity and creator vesting. Or ask for a shortlist ranked by liquidity or trading volume from the launches Dinn checks.'],
     ['Stock tokens on Robinhood Chain','Look up a stock token such as NVDA. Check its identity, available holder data and reported lock schedules.'],
     ['Pons launches and stock pairs','Send a launch address to check its age, curve progress, trading volume, fees and sampled holder activity. For a stock pair, Dinn checks which stock backs the pair and reports available unlock dates for each token separately.']

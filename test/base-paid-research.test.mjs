@@ -10,7 +10,7 @@ const usdc='0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',network='eip155:8453';
 const resource={url:'https://example.test/api/paid/research'};
 const terms={scheme:'exact',network,asset:usdc,amount:'100000',payTo,maxTimeoutSeconds:180,extra:{}};
 const services=[
- ['stock.launch-idea',{},{outcome:'wait'}],
+ ['stock.launch-idea',{chainId:8453},{outcome:'wait',chainId:8453}],
  ['pons.stock.research',{query:'NVDA'},{classification:'verified-robinhood-stock',stock:{symbol:'NVDA'}}],
  ['pons.stock-paired.research',{address:payer},{address:payer,classification:'verified-pons-stock-pair',ponsState:{pair:{address:payTo}},stock:{address:payTo}}],
  ['base.stock.research',{query:'NVDAc'},{identity:{status:'matched',symbol:'NVDAc'}}],
@@ -82,4 +82,14 @@ test('all supported report types use the same settlement and recovery path',asyn
   assert.equal((await paidResearch(req,signed(20),deps)).status,200);
   assert.equal(settlements,services.length+2);assert.equal(reportCalls,services.length+2);
  }finally{await db.close();}
+});
+
+test('launch ideas clarify a missing or unsupported chain before requesting payment',async()=>{
+ for(const chainId of [undefined,1,'8453']){
+  const request={service:'stock.launch-idea',requestId:'choose-chain',input:{chainId}};
+  const reply=await paidResearch(request,null,{runtime:{},report:()=>assert.fail()});
+  assert.equal(reply.status,400);
+  assert.match(JSON.stringify(reply.body),/8453 for Base or 4663 for Robinhood Chain/);
+  assert.equal(reply.headers?.['PAYMENT-REQUIRED'],undefined);
+ }
 });

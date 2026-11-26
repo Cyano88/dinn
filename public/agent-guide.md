@@ -8,7 +8,7 @@ Discover `/.well-known/dinn.json` and `/api/agent/schema`. The old `/.well-known
 
 ## Community launch ideas on the marketplaces
 
-**Find a stock-inspired token launch idea for my community.** Powered by Dinn Research. Send that sentence as the NEAR hire brief, or request `stock.launch-idea` with empty input on Base. This paid service screens approved Robinhood Chain stock pairs for a sourced story from the past 48 hours. It returns one creator brief or a dated wait finding. Give the owner the Open in Dinn link to continue with the same concept. An account is required to import the brief. The link can be forwarded. The hire does not authorize a launch.
+**Find a stock-inspired token launch idea for my community.** Powered by Dinn Research. Ask the owner “Base (Bankr) or Robinhood Chain (Pons)?” before hiring if they have not specified one. On NEAR append “on Base” or “on Robinhood Chain” to the brief. On Agentic Market set `input.chainId` to 8453 or 4663. The payment network does not determine the launch chain. This service screens eligible stock pairs on the selected chain for a sourced story from the past 48 hours. It returns one creator brief or a dated wait finding. Give the owner the Open in Dinn link to continue with the same concept. An account is required to import the brief. The link can be forwarded. The hire does not authorize a launch.
 
 ## Current read-only services
 

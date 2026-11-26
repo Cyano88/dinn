@@ -22,7 +22,7 @@ import {purchaseUsdReference} from './purchase-usd.mjs';
 const account={type:'string',pattern:'^0x[0-9a-fA-F]{40}$'};
 import {communityBrief,ideaService,originalFinding} from './agent-launch-idea.mjs';
 export const agentServices={
- [ideaService]:{description:'Find a stock-inspired token launch idea for my community. Powered by Dinn Research. Paid marketplace buyers receive one sourced idea from the approved Pons stock pairs checked, or a dated wait finding.',required:[],properties:{}},
+ [ideaService]:{description:'Find a stock-inspired token launch idea for my community. Powered by Dinn Research. Paid marketplace buyers receive one sourced idea from eligible stock pairs on the requested chain, or a dated wait finding. Ask the owner which chain before hiring.',required:['chainId'],properties:{chainId:{type:'integer',enum:[8453,4663]}}},
  'pons.stock.research':{description:'Research a Robinhood stock token by exact ticker or chain 4663 address, including available contract, holder and lock evidence.',required:['query'],properties:{query:{type:'string',pattern:'^(?:0x[0-9a-fA-F]{40}|[a-zA-Z][a-zA-Z0-9.-]{0,19})$'}}},
  'pons.stock-paired.research':{description:'Research a Pons launch by address. Match its onchain pairing asset to the Robinhood stock registry and report launch activity and available lock schedules.',required:['address'],properties:{address:account}},
  'base.stock-paired.discover':{description:'Compare a rotating sample of verified Bankr stock pairs on Base by reported USD liquidity or 24-hour USD volume.',required:['metric'],properties:{metric:{type:'string',enum:['liquidity','volume']}}},
@@ -223,7 +223,7 @@ export async function agentAccessRequest(request,dependencies={}){
  const {focus,...i}=request.input;let result,deliverable;
  if(request.service===ideaService){
   if(dependencies.paidMarketplaceHire!==true && dependencies.paidResearch!==true)throw Error('This creator brief requires a funded marketplace request.');
-  const brief=await communityBrief({env,...dependencies.ideaDependencies});
+  const brief=await communityBrief({env,...dependencies.ideaDependencies,chainId:i.chainId});
   result=brief.result;deliverable=brief.markdown;
  }
  else if(request.service==='base.stock-paired.discover'){result=await (dependencies.discoverStockPairs||discoverStockPairs)(i.metric,{env});deliverable=discoveryMessage(result);}

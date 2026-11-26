@@ -12,7 +12,7 @@ function matchesDinnFee(terms,treasury){
   &&matches(terms.steadySharesWad)&&(terms.decay?.on===false||terms.decay?.on===true&&matches(terms.decay.sharesWad));
 }
 
-export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv},{env=process.env,lookup=baseStockLookup,client}={}){
+export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,expectedPair},{env=process.env,lookup=baseStockLookup,client}={}){
  if(typeof ticker!=='string'||!/^[A-Z][A-Z0-9.-]{0,12}$/.test(ticker)||typeof name!=='string'||!name.trim()||name.length>40||typeof symbol!=='string'||!/^[A-Z0-9]{1,12}$/.test(symbol))throw Error('Invalid creator brief');
  client??=createLaunchClient({chain:'base',rpcUrl:serverRpcUrl(8453,env)});
  const state=await client.status();
@@ -23,7 +23,8 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv},
  if(!pad||!/^([1-9]\d{0,76})$/.test(pad))return {status:'setup',message:'You can keep this idea and its research. Launching a token on Base through Dinn is not available yet.'};
  const treasury=env.DINN_BANKR_BASE_FEE_RECIPIENT;
  if(!isAddress(treasury||'')||treasury.toLowerCase()===zeroAddress)return {status:'setup',message:'The Dinn Base fee wallet has not been configured.'};
- const stock=(await lookup({query:ticker+'c'})).stocks.find(row=>row.symbol.toUpperCase()===ticker+'C'&&row.bankrPairSupported);
+ if(expectedPair!==undefined&&!isAddress(expectedPair))throw Error('Invalid Base pair address.');
+ const stock=(await lookup(expectedPair?{address:expectedPair}:{query:ticker+'c'})).stocks.find(row=>row.symbol.toUpperCase()===ticker+'C'&&row.bankrPairSupported&&(!expectedPair||row.address.toLowerCase()===expectedPair.toLowerCase()));
  if(!stock)return {status:'unsupported',message:'Dinn could not verify a Base stock pair for '+ticker+' in both the Coinbase and Bankr lists.'};
  const launchpadId=BigInt(pad);
  if(!(await client.contracts().settings.padQuote(launchpadId,stock.address)).launches)return {status:'unsupported',message:'This launchpad does not currently allow '+stock.symbol+' as the pairing asset.'};

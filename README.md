@@ -65,7 +65,7 @@ Open http://127.0.0.1:4317. See [.env.example](.env.example) for provider settin
 ## Integration and verification
 
 - [Agent integration guide](public/agent-guide.md) and [reference research client](scripts/dinn-trading-agent-demo.mjs)
-- [Community launch idea briefs](public/agentic-market.md#find-a-stock-inspired-token-launch-idea-for-my-community). The marketplace service returns one sourced story and owner handoff, or a dated wait finding, from approved Pons stock pairs.
+- [Community launch idea briefs](public/agentic-market.md#find-a-stock-inspired-token-launch-idea-for-my-community). The marketplace service returns one sourced story and owner handoff, or a dated wait finding, from eligible Bankr or Pons stock pairs on the requested chain.
 - [NEAR marketplace delivery and payment record](docs/NEAR-MARKETPLACE.md), including the distinction between controlled verification and independent demand
 - [Funded Pons launch receipt](https://robinhoodchain.blockscout.com/tx/0x322354170e0fa42b45d4028dcdd2bc375d4b0ba2d276023b6960af7f32943a46) and [Pons integration notes](docs/PONS-INTEGRATION.md)
 - [Agent Economy submission baseline](https://github.com/Cyano88/dinn/commit/29003cd1377e0d9c8fef95552cf04ac053f479d1), [NEAR integration changes](https://github.com/Cyano88/dinn/compare/29003cd1377e0d9c8fef95552cf04ac053f479d1...feat/near-agent-access) and [historical Ascend documentation](docs/README-HISTORY.md)

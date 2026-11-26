@@ -24,7 +24,7 @@ function supportedResearchJobSurface(brief,job){
  if(job.origin===null)return job.jobKind==='standard'&&job.isPrivate===false||job.jobKind==='instant'&&job.isPrivate===true;
  return job.origin==='a2a'&&job.jobKind==='instant'&&job.isPrivate===true;
 }
-const researchScope='Robinhood Chain: Pons launches and stock pairs by launch address, or Robinhood stock tokens by ticker or address. Base: Coinbase stock tokens by ticker or address, or Bankr stock pairs by launch address. For a fresh community concept, ask “Find a stock-inspired token launch idea for my community.” Dinn provides research only.';
+const researchScope='Robinhood Chain: Pons launches and stock pairs by launch address, or Robinhood stock tokens by ticker or address. Base: Coinbase stock tokens by ticker or address, or Bankr stock pairs by launch address. For a fresh community concept, ask “Find a stock-inspired token launch idea for my community on Base” or specify Robinhood Chain. Dinn provides research only.';
 const scopeNotice='Dinn does not cover this request today. '+researchScope+' Research has not started. You can cancel this job.';
 export function outsideResearchScope(text){
  if(typeof text!=='string')return false;
@@ -46,12 +46,18 @@ function requestedResearchInput(row,job){
  if(outsideResearchScope(text))return null;
  const serviceLines=[...text.matchAll(/^\s*service\s*:\s*([a-z][a-z0-9.-]*)\s*$/gim)].map(match=>match[1].toLowerCase());
  if([...text.matchAll(/^\s*service\s*:/gim)].length!==serviceLines.length)return null;
- // Launch ideas screen the Pons universe. Never silently substitute it for a named stock or a Base-only brief.
- const ideaRequest=/^(?:please )?(?:find|suggest|propose) (?:me |us )?(?:a|one) stock[- ]inspired token launch idea for (?:my|our) community[.!?]?$/i;
+ const ideaRequest=/^(?:please )?(?:find|suggest|propose) (?:me |us )?(?:a|one) stock[- ]inspired token launch idea for (?:my|our) community(?: on (Base|Robinhood(?: Chain)?))?[.!?]?$/i;
  const ideaLines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
- if(ideaLines.some(s=>ideaRequest.test(s)||/^service:\s*stock\.launch-idea$/i.test(s)) &&
-    ideaLines.every(s=>ideaRequest.test(s)||/^service:\s*stock\.launch-idea$/i.test(s)||/^hire: dinn labs$/i.test(s)) &&
-    job.isTestRun===false)return {service:'stock.launch-idea'};
+ if(ideaLines.some(s=>ideaRequest.test(s)||/^service:\s*stock\.launch-idea$/i.test(s))){
+  const chains=new Set();
+  for(const line of ideaLines){
+   const prompt=line.match(ideaRequest),field=line.match(/^chain:\s*(8453|4663|Base|Robinhood(?: Chain)?)$/i);
+   if(!prompt&&!field&&!/^service:\s*stock\.launch-idea$|^hire: dinn labs$/i.test(line))return null;
+   const chain=field?.[1]||prompt?.[1];
+   if(chain)chains.add(/^(8453|base)$/i.test(chain)?8453:4663);
+  }
+  return chains.size===1&&job.isTestRun===false?{service:'stock.launch-idea',chainId:[...chains][0]}:null;
+ }
  const services=[...new Set(serviceLines)];if(services.length>1||services.some(value=>!['pons.stock.research','pons.stock-paired.research','token.research','token.inspect','base.stock-paired.research','base.stock.research'].includes(value)))return null;
  const addresses=[...new Set(sources.flatMap(value=>typeof value==='string'?[...value.matchAll(TOKEN_RE)].map(match=>match[0].toLowerCase()):[]))];
  const chainLines=[...text.matchAll(/^\s*chain\s*:\s*(\d+)\s*$/gim)].map(match=>Number(match[1]));
@@ -177,7 +183,7 @@ export function createNearWorker({token=process.env.NEAR_AGENT_TOKEN,agentId=pro
    };
    if(data.phase==='declined')return {assignmentId:a.assignmentId,state:'declined'};
    if(oneShot && !data.submittedAt && eligibleAssignment(row,full,agentId,{minimumEscrow,escrowToken}) && !resolveInput(row,full))
-    return decline('rejected','Send one supported research brief with the chain and target. '+researchScope+' Example: Research NVDAc on Base.');
+    return decline('rejected',/stock[ -]inspired token launch idea|stock\.launch-idea/i.test([row.job.description,row.latestMessage?.body].join(' '))?'Which launch chain should Dinn research? Include “on Base” or “on Robinhood Chain” in the first brief. Research has not started.':'Send one supported research brief with the chain and target. '+researchScope+' Example: Research NVDAc on Base.');
    if(!oneShot && data.scopeNoticeSent)return {assignmentId:a.assignmentId,state:'unsupported-scope'};
    const canGuide=!oneShot && eligibleAssignment(row,full,agentId,{minimumEscrow,escrowToken}) && full.isPrivate===true;
    if(canGuide && !data.guidedInput && !data.submittedAt && !a.startedAt && !a.deliverableUrl &&

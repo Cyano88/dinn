@@ -1,5 +1,7 @@
 import {hasLaunchEvent} from '../public/stock-watch.js';
-import {equityContext} from './equity-context.mjs';
+import {baseStockOptions} from './base-stock-data.mjs';
+import {b20Snapshot} from './base-stock-research.mjs';
+import {equityContext,equityTicker} from './equity-context.mjs';
 import {ponsPair} from './pons-pairs.mjs';
 import {pairCandidates} from '../public/pons-assets.js';
 
@@ -35,7 +37,25 @@ export function discoverLaunchStories(options){
  request.catch(()=>{if(lastScreen?.request===request)lastScreen=null;});
  return request;
 }
-async function screen({research=ticker=>equityContext(ticker,{headlinesOnly:true}),pair=ponsPair,approval=approvedStockPairs,assets=knownStocks,now=Date.now()}={}){
+export async function discoverBaseLaunchStories({env=process.env,fetchImpl=fetch,registry=baseStockOptions,verify=b20Snapshot,research,now=Date.now()}={}){
+ const catalog=await registry({fetchImpl});
+ if(catalog.chainId!==8453||catalog.sources?.bankr?.status!=='available'||catalog.sources?.coinbase?.status!=='available')throw Error('Base stock pair sources unavailable.');
+ const stocks=new Map(),excluded=[];
+ for(const row of catalog.stocks){
+  const stock=row.coinbase,ticker=equityTicker(stock?.symbol);
+  if(!stock||stock.chainId!==8453||stock.address!==row.address||!ticker||!row.bankrPairSupported){excluded.push(row.symbol);continue;}
+  stocks.set(row.address,{chainId:8453,name:stock.name,address:row.address,symbol:ticker,stockSymbol:stock.symbol,stock});
+ }
+ const assets=[...stocks.values()];
+ const pair=async({pairToken})=>{
+  const {stock,symbol}=stocks.get(pairToken);
+  const result=await verify(pairToken,stock,{fetchImpl,env,signal:AbortSignal.timeout(15000)});
+  if(result.identityStatus!=='matched'||result.address!==pairToken)throw Error('Base stock identity mismatch.');
+  return {chainId:8453,address:pairToken,symbol,blockNumber:result.blockNumber};
+ };
+ return screen({chainId:8453,assets:assets.map(({stock,...asset})=>asset),unmatched:excluded,pair,approval:async()=>assets.map(()=>true),research:research||(ticker=>equityContext(ticker,{headlinesOnly:true,fetchImpl,env})),now});
+}
+async function screen({chainId=4663,unmatched=unresolved,research=ticker=>equityContext(ticker,{headlinesOnly:true}),pair=ponsPair,approval=approvedStockPairs,assets=knownStocks,now=Date.now()}={}){
  let flags;
  try{flags=await approval(assets);}catch{flags=[];}
  const universe=assets.filter((a,i)=>flags[i]===true);
@@ -51,7 +71,7 @@ async function screen({research=ticker=>equityContext(ticker,{headlinesOnly:true
  const ranked=scans.flatMap(s=>s.value?[s.value]:[]).sort((a,b)=>Number(b.article.kind==='issuer-announcement')-Number(a.article.kind==='issuer-announcement')||Date.parse(b.article.publishedAt)-Date.parse(a.article.publishedAt));
  const checkFinal=async idea=>{
   const approval=await pair({pairToken:idea.asset.address});
-  if(approval.chainId!==4663||approval.symbol!==idea.asset.symbol||approval.address?.toLowerCase()!==idea.asset.address.toLowerCase())throw Error('Pair identity mismatch');
+  if(approval.chainId!==chainId||approval.symbol!==idea.asset.symbol||approval.address?.toLowerCase()!==idea.asset.address.toLowerCase())throw Error('Pair identity mismatch');
   return {...idea,blockNumber:approval.blockNumber};
  };
  const ideas=[],unchecked=[];
@@ -62,13 +82,14 @@ async function screen({research=ticker=>equityContext(ticker,{headlinesOnly:true
   i+=batch.length;
  }
  const missing=scans.flatMap((s,i)=>s.status==='rejected'?[universe[i].symbol]:[]);
- const lines=[ideas.length?'Stock stories with an available Pons pair':'I found no fresh story with a verified Pons pair to shortlist.'];
+ const venue=chainId===8453?'Bankr':'Pons';
+ const lines=[ideas.length?'Stock stories with an available '+venue+' pair':'I found no fresh story with a verified '+venue+' pair to shortlist.'];
  for(const {asset,article,quote,partial} of ideas){
   const move=quote?'Underlying stock: '+quote.changePercent.toFixed(2)+'% from its previous close at '+quote.asOf.slice(0,16).replace('T',' ')+' UTC.':'Stock price change unavailable.';
-  lines.push(asset.symbol+' · '+article.title+'\n['+article.source+' · '+article.publishedAt.slice(0,10)+']('+article.url+')\n'+move+' Pair: '+asset.symbol+' on Robinhood Chain.'+(partial?' Some news sources were unavailable.':''));
+  lines.push(asset.symbol+' · '+article.title+'\n['+article.source+' · '+article.publishedAt.slice(0,10)+']('+article.url+')\n'+move+' Pair: '+asset.symbol+(chainId===8453?' on Base.':' on Robinhood Chain.')+(partial?' Some news sources were unavailable.':''));
  }
- const coverage={catalogCandidates:assets.length,eligible:universe.length,screened:universe.length-missing.length,quiet:scans.filter(s=>s.status==='fulfilled'&&s.value===null).length,disabled,approvalUnknown,unresolved,partialCatalog:true};
- lines.push(coverage.eligible+' approved stock pairs · '+coverage.screened+' checked for news · '+coverage.quiet+' without a qualifying headline in 48 hours.'+(missing.length?' News unavailable: '+missing.join(', ')+'.':'')+(approvalUnknown.length?' Approval unavailable for '+approvalUnknown.length+' candidates.':'')+(unchecked.length?' Final pair check unavailable: '+unchecked.join(', ')+'.':'')+' Coverage uses the known Pons list; newly added pairs can be missing.'+(unresolved.length?' Unmatched: '+unresolved.join(', ')+'.':''));
+ const coverage={catalogCandidates:assets.length,eligible:universe.length,screened:universe.length-missing.length,quiet:scans.filter(s=>s.status==='fulfilled'&&s.value===null).length,disabled,approvalUnknown,unresolved:unmatched,partialCatalog:true};
+ lines.push(coverage.eligible+' approved stock pairs · '+coverage.screened+' checked for news · '+coverage.quiet+' without a qualifying headline in 48 hours.'+(missing.length?' News unavailable: '+missing.join(', ')+'.':'')+(approvalUnknown.length?' Approval unavailable for '+approvalUnknown.length+' candidates.':'')+(unchecked.length?' Final pair check unavailable: '+unchecked.join(', ')+'.':'')+' Coverage uses the known '+venue+' list; newly added pairs can be missing.'+(unmatched.length?' Unmatched: '+unmatched.join(', ')+'.':''));
  if(ideas.length)lines.push('Choose a ticker to research the story or watch it before launching.');
  return {message:lines.join('\n\n'),data:{checkedAt:new Date(now).toISOString(),ideas,missing,unchecked,coverage},actions:[]};
 }

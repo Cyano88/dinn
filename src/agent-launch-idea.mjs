@@ -1,6 +1,6 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
-import {discoverLaunchStories} from './launch-story-discovery.mjs';
+import {discoverBaseLaunchStories,discoverLaunchStories} from './launch-story-discovery.mjs';
 import {chooseFormats,composeLore,loreKey} from './creator-lore.mjs';
 
 export const ideaService='stock.launch-idea';
@@ -21,7 +21,7 @@ export async function openBrief(id,env,db){
 }
 export async function linkVerifiedBrief(reference,item,env,connection){
  const db=connection??database(env);
- await db.query("INSERT INTO dinn_idea_launches(token,transaction_hash,reference) SELECT $1,$2,reference FROM dinn_agent_ideas WHERE reference=$3 AND lower(brief->'asset'->>'address')=$4 ON CONFLICT DO NOTHING",[item.token.toLowerCase(),item.hash,reference,item.pairToken.toLowerCase()]);
+ await db.query("INSERT INTO dinn_idea_launches(token,transaction_hash,reference) SELECT $1,$2,reference FROM dinn_agent_ideas WHERE reference=$3 AND (brief->>'chainId')='4663' AND lower(brief->'asset'->>'address')=$4 ON CONFLICT DO NOTHING",[item.token.toLowerCase(),item.hash,reference,item.pairToken.toLowerCase()]);
 }
 export async function originalFinding(token,env,connection){
  if(!connection&&!env.DATABASE_URL)return null;
@@ -31,11 +31,13 @@ export async function originalFinding(token,env,connection){
  const {article,checkedAt,concept}=row.brief;
  return {article,checkedAt,concept,transactionHash:row.transaction_hash};
 }
-export async function communityBrief({env,discover=discoverLaunchStories,generate=composeLore,save=saveBrief,fetchImpl=fetch}){
- const {data}=await discover();
+export async function communityBrief({env,chainId,discover,generate=composeLore,save=saveBrief,fetchImpl=fetch}){
+ if(![8453,4663].includes(chainId))throw Error('Choose Base or Robinhood Chain.');
+ const {data}=discover?await discover():chainId===8453?await discoverBaseLaunchStories({fetchImpl,env}):await discoverLaunchStories();
+ const venue=chainId===8453?'Bankr on Base':'Pons on Robinhood Chain';
  const {ideas,checkedAt,coverage,missing,unchecked}=data;
- const scope={checkedAt,chainId:4663,coverage,missing,unchecked};
- const coverageText=coverage.screened+' of '+coverage.eligible+' approved stock pairs checked for news in the last 48 hours.';
+ const scope={checkedAt,chainId,coverage,missing,unchecked};
+ const coverageText=coverage.screened+' of '+coverage.eligible+' eligible stock pairs via '+venue+' checked for news in the last 48 hours.';
  const idea=ideas[0];
  if(!idea){
   if(!coverage.screened||!coverage.quiet||unchecked.length)throw Error('Launch story evidence unavailable.');
@@ -52,7 +54,7 @@ export async function communityBrief({env,discover=discoverLaunchStories,generat
  }
  const {concept}=brief;
  const openUrl='https://dinnlabs.com/#idea='+id;
- const markdown=['Powered by Dinn Research',article.title,article.source+' Â· '+article.publishedAt+' Â· '+article.url,'Community idea: '+concept.name+' ($'+concept.symbol+')',concept.activity,'What to watch: '+concept.question,'Pair checked: '+asset.symbol+' on Pons, Robinhood Chain. '+coverageText,'Open this brief in Dinn: '+openUrl].join('\n\n');
+ const markdown=['Powered by Dinn Research',article.title,article.source+' · '+article.publishedAt+' · '+article.url,'Community idea: '+concept.name+' ($'+concept.symbol+')',concept.activity,'What to watch: '+concept.question,'Pair checked: '+(asset.stockSymbol||asset.symbol)+' via '+venue+'. '+coverageText,'Open this brief in Dinn: '+openUrl].join('\n\n');
  return {result:{...brief,openUrl},markdown};
 }
 

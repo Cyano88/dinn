@@ -6,7 +6,7 @@ export function asksForLaunchIdeas(text){
 }
 export function selectLaunchStory(text,ideas){
  const choice=text.trim().toLowerCase().replace(/[.!?]+$/,'').replace(/^(?:research|watch)\s+/,'').replace(/\s+deeper$/,'').replace(/^\$/,'');
- return ideas.find(({asset})=>[asset.symbol,asset.name].some(name=>name.toLowerCase()===choice))||null;
+ return ideas.find(({asset})=>[asset.symbol,asset.stockSymbol,asset.name].some(name=>name?.toLowerCase()===choice))||null;
 }
 export function watchIntent(text,watch){
  const names=Object.keys(stocks).filter(t=>mentionsStock(text,t));
@@ -78,7 +78,7 @@ export const setupInvite='Would you like to set up your token on Robinhood Chain
 export const conceptLabel=idea=>idea.symbol?idea.name+' ($'+idea.symbol+')':idea.name;
 export function ideaReply(watch){
  const idea=launchAngle(watch);if(!idea)return 'Which stock story would you like to research first?';
- return '**'+conceptLabel(idea)+'**\n\n'+idea.activity+'\n\nInspired by '+label(idea.article)+'\n\n'+setupInvite;
+ return '**'+conceptLabel(idea)+'**\n\n'+idea.activity+'\n\nInspired by '+label(idea.article)+'\n\n'+(watch.launchChainId===8453?'Would you like to check the Bankr launch terms on Base?':watch.launchChainId===4663?'Would you like to start your Pons launch setup on Robinhood Chain?':setupInvite);
 }
 export function ideaChoice(text,watch,last){
  if(!watch?.ideaSource)return null;
@@ -91,7 +91,7 @@ export function ideaChoice(text,watch,last){
  if(last?.endsWith(ideaInvite(watch.ticker))&&/^(?:can (?:i|you)|give me|show me|suggest|create|build).*\blaunch idea\b/.test(t))return 'idea';
  const currentIdea=last===ideaReply(watch)||last===setupInvite;
  const previousIdea=last?.endsWith(formerInvite);
- if((currentIdea||previousIdea)&&/^(?:yes|yep|yeah|sure|go ahead|yes please|let.s do it|start setup|use this idea)$/.test(t))return previousIdea?'launch':'choose-network';
+ if((currentIdea||previousIdea)&&/^(?:yes|yep|yeah|sure|go ahead|yes please|let.s do it|start setup|use this idea)$/.test(t))return previousIdea?'launch':watch.launchChainId===8453?'bankr':watch.launchChainId===4663?'launch':'choose-network';
  if(currentIdea&&/^(?:no|no thanks|not now|maybe later)$/.test(t))return 'decline';
  if(currentIdea||previousIdea||last?.endsWith('Or choose Pons, Bankr, or watch the story.')){
   const networkChoice=t.match(/^(?:(?:can (?:i|we|you) |i want to |i.d like to |let.s )?(?:check (?:whether |if )?(?:i|we) can )?(?:launch|set up|start|preview)(?: (?:it|this|my token|this token|a token|the launch|this idea))? on |(?:use |on |go with |what about |how about |try |check )?)(base|robinhood(?: chain)?)(?: please)?$/);

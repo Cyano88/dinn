@@ -11,7 +11,7 @@ const sources=[{publisher:'Google News',status:'checked'}];
 const article=title=>({kind:'market-report',source:'Financial Times',title,url:'https://example.com/news',publishedAt:new Date(now-3600000).toISOString()});
 test('discovery routes broad briefs and keeps an explicit Base request on Base',()=>{
  assert.equal(directProductIntent('What stock should I launch around?',{ponsSetup:{active:true,field:'name'}}).name,'discover_launch_stories');
- assert.match(directProductIntent('Find me the best stock to launch around on Base').message,/currently checks Pons/);
+ assert.deepEqual(directProductIntent('Find me the best stock to launch around on Base').args,{chainId:8453});
 });
 test('reports quiet and unavailable coverage without promoting rumors',async()=>{
  const result=await discoverLaunchStories({now,assets,approval,research:async t=>{if(t==='TSLA')throw Error();return {sources,recentArticles:[article('Nvidia could launch a chip')]};},pair:()=>assert.fail()});
