@@ -1,5 +1,6 @@
 import {createLaunchClient} from '@bankr/launch-sdk';
-import {formatEther,isAddress,keccak256,parseUnits,zeroAddress} from 'viem';
+import {encodeFunctionData,erc20Abi,formatUnits,formatEther,isAddress,keccak256,parseUnits,zeroAddress} from 'viem';
+import {readContract,estimateGas,getGasPrice} from 'viem/actions';
 import {valuationQuestion} from '../public/stock-watch.js';
 import {baseStockLookup} from './base-stock-data.mjs';
 import {serverRpcUrl} from './rpc-config.mjs';
@@ -13,7 +14,7 @@ function matchesDinnFee(terms,treasury){
   &&matches(terms.steadySharesWad)&&(terms.decay?.on===false||terms.decay?.on===true&&matches(terms.decay.sharesWad));
 }
 
-export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,expectedPair,assets},{publishMetadata,env=process.env,lookup=baseStockLookup,client}={}){
+export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,expectedPair,assets,openingPurchase},{readBalance=async(client,address,owner)=>readContract(client,{address,abi:erc20Abi,functionName:'balanceOf',args:[owner]}),publishMetadata,env=process.env,lookup=baseStockLookup,client}={}){
  if(typeof ticker!=='string'||!/^[A-Z][A-Z0-9.-]{0,12}$/.test(ticker)||typeof name!=='string'||!name.trim()||name.length>40||typeof symbol!=='string'||!/^[A-Z0-9]{1,12}$/.test(symbol))throw Error('Invalid creator brief');
  client??=createLaunchClient({chain:'base',rpcUrl:serverRpcUrl(8453,env)});
  const state=await client.status();
@@ -31,6 +32,16 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,e
  if(!(await client.contracts().settings.padQuote(launchpadId,stock.address)).launches)return {status:'unsupported',message:'This launchpad does not currently allow '+stock.symbol+' as the pairing asset.'};
  if(!isAddress(launcher||''))return {status:'wallet',message:'Select your Base launch wallet to check this launch.'};
  const input={launchpadId,launcher,feeRecipient:launcher,name,symbol,quote:stock.address};
+ const askBuy='Would you like to buy some $'+symbol+' for your wallet at launch? Enter how much '+stock.symbol+' to spend, or say "skip purchase". Gas is paid separately in ETH.';
+ const buying=openingPurchase!==undefined&&openingPurchase!=='skip';
+ if(buying){
+  if(typeof openingPurchase!=='string'||!/^\d{1,18}(?:\.\d+)?$/.test(openingPurchase)||!Number.isInteger(stock.decimals)||(openingPurchase.split('.')[1]?.length||0)>stock.decimals)return {status:'purchase',message:'Enter a positive amount with up to '+stock.decimals+' decimal places. '+askBuy};
+  const amount=parseUnits(openingPurchase,stock.decimals);
+  if(amount<=0n)return {status:'purchase',message:askBuy};
+  const balance=await readBalance(client.publicClient,stock.address,launcher);
+  if(balance<amount)return {status:'purchase',message:'Your Base wallet holds '+formatUnits(balance,stock.decimals)+' '+stock.symbol+'. '+(balance===0n?'Fund your wallet with '+stock.symbol+' and retry,':'Enter a smaller amount')+' or say "skip purchase".'};
+  input.devBuy={amount,slippageBps:100};
+ }
  let metadata;
  if(assets){
   metadata=await publishMetadata({description:assets.description,image:assets.image,website:assets.website,name,symbol});
@@ -43,13 +54,30 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,e
    input.startFdv=parseUnits(startFdv,stock.decimals);if(input.startFdv<=0n)throw Error('Invalid starting value.');
    input.autoLpBps=0;
   }
+  if(startFdv!==undefined&&openingPurchase===undefined)return {status:'purchase',message:askBuy};
   plan=await client.plan(input);
  }catch(e){
   if(startFdv===undefined&&e?.code==='INVALID_PARAMS'&&e.detail?.includes('set startFdv'))return {status:'valuation',message:'Your token would trade against '+stock.symbol+' on Base through Bankr. The starting value sets the opening price for your token. You can try a value here without spending funds.\n\n'+valuationQuestion(stock.symbol)};
+  if(buying&&['CREATOR_CAP_EXCEEDED','DEV_BUY_UNAVAILABLE'].includes(e?.code))return {status:'purchase',message:e.code==='CREATOR_CAP_EXCEEDED'?'That purchase exceeds the permitted size. Try a smaller amount or say "skip purchase".':'Bankr could not include this purchase in the launch. Say "skip purchase" to review a launch without it.'};
   throw e;
  }
  if(!matchesDinnFee(plan.resolved?.padTerms,treasury))return {status:'fee-mismatch',message:'The launchpad fee terms differ from the approved Dinn split. This launch preview is unavailable.'};
+ if(openingPurchase===undefined)return {status:'purchase',message:askBuy};
  const sim=await client.simulate(plan);
+ let buyText='No opening purchase.';
+ if(buying){
+  const minimum=plan.params.devBuyMinOut;
+  if(plan.value!==0n||plan.params.devBuyAmountIn!==input.devBuy.amount||minimum<=0n||sim.devBuyOut<minimum)throw Error('Opening purchase simulation mismatch.');
+  buyText='Your wallet spends '+openingPurchase+' '+stock.symbol+' for an estimated '+formatUnits(sim.devBuyOut,18)+' '+symbol+'. Minimum received: '+formatUnits(minimum,18)+' '+symbol+' (1% price protection).';
+  if(plan.approvals.length){
+   const approval=plan.approvals[0],expected=encodeFunctionData({abi:erc20Abi,functionName:'approve',args:[plan.factory,input.devBuy.amount]});
+   if(plan.approvals.length!==1||approval.chainId!==8453||approval.value!==0n||approval.from.toLowerCase()!==launcher.toLowerCase()||approval.to.toLowerCase()!==stock.address.toLowerCase()||approval.data.toLowerCase()!==expected.toLowerCase())throw Error('Unexpected purchase permission.');
+   const gas=await estimateGas(client.publicClient,{account:launcher,to:stock.address,data:expected});
+   const price=await getGasPrice(client.publicClient);
+   return {status:'approval',launcher,approval:{to:stock.address,data:expected,from:launcher,expiry:Date.now()+180000},message:buyText+'\n\nAllow Bankr to spend exactly '+openingPurchase+' '+stock.symbol+' for this purchase? This permission is a separate transaction. Estimated execution fee: '+formatEther(gas*price)+' ETH plus Base data fees. You will review the launch separately.'};
+  }
+ }
+
  if(sim.assumedApprovals||!isAddress(sim.token)||!/^0x[a-f0-9]{64}$/i.test(sim.poolId))throw Error('Incomplete launch simulation');
  let feeSummary='',execution;
  const percent=pips=>Number((pips/10000).toFixed(6));
@@ -66,10 +94,9 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,e
     const expiry=Math.min(Number(plan.params.deadline)*1000,Date.now()+180000);
     if(tx.chainId!==8453||tx.from.toLowerCase()!==launcher.toLowerCase()||tx.to.toLowerCase()!==plan.factory.toLowerCase()||tx.value!==0n)throw Error('Unexpected launch transaction');
     if(Number.isSafeInteger(expiry)&&expiry>Date.now()&&tx.gas){
-     const {getGasPrice}=await import('viem/actions');
      const price=await getGasPrice(client.publicClient);
      execution={from:launcher,to:tx.to,data:tx.data,gas:'0x'+tx.gas.toString(16),callHash:keccak256(tx.data),expiry};
-     feeSummary+=' No opening purchase. Estimated Base execution gas allowance: '+formatEther(tx.gas*price)+' ETH, plus the Base data fee.';
+     feeSummary+=' '+buyText+' Estimated Base execution gas allowance: '+formatEther(tx.gas*price)+' ETH, plus the Base data fee.';
     }
    }
   }

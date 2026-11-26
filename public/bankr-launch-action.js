@@ -36,3 +36,37 @@ export async function refreshBankrLaunch({record,storage,check}){
  const link='[View Base transaction](https://basescan.org/tx/'+hash+')';
  return result.state==='verified'?'✓ Token launched on Base with Dinn, powered by Bankr. Token address: '+token+'. '+link:result.state==='reverted'?'The Base launch reverted. '+link:'Base launch submitted. Say “check Base launch” for confirmation. '+link;
 }
+export function readOpeningPurchase(text,asset){
+ const value=text.trim().replace(/[!?]+$/,'');
+ if(/^(?:skip(?: (?:the |opening )?(?:purchase|buy))?|no(?: thanks)?|without (?:a |an )?(?:buy|purchase))\.?$/i.test(value))return 'skip';
+ const match=value.match(/^(?:(?:buy(?: with)?|spend|use)\s+)?(\d{1,18}(?:\.\d+)?|\.\d+)(?:\s*([A-Z][A-Z0-9.]*))?$/i);
+ if(!match||match[2]&&match[2].toLowerCase()!==asset.toLowerCase())return null;
+ return match[1].startsWith('.')?'0'+match[1]:match[1];
+}
+
+export async function submitBankrPermission({review,provider,sendEmbedded,current,storage}){
+ const tx=review.approval,launcher=review.launcher;
+ const key='dinn.multi.bankr-buy-permission.v1:'+launcher.toLowerCase()+':'+tx.to.toLowerCase();
+ const saved=JSON.parse(storage.getItem(key)||'null');
+ if(saved){
+  if(!saved.hash)throw Error('The previous wallet request has an unknown result. Check your wallet activity before retrying.');
+  const receipt=await provider.request({method:'eth_getTransactionReceipt',params:[saved.hash]});
+  if(!receipt)throw Error('Your previous spending permission is still pending on Base: '+saved.hash);
+ }
+ const valid=()=>current()&&Date.now()<tx.expiry;
+ if(!valid())throw Error('Refresh the opening purchase review.');
+ await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:'0x2105'}]});
+ if(BigInt(await provider.request({method:'eth_chainId'}))!==8453n||(await provider.request({method:'eth_accounts'}))[0]?.toLowerCase()!==launcher.toLowerCase())throw Error('Choose the reviewed wallet on Base.');
+ const request={from:launcher,to:tx.to,data:tx.data,value:'0x0'};
+ await provider.request({method:'eth_call',params:[request,'latest']});
+ if(!valid())throw Error('Refresh the opening purchase review.');
+ await storage.setItem(key,JSON.stringify({phase:'awaiting-wallet'}));
+ if(!valid()){await storage.removeItem(key);throw Error('Refresh the opening purchase review.');}
+ let sent;
+ try{sent=sendEmbedded?await sendEmbedded({...request,value:0n,chainId:8453},{address:launcher,uiOptions:{showWalletUIs:true}}):await provider.request({method:'eth_sendTransaction',params:[{...request,chainId:'0x2105'}]});}
+ catch(error){if(Number(error.code)===4001||error.code==='ACTION_REJECTED'){await storage.removeItem(key);throw Error('Permission declined.');}throw Error('Check wallet activity for the spending permission.');}
+ const hash=typeof sent==='string'?sent:sent?.hash;
+ if(!txHash(hash))throw Error('Check wallet activity for the spending permission.');
+ try{await storage.setItem(key,JSON.stringify({hash}));}catch{throw Error('Save the spending permission transaction ID: '+hash);}
+ return hash;
+}

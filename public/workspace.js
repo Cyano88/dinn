@@ -1,5 +1,5 @@
 import {createBaseAssets} from './base-creator-assets.js';
-import {bankrRecordKey,submitBankrLaunch,refreshBankrLaunch} from './bankr-launch-action.js';
+import {readOpeningPurchase,submitBankrPermission,bankrRecordKey,submitBankrLaunch,refreshBankrLaunch} from './bankr-launch-action.js';
 import {accountRecords} from './account-records.js';
 import {loadAuthConfig} from './auth-boot.js';
 import {setupInvite,sharedFinding,launchStory,ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,awaitingValuation,valuationQuestion,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
@@ -454,8 +454,19 @@ $('chat').onsubmit=async e=>{
  if(bankrValuation&&/^cancel[.!]?$/i.test(text)){recordSetupReply(text,'Base launch preview canceled.');$('prompt').value='';return;}
  if(bankrValuation&&/^(?:what (?:does (?:that|this) mean|is (?:the |a )?starting value)|how (?:does (?:that|this) work|much do i (?:pay|spend)))[?.!]*$/i.test(text.trim())){recordSetupReply(text,'For example, a starting value of 100 '+watch.ticker+'c would price the entire supply at 100 '+watch.ticker+'c at launch. Trying that number here costs nothing. '+valuationQuestion(watch.ticker+'c'));$('prompt').value='';return;}
  if(valuationAmount?.[2]&&valuationAmount[2].toLowerCase()!==(watch.ticker+'c').toLowerCase()){recordSetupReply(text,'This pair uses '+watch.ticker+'c. '+valuationQuestion(watch.ticker+'c'));$('prompt').value='';return;}
+ const purchase=watch?.basePurchase;
+ const savedBuy=purchase&&account&&purchase.wallet===account.toLowerCase()&&purchase.symbol===watch.concept?.symbol&&purchase.source===watch.ideaSource?.url?purchase:null;
+ const lastReply=history.at(-1)?.content||'';
+ const answeringBuy=savedBuy&&(lastReply.includes('"skip purchase"')||lastReply.includes('Would you like to buy some $'));
+ const resumeBuy=savedBuy&&/^review (?:my |the )?(?:base launch|opening purchase)[.!?]?$/i.test(text.trim());
+ const editBuy=savedBuy&&/^(?:(?:change|edit|add|set)(?: my| the| an?)? (?:first buy|opening purchase|dev buy)|(?:i (?:want|would like) to )?buy (?:some |my )?dev supply)[.!?]?$/i.test(text.trim());
+ if(editBuy){recordSetupReply(text,'How much '+watch.ticker+'c would you like to spend on $'+watch.concept.symbol+' at launch? Enter an amount or say "skip purchase".');$('prompt').value='';return;}
+ const amount=answeringBuy?readOpeningPurchase(text,watch.ticker+'c'):null;
+ if(answeringBuy&&amount===null&&/^(?:yes|nope|\d|\.|buy|spend|skip|use)/i.test(text.trim())){
+  recordSetupReply(text,'Enter how much '+watch.ticker+'c to spend, or say "skip purchase".');$('prompt').value='';return;
+ }
  const resumeBaseAssets=/^check base launch terms[.!?]?$/i.test(text.trim());
- const choice=valuationAmount||resumeBaseAssets&&watch?.concept?'bankr':ideaChoice(text,watch,history.at(-1)?.content);
+ const choice=amount!==null||resumeBuy||valuationAmount||resumeBaseAssets&&watch?.concept?'bankr':ideaChoice(text,watch,history.at(-1)?.content);
  if(watch?.concept&&watch.ideaSource&&!launchConversationStep){
   baseAssets.bind({owner:user,epoch,ticker:watch.ticker,name:watch.concept.name,symbol:watch.concept.symbol,description:(watch.concept.activity||'').slice(0,500),source:watch.ideaSource.url});
   if(await baseAssets.handle(text,choice==='bankr')){$('prompt').value='';return;}
@@ -478,8 +489,23 @@ $('chat').onsubmit=async e=>{
    const owner=user,run=epoch;setupBusy=true;
    try{
     const idea=launchAngle(watch);
-    const preview=idea.symbol?await accountRequest('bankr-preview',{ticker:watch.ticker,name:idea.name,symbol:idea.symbol,launcher:account,assets:baseAssets.assets(),...(watch.launchChainId===8453?{expectedPair:watch.pairAddress}:{}),...(valuationAmount?{startFdv:valuationAmount[1]}:{})},owner):{message:'Ask for a named token idea to check its Base launch terms.'};
+    const fdv=valuationAmount?valuationAmount[1]:(amount!==null||resumeBuy?savedBuy?.fdv:undefined);
+    const openingPurchase=amount??(resumeBuy?savedBuy?.amount:undefined);
+    const preview=idea.symbol?await accountRequest('bankr-preview',{ticker:watch.ticker,name:idea.name,symbol:idea.symbol,launcher:account,assets:baseAssets.assets(),...(watch.launchChainId===8453?{expectedPair:watch.pairAddress}:{}),...(fdv?{startFdv:fdv}:{}),...(openingPurchase?{openingPurchase}:{})},owner):{message:'Ask for a named token idea to check its Base launch terms.'};
     if(user!==owner||run!==epoch)return;answer=bankrBrief(watch,preview.message);
+    if(['purchase','approval','simulated'].includes(preview.status)){
+     watch={...watch,basePurchase:{wallet:account.toLowerCase(),source:watch.ideaSource.url,symbol:idea.symbol,fdv,amount:openingPurchase}};
+     await accountRecords.setItem(key('stock-watch'),JSON.stringify(watch));
+     if(user!==owner||run!==epoch)return;
+    }
+    if(preview.status==='approval'){
+     const current=()=>user===owner&&epoch===run&&account?.toLowerCase()===preview.launcher.toLowerCase();
+     chatPendingApproval={label:'Base spending permission',run:async body=>{
+      if(!current()||!provider||!['embedded','external'].includes(walletSource)||walletSource==='embedded'&&!walletSendTransaction)throw Error('Select the reviewed Base wallet.');
+      const hash=await submitBankrPermission({review:preview,storage:accountRecords.scope(),provider,sendEmbedded:walletSource==='embedded'?walletSendTransaction:null,current});
+      if(current())appendChatActionNote(body,'Spending permission submitted. [View Base transaction](https://basescan.org/tx/'+hash+'). Once confirmed, say "review my Base launch" for the final quote. No token has been launched.');
+     }};
+    }
     if(preview.execution){
      const current=()=>user===owner&&epoch===run&&account?.toLowerCase()===preview.launcher.toLowerCase();
      chatPendingApproval={label:'Base token launch',run:async body=>{

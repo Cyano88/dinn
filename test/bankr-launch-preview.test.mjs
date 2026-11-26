@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {bankrLaunchPreview} from '../src/bankr-launch-preview.mjs';
 const address='0x'+'1'.repeat(40),quote='0x'+'2'.repeat(40);
-const input={name:'Rack Cadets',symbol:'RACK',ticker:'SPCX',launcher:address};
+const input={openingPurchase:'skip',name:'Rack Cadets',symbol:'RACK',ticker:'SPCX',launcher:address};
 const state={deployed:true,gated:false,paused:false,fork:false};
 test('closed factory and missing Dinn pad stop before planning',async()=>{
  for(const [s,expected] of [[{...state,gated:true},'gated'],[{...state,paused:true},'paused'],[state,'setup']]){

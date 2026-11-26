@@ -45,7 +45,7 @@ test('Bankr plan receives the published metadata URI for this token',async()=>{
  const client={status:async()=>({deployed:true}),contracts:()=>({settings:{padQuote:async()=>({launches:true})}}),
   plan:async input=>{assert.equal(input.metadataUri,uri);return {resolved:{padTerms:{payees:[treasury],steadySharesWad:[share],decay:{on:false}}}};},
   simulate:async()=>({token:launcher,poolId:'0x'+'a'.repeat(64)})};
- const result=await bankrLaunchPreview({ticker:'NFLX',name:'Test',symbol:'TEST',launcher,assets},{
+ const result=await bankrLaunchPreview({openingPurchase:'skip',ticker:'NFLX',name:'Test',symbol:'TEST',launcher,assets},{
   client,env:{DINN_BANKR_BASE_LAUNCHPAD_ID:'7',DINN_BANKR_BASE_FEE_RECIPIENT:treasury},
   lookup:async()=>({stocks:[{address:quote,symbol:'NFLXc',bankrPairSupported:true}]}),
   publishMetadata:async fields=>{assert.equal(fields.image,assets.image);assert.equal(fields.website,assets.website);return {metadataUri:uri,doc:{image:fields.image,external_url:fields.website}};}
