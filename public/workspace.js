@@ -1,3 +1,5 @@
+import {createBaseAssets} from './base-creator-assets.js';
+import {bankrRecordKey,submitBankrLaunch,refreshBankrLaunch} from './bankr-launch-action.js';
 import {accountRecords} from './account-records.js';
 import {loadAuthConfig} from './auth-boot.js';
 import {setupInvite,sharedFinding,launchStory,ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,awaitingValuation,valuationQuestion,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
@@ -167,6 +169,12 @@ async function feedbackChat(body,token){
  if(!response.ok)throw Error('Feedback unavailable.');return response.json();
 }
 const actionHistoryText=new WeakMap();
+const baseAssets=createBaseAssets({say,reply:recordSetupReply,records:accountRecords,context:()=>({owner:user,epoch}),websiteRequest:async(action,payload)=>{
+ const {getAccessToken}=await import('/auth/entry.js');
+ const token=await getAccessToken();if(!token)throw Error('Sign in again to continue.');
+ const response=await fetch('/api/creator-pages/'+action,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(65000)});
+ const result=await response.json();if(!response.ok)throw Object.assign(Error(result.error||'Could not prepare your website.'),{needsArtwork:result.needsArtwork,needsDirection:result.needsDirection});return result;
+}});
 function recordSetupReply(text,reply){const state=appendChatState(history,chatResults,text,reply,{});history=state.messages;chatResults=state.results;save('chat',state);message('user',text);const body=message('assistant',reply);actionHistoryText.set(body,reply);return body;}
 
 let creatorRequest=null,websiteQuestion=null;
@@ -349,6 +357,17 @@ $('chat').onsubmit=async e=>{
  e.preventDefault();if(!user)return;const text=$('prompt').value.trim();if(!text)return;if(chatApprovalBusy||claimBusy){say('Dinn is still checking or processing the current wallet action. Please wait before starting another one.');$('prompt').value='';return;}
  if(handlePendingChatApproval(text)){$('prompt').value='';return;}
  if(chatPendingApproval){const pending=chatPendingApproval;chatPendingApproval=null;if(pending.action)forgetWalletApproval(pending.action);say('I cleared the earlier approval review before handling this request. Ask me to check the current terms again before proceeding.');}
+ const bankrStatus=text.trim().match(/^check (?:my |the )?base launch(?: status)?(?: (0x[a-f0-9]{64}))?[.!?]?$/i);
+ if(bankrStatus){
+  $('prompt').value='';const owner=user,run=epoch,storage=accountRecords.scope();
+  try{
+   const record=account&&JSON.parse(storage.getItem(bankrRecordKey(account))||'null');
+   if(!record)throw Error('No recorded Base launch for this wallet.');
+   if(bankrStatus[1]&&!record.hash)record.hash=bankrStatus[1];
+   const result=await refreshBankrLaunch({record,storage,check:args=>accountRequest('bankr-receipt',args,owner)});
+   if(epoch===run)recordSetupReply(text,result);
+  }catch(error){if(epoch===run)recordSetupReply(text,error.message);}return;
+ }
  if(isSwapStatusQuestion(text)){
   $('prompt').value='';const record=savedSwap(accountRecords,account);
   if(!record){recordSetupReply(text,'I could not find a recent swap for this wallet in your account.');return;}
@@ -408,16 +427,16 @@ $('chat').onsubmit=async e=>{
  }
  let watch=null;
  try{watch=JSON.parse(read('stock-watch')||'null');}catch{}
- if(history.at(-1)?.content?.startsWith('I found no fresh story with a verified Pons pair')&&/^(?:launch this pair|research deeper|watch this story)[.!?]?$/i.test(text)){
+ if(/^I found no fresh story with a verified (?:Pons|Bankr) pair/.test(history.at(-1)?.content||'')&&/^(?:launch this pair|research deeper|watch this story)[.!?]?$/i.test(text)){
   recordSetupReply(text,'Which stock do you want to research? No pair was selected.');$('prompt').value='';return;
  }
- const afterShortlist=history.at(-1)?.content?.startsWith('Stock stories with an available Pons pair');
+ const afterShortlist=/^Stock stories with an available (?:Pons|Bankr) pair/.test(history.at(-1)?.content||'');
  let selectedStory=null;
  if(afterShortlist){
   let ideas=[];try{ideas=JSON.parse(read('stock-shortlist')||'[]');}catch{}
   selectedStory=selectLaunchStory(text,ideas);
   if(!selectedStory&&/^(?:launch this pair|research deeper|watch this story)[.!?]?$/i.test(text)){
-   recordSetupReply(text,'Stock stories with an available Pons pair. Choose a ticker first: '+ideas.map(i=>i.asset.symbol).join(', ')+'.');$('prompt').value='';return;
+   recordSetupReply(text,'Which of these stock stories should we use? '+ideas.map(i=>i.asset.symbol).join(', ')+'.');$('prompt').value='';return;
   }
  }
  if(watch?.ideaSource&&/^(?:share (?:this |the )?research|publish to research feed)[.!]?$/i.test(text)){
@@ -435,7 +454,12 @@ $('chat').onsubmit=async e=>{
  if(bankrValuation&&/^cancel[.!]?$/i.test(text)){recordSetupReply(text,'Base launch preview canceled.');$('prompt').value='';return;}
  if(bankrValuation&&/^(?:what (?:does (?:that|this) mean|is (?:the |a )?starting value)|how (?:does (?:that|this) work|much do i (?:pay|spend)))[?.!]*$/i.test(text.trim())){recordSetupReply(text,'For example, a starting value of 100 '+watch.ticker+'c would price the entire supply at 100 '+watch.ticker+'c at launch. Trying that number here costs nothing. '+valuationQuestion(watch.ticker+'c'));$('prompt').value='';return;}
  if(valuationAmount?.[2]&&valuationAmount[2].toLowerCase()!==(watch.ticker+'c').toLowerCase()){recordSetupReply(text,'This pair uses '+watch.ticker+'c. '+valuationQuestion(watch.ticker+'c'));$('prompt').value='';return;}
- const choice=valuationAmount?'bankr':ideaChoice(text,watch,history.at(-1)?.content);
+ const resumeBaseAssets=/^check base launch terms[.!?]?$/i.test(text.trim());
+ const choice=valuationAmount||resumeBaseAssets&&watch?.concept?'bankr':ideaChoice(text,watch,history.at(-1)?.content);
+ if(watch?.concept&&watch.ideaSource&&!launchConversationStep){
+  baseAssets.bind({owner:user,epoch,ticker:watch.ticker,name:watch.concept.name,symbol:watch.concept.symbol,description:(watch.concept.activity||'').slice(0,500),source:watch.ideaSource.url});
+  if(await baseAssets.handle(text,choice==='bankr')){$('prompt').value='';return;}
+ }else baseAssets.reset();
  if(choice&&choice!=='launch'){
   if(controller||setupBusy||launchBusy)return;
   let answer;
@@ -454,8 +478,24 @@ $('chat').onsubmit=async e=>{
    const owner=user,run=epoch;setupBusy=true;
    try{
     const idea=launchAngle(watch);
-    const preview=idea.symbol?await accountRequest('bankr-preview',{ticker:watch.ticker,name:idea.name,symbol:idea.symbol,launcher:account,...(watch.launchChainId===8453?{expectedPair:watch.pairAddress}:{}),...(valuationAmount?{startFdv:valuationAmount[1]}:{})},owner):{message:'Ask for a named token idea to check its Base launch terms.'};
+    const preview=idea.symbol?await accountRequest('bankr-preview',{ticker:watch.ticker,name:idea.name,symbol:idea.symbol,launcher:account,assets:baseAssets.assets(),...(watch.launchChainId===8453?{expectedPair:watch.pairAddress}:{}),...(valuationAmount?{startFdv:valuationAmount[1]}:{})},owner):{message:'Ask for a named token idea to check its Base launch terms.'};
     if(user!==owner||run!==epoch)return;answer=bankrBrief(watch,preview.message);
+    if(preview.execution){
+     const current=()=>user===owner&&epoch===run&&account?.toLowerCase()===preview.launcher.toLowerCase();
+     chatPendingApproval={label:'Base token launch',run:async body=>{
+      if(!current()||!['embedded','external'].includes(walletSource)||walletSource==='embedded'&&!walletSendTransaction)throw Error('Select the reviewed launch wallet.');
+      const storage=accountRecords.scope();
+      const record=await submitBankrLaunch({review:preview,storage,provider,sendEmbedded:walletSource==='embedded'?walletSendTransaction:null,current});
+      if(!current())return;
+      say('Base launch submitted. [View transaction](https://basescan.org/tx/'+record.hash+')');
+      for(let attempt=0;attempt<8&&current();attempt++){
+       await new Promise(resolve=>setTimeout(resolve,3000));if(!current())return;
+       const result=await refreshBankrLaunch({record,storage,check:args=>accountRequest('bankr-receipt',args,owner)});
+       if(!current())return;
+       if(!result.startsWith('Base launch submitted')||attempt===7){say(result);return;}
+      }
+     }};
+    }
    }catch{if(user!==owner||run!==epoch)return;answer=bankrBrief(watch,'Bankr launch terms could not be checked. Try again shortly.');}
    finally{if(user===owner)setupBusy=false;}
   }
@@ -855,6 +895,7 @@ function restoreSettings(){let saved;try{saved=JSON.parse(read('pons-settings'))
 
 function renderTokenSummary(){const has=Object.keys(brief).length>0||!!awaiting;$('summary-panel').hidden=!has;$('token-name').textContent=brief.name||'Untitled token';$('token-avatar').textContent=brief.symbol?.slice(0,2)||'-';$('token-meta').textContent=brief.symbol?'$'+brief.symbol:'';const rows=[['brief-name','Token name',brief.name],['brief-symbol','Ticker',brief.symbol],['brief-description','Description',brief.description],...economicFields.map(([id,label])=>[id,label,$(id).value||undefined])];const count=rows.filter(r=>r[2]!==undefined).length;$('progress').value=count;$('progress-label').textContent=count+' of 8 settings';$('summary').replaceChildren();for(const [id,label,value] of rows){const row=document.createElement('div');row.className='summary-row';const name=document.createElement('span');name.textContent=label;const button=document.createElement('button');button.textContent=value===undefined?'Not set':id==='launch-pair'?(pairCandidates.find(a=>a.address.toLowerCase()===value?.toLowerCase())?.symbol||value):id==='launch-tax'?value+'%':id==='launch-buyback'?(value==='true'?'Enabled':'Disabled'):value||'None';button.title=button.textContent;button.setAttribute('aria-label','Edit '+label);button.onclick=()=>{view('assistant');if(id.startsWith('brief-')){awaiting=id.slice(6);launchStep=null;setupActive=true;submitChoice('I want to change '+({name:'name',symbol:'ticker',description:'description'})[awaiting]);}else{awaiting=null;launchStep=id;askEconomic();}$('prompt').focus();};row.append(name,button);$('summary').append(row);}$('chat-review').disabled=count!==8;$('summary-note').textContent=count===8?'Next: add optional logo and links, then review.':'Complete your settings in chat to review.';}
 
+document.querySelectorAll('[data-research-start]').forEach(button=>button.onclick=()=>submitChoice(button.dataset.researchStart));
 function submitChoice(text){$('prompt').value=text;$('chat').requestSubmit();}
 function renderSetupChoices(){$('choices').replaceChildren();$('choices').hidden=true;$('setup-context').textContent='';$('setup-context').hidden=true;}
 function askEconomic(){submitChoice('I want to change '+(economicFields.find(([k])=>k===launchStep)?.[1]||'my launch settings'));}
@@ -1023,6 +1064,7 @@ function renderToolDirectory(capabilities){
  host.className='tools-directory tools-action-directory';heading.textContent=network.name;intro.textContent='What you can do on '+network.name+' with Dinn.';
  const back=document.createElement('button');back.type='button';back.className='tools-back';back.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg><span>Networks</span>';back.onclick=()=>{activeToolNetwork=null;renderToolDirectory(capabilities);heading.focus();};host.append(back);
  const actions={
+   idea:{title:'Tokenized Research',description:'Find a sourced stock story and turn it into a launch idea for your community.',prompt:activeToolNetwork==='base'?'Find stock launch ideas on Base':'Find stock launch ideas on Pons'},
    baseStock:{title:'Research a Coinbase stock token',description:'Check the official stock registry against the Base token’s B20 data, including its transfer rules and pause state. See dated NAV, market pairs, and holder evidence when available. If Bankr lists the stock, continue there for its live quote and location check.',prompt:'Research Coinbase stock token NVDAc'},
    baseResearch:{title:'Research a Bankr stock-paired launch',description:'Check whether the Bankr launch, Base transaction, and stock registry match. See available pool activity, fees, creator vesting, contract details, and sampled holder data when configured. Signed-in Dinn chat and paid NEAR hires can include a holder snapshot; free previews skip it. Dinn does not provide a safety verdict.',prompt:'Research a Base token paired with a stock'},
   rhStock:{title:'Research a stock token',description:'Check a Robinhood stock token, its reference price and available lock records.',prompt:'Research a stock token on Robinhood Chain'},
@@ -1043,11 +1085,11 @@ function renderToolDirectory(capabilities){
   bridge:{title:'Bridge to Robinhood Chain',description:'Move ETH, USDC, or USDT from Base to Robinhood Chain. Dinn checks the send and arrival separately.',prompt:activeToolNetwork==='base'?'Bridge funds from Base to Robinhood Chain':'Bridge funds to Robinhood Chain'},
   transaction:{title:'Check a transaction',description:'Check whether a Robinhood Chain transaction is pending, confirmed, or failed.',prompt:'Check a transaction'}
  };
- const groups=activeToolNetwork==='base'?[{title:'Research',items:['baseStock','baseResearch']},{title:'Wallet',items:['balances','transfer','swap','bridge']}]:[{title:'Research',items:['rhStock','rhPair','inspect']},{title:'Pons',items:['launch','launches','options','buy','sell','claim','burn','lock','dex']},{title:'Wallet',items:['balances','transfer','swap','bridge','transaction']}];
+ const groups=activeToolNetwork==='base'?[{title:'Research',items:['idea','baseStock','baseResearch']},{title:'Wallet',items:['balances','transfer','swap','bridge']}]:[{title:'Research',items:['idea','rhStock','rhPair','inspect']},{title:'Pons',items:['launch','launches','options','buy','sell','claim','burn','lock','dex']},{title:'Wallet',items:['balances','transfer','swap','bridge','transaction']}];
  for(const group of groups){
   const items=group.items.filter(id=>{
    const required=id==='balances'?['portfolio','balance']:id==='bridge'?['fund']:id==='baseResearch'?['baseResearch']:id==='baseStock'?['baseStock']:id==='launches'?[]:({rhStock:['inspect'],rhPair:['inspect'],inspect:['inspect'],launch:['launch'],options:['options'],buy:['buy'],sell:['sell'],claim:['claim'],burn:['burn'],lock:['lock'],dex:['dex'],transfer:['transfer'],swap:['swap'],transaction:['transaction']})[id]||[];
-   return id==='launches'||required.some(available);
+   return id==='launches'||id==='idea'||required.some(available);
   });
   if(!items.length)continue;
   const section=document.createElement('section');section.className='tools-action-group';const label=document.createElement('h3');label.textContent=group.title;section.append(label);
@@ -1123,7 +1165,7 @@ void (async()=>{const {mountRobinhoodWallet}=await import('/pons/entry.js');wall
 
 
 
-launchesView=mountDinnLaunches({host:$('launches-view'),getAccessToken:async()=>{const {getAccessToken}=await import('/auth/entry.js');return getAccessToken();},onStart:()=>{view('assistant');submitChoice('create a token');},onResearch:address=>{selectedToken=address;view('assistant');submitChoice('Research '+address+' on Robinhood Chain');}});
+launchesView=mountDinnLaunches({host:$('launches-view'),getAccessToken:async()=>{const {getAccessToken}=await import('/auth/entry.js');return getAccessToken();},onStart:()=>{view('assistant');submitChoice('create a token');},onResearch:(address,chainId)=>{selectedToken=address;view('assistant');submitChoice(chainId===8453?'Research the Bankr stock-paired token '+address+' on Base':'Research '+address+' on Robinhood Chain');}});
 let launchesOwner=user;window.addEventListener('launchflow:auth',event=>{const detail=event.detail||{},next=detail.authenticated?(detail.userId||detail.address):null;if(next!==launchesOwner){launchesView?.reset();launchesOwner=next;}});
 
 const ideaTarget=new URLSearchParams(location.hash.slice(1)).get('idea');

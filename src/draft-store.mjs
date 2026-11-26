@@ -6,8 +6,11 @@ export async function createDraftStore({env=process.env,db}={}){
  await db.query('CREATE TABLE IF NOT EXISTS dinn_account_records(owner TEXT NOT NULL, key TEXT NOT NULL, revision INTEGER NOT NULL, value TEXT, PRIMARY KEY(owner,key))');
  await db.query('CREATE TABLE IF NOT EXISTS dinn_shared_findings(id UUID PRIMARY KEY, owner TEXT NOT NULL, ticker TEXT NOT NULL, url_hash TEXT NOT NULL, entry JSONB NOT NULL, shared_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(owner,ticker,url_hash))');
  await db.query('CREATE TABLE IF NOT EXISTS dinn_creator_lore(owner TEXT NOT NULL, story TEXT NOT NULL, format TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE, activity_key TEXT NOT NULL UNIQUE, concept JSONB NOT NULL, PRIMARY KEY(owner,story), UNIQUE(story,format))');
+ await db.query('CREATE TABLE IF NOT EXISTS dinn_token_metadata (id TEXT PRIMARY KEY, doc JSONB NOT NULL)');
  const result=row=>row?{revision:row.revision,data:row.data,updatedAt:row.updated_at}:{revision:0,data:emptyDraft(),updatedAt:null};
  return {
+  putMetadata:(id,doc)=>db.query('INSERT INTO dinn_token_metadata(id,doc) VALUES($1,$2) ON CONFLICT DO NOTHING',[id,doc]),
+  metadata:async id=>(await db.query('SELECT doc FROM dinn_token_metadata WHERE id=$1',[id])).rows[0]?.doc,
   get:async owner=>result((await db.query('SELECT revision,data,updated_at FROM dinn_drafts WHERE owner=$1',[owner])).rows[0]),
   async put(owner,revision,data){
    const args=[owner,JSON.stringify(data),revision];

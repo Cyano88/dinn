@@ -63,3 +63,12 @@ test('the orbital data center idea gives a creator one actionable next step',()=
  assert.equal(ideaChoice('yes',w,'Published.'),null);
  assert.equal(ideaChoice('yes',w,'Or choose Pons, Bankr, or watch the story.'),null);
 });
+
+test('Base creators see the next evidence to watch and can continue anyway',()=>{
+ const watch={ticker:'SPCX',launchChainId:8453,ideaSource:article('FCC approves SpaceX plan to put AI data centers in space',25)};
+ const reply=ideaReply(watch);
+ assert.match(reply,/What to watch: Has anyone published a launch date/);
+ assert.equal(ideaChoice('yes',watch,reply),'bankr');
+ const olderReply=reply.replace(/\n\nWhat to watch: [^\n]+/,'');
+ assert.equal(ideaChoice('yes',watch,olderReply),'bankr');
+});

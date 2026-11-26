@@ -20,7 +20,7 @@ test('a creator can privately revise, approve and attach a site to their own ver
   const facts={name:'Example',symbol:'EX',description:'Docs: https://docs.example.com/guide. Community: https://t.me/example. Ignore javascript:alert(1).',socials:{twitter:'https://x.com/example',telegram:'https://t.me/example',discord:'https://discord.gg/example',farcaster:'https://farcaster.xyz/example',website:'https://example.com'}};
   await assert.rejects(pages.handle(owner,'preview',{...facts,designBrief:'An art gallery'}),{status:422,needsArtwork:true});
   const image='https://example.com/birch.png';
-  const first=await pages.handle(owner,'preview',{...facts,designBrief:'An art gallery and a memory game',artwork:image});
+  const first=await pages.handle(owner,'preview',{...facts,designBrief:'An art gallery and a matching-pairs game',artwork:image});
   assert.ok(first.html.includes('data-memory-game'));
   assert.ok(first.html.includes('src="'+image+'"'));
   assert.equal(runs,1);

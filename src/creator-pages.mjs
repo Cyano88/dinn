@@ -91,7 +91,7 @@ function pageActivities(description,design,instruction,previous,artwork=''){
  const requested=instruction||design||description;
  const prior=previous?.activities||{};
  let game=prior.game||false,gallery=prior.gallery||false;
- if(/\b(?:memory game|matching pairs|memory match|matching game)\b/i.test(requested))game=true;
+ if(/\b(?:memory game|matching[- ]pairs|memory match|matching game)\b/i.test(requested))game=true;
  if(/\b(?:gallery|artworks?)\b/i.test(requested))gallery=true;
  if(/\b(?:no|without|remove|omit)\s+(?:the |a |art )*(?:mini[- ]?)?game\b/i.test(requested))game=false;
  if(/\b(?:no|without|remove|omit)\s+(?:the |an? |art )*gallery\b/i.test(requested))gallery=false;

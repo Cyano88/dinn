@@ -1,5 +1,5 @@
 import {createLaunchClient} from '@bankr/launch-sdk';
-import {isAddress,parseUnits,zeroAddress} from 'viem';
+import {formatEther,isAddress,keccak256,parseUnits,zeroAddress} from 'viem';
 import {valuationQuestion} from '../public/stock-watch.js';
 import {baseStockLookup} from './base-stock-data.mjs';
 import {serverRpcUrl} from './rpc-config.mjs';
@@ -13,7 +13,7 @@ function matchesDinnFee(terms,treasury){
   &&matches(terms.steadySharesWad)&&(terms.decay?.on===false||terms.decay?.on===true&&matches(terms.decay.sharesWad));
 }
 
-export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,expectedPair},{env=process.env,lookup=baseStockLookup,client}={}){
+export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,expectedPair,assets},{publishMetadata,env=process.env,lookup=baseStockLookup,client}={}){
  if(typeof ticker!=='string'||!/^[A-Z][A-Z0-9.-]{0,12}$/.test(ticker)||typeof name!=='string'||!name.trim()||name.length>40||typeof symbol!=='string'||!/^[A-Z0-9]{1,12}$/.test(symbol))throw Error('Invalid creator brief');
  client??=createLaunchClient({chain:'base',rpcUrl:serverRpcUrl(8453,env)});
  const state=await client.status();
@@ -31,6 +31,11 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,e
  if(!(await client.contracts().settings.padQuote(launchpadId,stock.address)).launches)return {status:'unsupported',message:'This launchpad does not currently allow '+stock.symbol+' as the pairing asset.'};
  if(!isAddress(launcher||''))return {status:'wallet',message:'Select your Base launch wallet to check this launch.'};
  const input={launchpadId,launcher,feeRecipient:launcher,name,symbol,quote:stock.address};
+ let metadata;
+ if(assets){
+  metadata=await publishMetadata({description:assets.description,image:assets.image,website:assets.website,name,symbol});
+  input.metadataUri=metadata.metadataUri;
+ }
  let plan;
  try{
   if(startFdv!==undefined){
@@ -46,5 +51,28 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,e
  if(!matchesDinnFee(plan.resolved?.padTerms,treasury))return {status:'fee-mismatch',message:'The launchpad fee terms differ from the approved Dinn split. This launch preview is unavailable.'};
  const sim=await client.simulate(plan);
  if(sim.assumedApprovals||!isAddress(sim.token)||!/^0x[a-f0-9]{64}$/i.test(sim.poolId))throw Error('Incomplete launch simulation');
- return {status:'simulated',chainId:8453,launchpadId:pad,quote:stock.address,launcher,predictedToken:sim.token,poolId:sim.poolId,creatorFeeRecipient:launcher,dinnFeeRecipient:treasury,dinnShareBps,creatorSideShareBps:10000-dinnShareBps,message:'Launch on Base with Dinn, powered by Bankr.\nBankr simulated '+name+' ($'+symbol+') paired with '+stock.symbol+' on Base. '+(startFdv?'Starting value for the full supply: '+startFdv+' '+stock.symbol+'. Automatic liquidity additions: off. ':'')+'After Bankr and any referral fee, Dinn receives 10% of the remaining trading fees. The other 90% goes to creator-side allocations. Creator fee wallet: '+launcher+'. This is a preview; nothing was signed or sent.'};
+ let feeSummary='',execution;
+ const percent=pips=>Number((pips/10000).toFixed(6));
+ const split=plan.volumeSplit;
+ if(split){
+  const {buy,sell}=plan.economics;
+  if(buy.steadyPips===sell.steadyPips&&buy.steadyPips===split.feePips){
+   feeSummary=' Once opening fees end, each $100 traded costs $'+percent(split.feePips)+' in pool fees. Your fee wallet earns the equivalent of $'+percent(split.creatorPips)+'.';
+   for(const [side,schedule] of [['Buy',buy],['Sell',sell]]){
+    if(schedule.startPips!==schedule.steadyPips)feeSummary+=' '+side+' fees start at '+percent(schedule.startPips)+'% and reach '+percent(schedule.steadyPips)+'% after '+schedule.decaySecs+' seconds.';
+   }
+   if(plan.extension==null&&plan.value===0n&&plan.approvals.length===0&&plan.predictedToken.toLowerCase()===sim.token.toLowerCase()&&plan.poolId===sim.poolId){
+    const tx=client.buildLaunchTx(plan);
+    const expiry=Math.min(Number(plan.params.deadline)*1000,Date.now()+180000);
+    if(tx.chainId!==8453||tx.from.toLowerCase()!==launcher.toLowerCase()||tx.to.toLowerCase()!==plan.factory.toLowerCase()||tx.value!==0n)throw Error('Unexpected launch transaction');
+    if(Number.isSafeInteger(expiry)&&expiry>Date.now()&&tx.gas){
+     const {getGasPrice}=await import('viem/actions');
+     const price=await getGasPrice(client.publicClient);
+     execution={from:launcher,to:tx.to,data:tx.data,gas:'0x'+tx.gas.toString(16),callHash:keccak256(tx.data),expiry};
+     feeSummary+=' No opening purchase. Estimated Base execution gas allowance: '+formatEther(tx.gas*price)+' ETH, plus the Base data fee.';
+    }
+   }
+  }
+ }
+ return {status:'simulated',execution,chainId:8453,launchpadId:pad,quote:stock.address,launcher,predictedToken:sim.token,poolId:sim.poolId,creatorFeeRecipient:launcher,dinnFeeRecipient:treasury,dinnShareBps,creatorSideShareBps:10000-dinnShareBps,message:'Launch on Base with Dinn, powered by Bankr.\n\nBankr simulated '+name+' ($'+symbol+') paired with '+stock.symbol+' on Base. '+(startFdv?'Starting value for the full supply: '+startFdv+' '+stock.symbol+'. Automatic liquidity additions: off. ':'')+'After Bankr and any referral fee, Dinn receives 10% of the remaining trading fees. The other 90% goes to creator-side allocations. Creator fee wallet: '+launcher+'.'+(metadata?'\n\nLogo: '+(metadata.doc.image||'Skipped')+'\n\nWebsite: '+(metadata.doc.external_url||'Skipped')+'\n\n':'')+feeSummary+(execution?' Approve this launch in your wallet?':' This is a preview; nothing was signed or sent.')};
 }

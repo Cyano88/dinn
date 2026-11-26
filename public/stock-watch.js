@@ -86,7 +86,7 @@ export const setupInvite='Would you like to set up your token on Robinhood Chain
 export const conceptLabel=idea=>idea.symbol?idea.name+' ($'+idea.symbol+')':idea.name;
 export function ideaReply(watch){
  const idea=launchAngle(watch);if(!idea)return 'Which stock story would you like to research first?';
- return '**'+conceptLabel(idea)+'**\n\n'+idea.activity+'\n\nInspired by '+label(idea.article)+(watch.reference?'\n\nWhat to watch: '+idea.question:'')+'\n\n'+(watch.launchChainId===8453?'Would you like to check the Bankr launch terms on Base?':watch.launchChainId===4663?'Would you like to start your Pons launch setup on Robinhood Chain?':setupInvite);
+ return '**'+conceptLabel(idea)+'**\n\n'+idea.activity+'\n\nInspired by '+label(idea.article)+(idea.question?'\n\nWhat to watch: '+idea.question:'')+'\n\n'+(watch.launchChainId===8453?'Would you like to check the Bankr launch terms on Base?':watch.launchChainId===4663?'Would you like to start your Pons launch setup on Robinhood Chain?':setupInvite);
 }
 export function ideaChoice(text,watch,last){
  if(!watch?.ideaSource)return null;
@@ -97,7 +97,7 @@ export function ideaChoice(text,watch,last){
  }
  if((last?.endsWith(ideaInvite(watch.ticker))||last===ideaReply(watch)||last?.endsWith('Or choose Pons, Bankr, or watch the story.'))&&/^what (?:could|can|should) (?:i|we) launch around (?:this|that)(?: story| finding| research)?$/.test(t))return 'idea';
  if(last?.endsWith(ideaInvite(watch.ticker))&&/^(?:can (?:i|you)|give me|show me|suggest|create|build).*\blaunch idea\b/.test(t))return 'idea';
- const currentIdea=last===ideaReply(watch)||last===setupInvite||Boolean(watch.reference&&last===ideaReply({...watch,reference:null}));
+ const currentIdea=last===ideaReply(watch)||last===setupInvite||Boolean(last&&last===ideaReply(watch).replace(/\n\nWhat to watch: [^\n]+/,''));
  const previousIdea=last?.endsWith(formerInvite);
  if((currentIdea||previousIdea)&&/^(?:yes|yep|yeah|sure|go ahead|yes please|let.s do it|start setup|use this idea)$/.test(t))return previousIdea?'launch':watch.launchChainId===8453?'bankr':watch.launchChainId===4663?'launch':'choose-network';
  if(currentIdea&&/^(?:no|no thanks|not now|maybe later)$/.test(t))return 'decline';

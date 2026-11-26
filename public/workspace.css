@@ -217,3 +217,5 @@ select{font:inherit;border:1px solid #dce3dd;border-radius:8px;padding:12px;back
 .integrate-sales{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-height:44px;padding:10px 20px;text-decoration:none}
 .integrate-sales:focus-visible{outline:2px solid #314d39;outline-offset:3px}
 .integrate-note a{color:#314d39;text-underline-offset:3px}
+
+.research-starters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:.75rem;max-width:37rem;margin:1.25rem auto}.research-starters button{display:grid;gap:.45rem;padding:1rem;text-align:left;font:inherit;color:inherit;background:transparent;border:1px solid currentColor;border-radius:.75rem}.research-starters span{font-size:.88rem}.research-starters button:focus-visible{outline:2px solid currentColor;outline-offset:3px}

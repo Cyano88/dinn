@@ -80,6 +80,15 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
      external.push(...matches.filter(Boolean));
     }catch{searchNotice='Pons search is unavailable. Try the token contract address.';}
    }
+   if(!offset&&validAddress(term)){
+    try{
+     const response=await fetchImpl('https://api.bankr.bot/token-launches/'+term.toLowerCase(),{signal:AbortSignal.timeout(5000),redirect:'error'});
+     if(response.ok){
+      const {launch}=await response.json();
+      if(launch?.chain==='base'&&launch.status==='deployed'&&launch.tokenAddress?.toLowerCase()===term.toLowerCase())external.push({chainId:8453,origin:'bankr',token:term.toLowerCase(),name:launch.tokenName,symbol:launch.tokenSymbol,stockPair:validAddress(launch.pairedStock?.address)?launch.pairedStock.symbol:null});
+     }else if(response.status!==404)throw Error();
+    }catch{searchNotice=[searchNotice,'Bankr lookup is temporarily unavailable.'].filter(Boolean).join(' ');}
+   }
    return {status:200,body:{items,external,searchNotice,total:rows.total,limit,offset,source:'Dinn verified Pons launch receipts'}};
   }
   if(Object.keys(data).some(k=>!['hash','configuration','quote'].includes(k))||!hashValid(data.hash)||!data.configuration||!data.quote||JSON.stringify(data.quote).length>10000)return {status:400,body:{error:'Invalid verified launch record.'}};

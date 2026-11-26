@@ -27,7 +27,7 @@ export function mountLogoCreator({host,getContext,onAccept,onDiscard,onPreview=(
 
  let epoch=0,candidate=null,pending=null,timer=null,busy=false,config=null,contextKey='';
 
- const identity=c=>JSON.stringify([c.user,c.name,c.symbol,c.description]);
+ const identity=c=>JSON.stringify([c.user,c.name,c.symbol,c.description,...(c.network?[c.network]:[])]);
 
  const key=c=>'dinn.logo.preview.v1:'+identity(c);
 
