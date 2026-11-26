@@ -1,7 +1,7 @@
 ﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import {erc20Abi,encodeFunctionData} from 'viem';
-import {bankrLaunchPreview} from '../src/bankr-launch-preview.mjs';
+import {bankrLaunchPreview,purchaseUsdEstimate} from '../src/bankr-launch-preview.mjs';
 import {readOpeningPurchase} from '../public/bankr-launch-action.js';
 
 const address=n=>'0x'+n.repeat(40);
@@ -21,7 +21,7 @@ function options({allow=false,balance=500000000n,wrong=false}={}){
     volumeSplit:{feePips:500,creatorPips:190},economics:{buy:schedule,sell:schedule},resolved:{padTerms:{payees:[treasury],steadySharesWad:[100000000000000000n],decay:{on:false}}}};
   },simulate:async p=>({token,poolId,devBuyOut:out,assumedApprovals:p.approvals.length>0}),
   buildLaunchTx:()=>({chainId:8453,from:launcher,to:factory,value:0n,data:'0x1234',gas:100000n})};
- return {client,readBalance:async()=>balance,env:{DINN_BANKR_BASE_LAUNCHPAD_ID:'6',DINN_BANKR_BASE_FEE_RECIPIENT:treasury},lookup:async()=>({stocks:[{address:quote,symbol:'NFLXc',decimals:8,bankrPairSupported:true}]})};
+ return {client,readMarket:async()=>({checkedAt:new Date().toISOString(),pairs:[{tokenIsBase:true,baseToken:{address:quote},pairAddress:factory,tokenPriceUsd:60,volume1hUsd:100,liquidityUsd:2000}]}),readBalance:async()=>balance,env:{DINN_BANKR_BASE_LAUNCHPAD_ID:'6',DINN_BANKR_BASE_FEE_RECIPIENT:treasury},lookup:async()=>({stocks:[{address:quote,symbol:'NFLXc',decimals:8,bankrPairSupported:true}]})};
 }
 test('explicit purchase choice is required; decimals and wallet balance are checked',async()=>{
  for(const purchase of [undefined,'0','-1','0.000000001','20']){
@@ -39,4 +39,18 @@ test('the exact permission and launch reviews are mutually exclusive',async()=>{
 test('conversational amounts, explicit skip, and wrong-currency replies',()=>{
  for(const value of ['spend .5 NFLXc','buy with 0.5 NFLXc','0.5'])assert.equal(readOpeningPurchase(value,'NFLXc'),'0.5');
  assert.equal(readOpeningPurchase('skip purchase','NFLXc'),'skip');assert.equal(readOpeningPurchase('1 ETH','NFLXc'),null);
+});
+test('USD is shown on insufficient balance, permission and final launch reviews',async()=>{
+ for(const opts of [{balance:0n},{allow:false},{allow:true}]){
+  const r=await bankrLaunchPreview({...input,openingPurchase:'0.01'},options(opts));
+  assert.match(r.message,/\$0\.60 USD/);assert.match(r.message,/DEX Screener/);assert.match(r.message,/UTC/);
+ }
+ const r=await bankrLaunchPreview({...input,openingPurchase:'0.01'},{...options({allow:true}),readMarket:async()=>{throw Error('offline');}});
+ assert.match(r.message,/USD estimate unavailable/);assert.ok(r.execution);
+});
+test('stale, inactive and mismatched prices never become dollar estimates',()=>{
+ const now=Date.now(), stock={address:quote},pool={pairAddress:factory,tokenIsBase:true,baseToken:{address:quote},liquidityUsd:42,volume1hUsd:13,tokenPriceUsd:60};
+ for(const [age,changes] of [[130000,{}],[-1000,{}],[0,{baseToken:{address:factory}}],[0,{volume1hUsd:0}],[0,{tokenIsBase:false}],[0,{tokenPriceUsd:null}]]){
+  assert.equal(purchaseUsdEstimate(stock,'0.01',{checkedAt:new Date(now-age).toISOString(),pairs:[{...pool,...changes}]},now),'USD estimate unavailable.');
+ }
 });
