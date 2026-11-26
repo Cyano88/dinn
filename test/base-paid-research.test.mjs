@@ -19,8 +19,8 @@ const services=[
  ['base.stock-paired.discover',{metric:'liquidity'},{candidates:[]}],
  ['token.research',{address:payer},{protocol:{name:'Pons v2'}}]
 ];
-function signed(id,target=resource){
- return encodePaymentSignatureHeader({x402Version:2,resource:target,accepted:terms,payload:{
+function signed(id,target=resource,accepted=terms){
+ return encodePaymentSignatureHeader({x402Version:2,resource:target,accepted,payload:{
   signature:'0x'+id.toString(16).padStart(130,'0'),authorization:{from:payer,to:payTo,value:'100000',validAfter:'0',validBefore:'9999999999',nonce:'0x'+id.toString(16).padStart(64,'0')}
  }});
 }
@@ -102,6 +102,25 @@ test('all supported report types use the same settlement and recovery path',asyn
   assert.equal(firstGet.status,200);
   assert.deepEqual((await paidResearch(queryRequest,authorization,queryDeps)).body,firstGet.body);
   assert.equal(settlements,services.length+3);
+  // Same buyer, nonce and request ID on another chain have a separate settlement record.
+  await db.query('CREATE TABLE dinn_okx_research_payments (LIKE dinn_base_research_payments INCLUDING ALL)');
+  const okxTerms={...terms,network:'eip155:196',asset:'0x779ded0c9e1022225f8e0630b35a9b54be713736'};
+  const okxPath=queryUrl.replace('/api/paid/', '/api/okx/');
+  const okxResource={url:'https://example.test/api/okx/research'};
+  const okxServer={...queryDeps.runtime.server,findMatchingRequirements:(_,p)=>p.accepted.network===okxTerms.network?okxTerms:null,
+   settlePayment:async()=>({...receipt,network:okxTerms.network,status:'success'})};
+  const okxChain={...runtime.chain,getLogs:async({address})=>{
+   assert.equal(address,okxTerms.asset);return [{transactionHash:tx}];
+  },getTransactionReceipt:async()=>{
+   const receipt=await runtime.chain.getTransactionReceipt();
+   return {...receipt,logs:receipt.logs.map(log=>({...log,address:okxTerms.asset}))};
+  }};
+  const okxDeps={...queryDeps,okx:true,queryUrl:okxPath,runtime:{...runtime,server:okxServer,resource:okxResource,requirements:okxTerms,chain:okxChain}};
+  const offer=await paidResearch(queryRequest,null,okxDeps);
+  assert.equal(offer.body.accepts[0].asset,okxTerms.asset);
+  const okxAuth=signed(41,offer.body.resource,okxTerms);
+  assert.equal((await paidResearch(queryRequest,authorization,okxDeps)).status,400);
+  assert.equal((await paidResearch(queryRequest,okxAuth,okxDeps)).body.payment.network,'eip155:196');
  }finally{await db.close();}
 });
 
