@@ -354,6 +354,30 @@ $('chat').onsubmit=async e=>{
   if(!record){recordSetupReply(text,'I could not find a recent swap for this wallet in your account.');return;}
   const pending=swapReceipt(record).text,body=recordSetupReply(text,pending);watchChatSwap(body,record,pending);return;
  }
+ if(/^register dinn launchpad on base[.!]?$/i.test(text)){
+  const owner=user,operator=account,session=epoch;
+  if(!operator||walletSource!=='embedded'){recordSetupReply(text,'Select the embedded Dinn operator wallet first.');return;}
+  const current=()=>user===owner&&account===operator&&epoch===session&&walletSource==='embedded';
+  const getReview=()=>accountRequest('bankr-register',{address:operator},owner);
+  try{
+   const review=await getReview();if(!current())return;
+   if(review.registered){recordSetupReply(text,'Your Base launchpad is already registered. ID '+review.id+'.');return;}
+   recordSetupReply(text,'Register an open Dinn launchpad on Base for 0.01 ETH plus gas. Estimated total: '+review.total+' ETH. Operator: '+operator+'. Fee wallet: '+review.payee+'. Dinn receives 10% after Bankr and any referrer. Approve registration?');
+   chatPendingApproval={label:'Base launchpad registration',run:async body=>{
+    const fresh=await getReview();if(!current()||fresh.registered||JSON.stringify(fresh.transaction)!==JSON.stringify(review.transaction))throw Error('Registration changed. Check it again.');
+    const storage=accountRecords.scope(),key='dinn.multi.bankr-registration.v1:'+operator.toLowerCase();
+    if(storage.getItem(key))throw Error('Check your previously submitted registration before retrying.');
+    await storage.setItem(key,JSON.stringify({state:'awaiting-wallet'}));
+    if(!current()){await storage.removeItem(key);throw Error('Wallet changed.');}
+    let sent;try{const tx=fresh.transaction;sent=await walletSendTransaction({...tx,value:BigInt(tx.value)},{address:operator,uiOptions:{showWalletUIs:false}});}
+    catch(e){if(Number(e.code)===4001||e.code==='ACTION_REJECTED')await storage.removeItem(key);throw Error('Check your wallet activity for the registration outcome.');}
+    const hash=typeof sent==='string'?sent:sent?.hash;
+    if(!/^0x[0-9a-f]{64}$/i.test(hash||''))throw Error('Check the registration in your wallet activity.');
+    await storage.setItem(key,JSON.stringify({state:'submitted',hash}));appendChatActionNote(body,'Registration submitted on Base. Transaction: '+hash);
+   }};
+  }catch(error){if(current())recordSetupReply(text,error.message);}
+  return;
+ }
  if(/^remove my latest feedback[.!]?$/i.test(text)){
   const owner=user,session=epoch;
   try{const {getAccessToken}=await import('/auth/entry.js');const result=await feedbackChat({action:'removeLatest'},await getAccessToken());if(owner===user && session===epoch){$('prompt').value='';recordSetupReply(text,result.removed?'Removed your latest public feedback.':'You have no public feedback to remove.');}}

@@ -14,10 +14,10 @@ export function createDraftService({env=process.env,verify,storeFactory=createDr
   pending||=storeFactory({env}).catch(error=>{pending=null;throw error;});
   return (await pending).findings(id);
  },async handle(req,path,data){
-  if(!['/api/drafts/get','/api/drafts/save','/api/drafts/records','/api/drafts/record','/api/drafts/share-finding','/api/drafts/creator-idea','/api/drafts/bankr-preview'].includes(path))return {status:404,body:{error:'Unknown draft action.'}};
+  if(!['/api/drafts/get','/api/drafts/save','/api/drafts/records','/api/drafts/record','/api/drafts/share-finding','/api/drafts/creator-idea','/api/drafts/bankr-preview','/api/drafts/bankr-register'].includes(path))return {status:404,body:{error:'Unknown draft action.'}};
   if(!enabled())return {status:503,body:{error:'Account draft storage is unavailable.'}};
   const token=req.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];if(!token||token.length>12000)return {status:401,body:{error:'Sign in to sync your draft.'}};
-  if(Object.keys(data).some(k=>!(path.endsWith('/save')?['revision','data']:path.endsWith('/record')?['key','revision','value']:path.endsWith('/bankr-preview')?['ticker','name','symbol','launcher']:path.endsWith('/creator-idea')?['ticker','url']:path.endsWith('/share-finding')?['ticker','url','publishedAt','finding','idea','activity','source','followUp','question']:[]).includes(k)))return {status:400,body:{error:'Unexpected draft request field.'}};
+  if(Object.keys(data).some(k=>!(path.endsWith('/save')?['revision','data']:path.endsWith('/record')?['key','revision','value']:path.endsWith('/bankr-register')?['address']:path.endsWith('/bankr-preview')?['ticker','name','symbol','launcher']:path.endsWith('/creator-idea')?['ticker','url']:path.endsWith('/share-finding')?['ticker','url','publishedAt','finding','idea','activity','source','followUp','question']:[]).includes(k)))return {status:400,body:{error:'Unexpected draft request field.'}};
   if(path.endsWith('/save')){if(!Number.isSafeInteger(data.revision)||data.revision<0)return {status:400,body:{error:'Invalid draft revision.'}};try{data={revision:data.revision,data:validateDraft(data.data)};}catch(e){return {status:400,body:{error:e.message}};}}
   // Local development forwards the verified user's bearer token to this app's hosted API.
   // It never opens the production database to the browser or to the local network.
@@ -27,6 +27,10 @@ export function createDraftService({env=process.env,verify,storeFactory=createDr
    return {status:response.status,body:await response.json()};
   }
   let owner;try{if(verify)owner=await verify(token);else{client||=new PrivyClient({appId:env.PRIVY_APP_ID,appSecret:env.PRIVY_APP_SECRET});owner=(await client.utils().auth().verifyAccessToken(token)).user_id;}if(!owner)throw Error();}catch{return {status:401,body:{error:'Your sign-in expired. Sign in again to sync.'}};}
+  if(path.endsWith('/bankr-register')){
+   try{const {registrationReview}=await import('./bankr-registration.mjs');return {status:200,body:await registrationReview(data.address,env)};}
+   catch{return {status:400,body:{error:'Could not verify the operator, registration fee or current Base registry.'}};}
+  }
   if(path.endsWith('/bankr-preview')){
    try{const {bankrLaunchPreview}=await import('./bankr-launch-preview.mjs');return {status:200,body:await bankrLaunchPreview(data,{env})};}
    catch{return {status:503,body:{error:'Dinn could not verify the Bankr launch terms on Base. Try again shortly.'}};}
