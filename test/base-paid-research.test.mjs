@@ -118,6 +118,14 @@ test('all supported report types use the same settlement and recovery path',asyn
   }};
   const okxDeps={...queryDeps,okx:true,queryUrl:okxPath,runtime:{...runtime,server:okxServer,resource:okxResource,requirements:okxTerms,chain:okxChain}};
   const offer=await paidResearch(queryRequest,null,okxDeps);
+  const encodedInput=encodeURIComponent(JSON.stringify(queryRequest.input));
+  const encodedRequest={...queryRequest,input:encodedInput};
+  const encodedDeps={...okxDeps,queryUrl:'/api/okx/research?'+new URLSearchParams(encodedRequest)};
+  const encodedOffer=await paidResearch(encodedRequest,null,encodedDeps);
+  assert.equal(encodedOffer.status,402);
+  assert.equal(encodedOffer.body.resource.url,'https://example.test'+encodedDeps.queryUrl);
+  assert.equal((await paidResearch({...queryRequest,input:'%7B%7D'},null,okxDeps)).status,400);
+  assert.equal((await paidResearch(queryRequest,null,{...okxDeps,xlayerLookup:async()=>({pools:[],issuerIdentity:{status:'unknown'}}),launchLookup:async()=>({routes:[]})})).status,422);
   assert.equal(offer.body.accepts[0].asset,okxTerms.asset);
   const okxAuth=signed(41,offer.body.resource,okxTerms);
   assert.equal((await paidResearch(queryRequest,authorization,okxDeps)).status,400);

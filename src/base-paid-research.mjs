@@ -131,7 +131,11 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
  if(!Object.hasOwn(examples,request?.service)||!request.requestId)return problem(400,'Choose a supported research service and supply a stable requestId.');
  // Some x402 buyers send each CLI parameter as a string, including nested input.
  try{
-  if(typeof request.input==='string')request={...request,input:JSON.parse(request.input)};
+  if(typeof request.input==='string'){
+   // The OKX GET client URL-encodes parameters, including JSON already encoded by a caller.
+   const inputText=okx&&queryUrl&&/^%7B/i.test(request.input)?decodeURIComponent(request.input):request.input;
+   request={...request,input:JSON.parse(inputText)};
+  }
   if(request.service==='stock.launch-idea'&&![8453,4663].includes(request.input?.chainId))return problem(400,'Which launch chain? Send chainId 8453 for Base or 4663 for Robinhood Chain before paying.');
   if(validateAgentRequest(request).length)return problem(400,'Supply the required research inputs.');}
  catch{return problem(400,'Invalid research request.');}
@@ -154,7 +158,7 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
    try{stockCode(input.query);}catch{return problem(422,'Use an exact company name or stock ticker.');}
    try{
     const directory=await xlayerLookup(input.query);
-    if(!directory.pools.length&&!directory.issuerIdentity){
+    if(!directory.pools?.length&&directory.issuerIdentity?.status!=='verified'){
      const launchOptions=await launchLookup(directory.symbol,{env});
      return reply(422,{charged:false,symbol:directory.symbol,source:directory.source,error:'No matching X Layer deployment or OKXICE pool was found in the sources checked.',launchOptions,guidance:launchGuidance(launchOptions)});
     }
