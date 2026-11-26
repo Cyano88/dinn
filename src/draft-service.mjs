@@ -1,7 +1,7 @@
 import {openBrief} from './agent-launch-idea.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {equityContext} from './equity-context.mjs';
-import {composeLore,nameSavedConcept,chooseFormats,loreKey} from './creator-lore.mjs';
+import {composeLore,nameSavedConcept,chooseFormats,loreKey,similarActivity,storyKey} from './creator-lore.mjs';
 import {sharedFinding,hasLaunchEvent,launchStory} from '../public/stock-watch.js';
 import {chatLimit,createChatAllowanceStore} from './chat-allowance.mjs';
 import {PrivyClient} from '@privy-io/node';
@@ -46,7 +46,7 @@ export function createDraftService({env=process.env,verify,storeFactory=createDr
    const context=await research(data.ticker,{headlinesOnly:true});
    const article=context?.recentArticles?.find(a=>a.url===data.url&&hasLaunchEvent(a));
    if(!article)return {status:409,body:{error:'This source is no longer in the current research. Refresh the research before sharing.'}};
-   const story=createHash('sha256').update(context.ticker+' '+article.title.trim().toLowerCase()).digest('hex');
+   const story=storyKey(context.ticker,article.title);
    let concept=await store.creatorLore(owner,story);
    if(path.endsWith('/creator-idea')){
     if(!launchStory(context.ticker,[article],context.checkedAt))return {status:409,body:{error:'This story needs a fresh research check.'}};
@@ -65,7 +65,8 @@ export function createDraftService({env=process.env,verify,storeFactory=createDr
       let generated;
       try{generated=await generate(context.ticker,article,formats,{env,fetchImpl,used});}catch(error){if(error instanceof TypeError&&n<2)continue;throw error;}
       const {format,concept:idea}=generated;
-      concept=await store.reserveLore(owner,story,format,loreKey(idea.name),loreKey(idea.activity),idea)||await store.creatorLore(owner,story);
+      if(similarActivity(idea.activity,used))continue;
+       concept=await store.reserveLore(owner,story,format,loreKey(idea.name),loreKey(idea.activity),idea)||await store.creatorLore(owner,story);
      }
      if(concept){await meter.finish(reservation.ticket,{message:concept.name});return {status:200,body:{concept}};}
     }finally{if(!concept)await meter.release(reservation.ticket);}

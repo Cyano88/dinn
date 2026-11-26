@@ -15,7 +15,8 @@ test('one paid report carries the same sourced concept into the owner brief and 
  const db=new PGlite();
  try{
   await db.exec(await readFile(new URL('../migrations/20261126_agent_ideas.sql',import.meta.url),'utf8'));
-  const deps={discover:async()=>({data}),generate:async()=>({concept}),save:brief=>saveBrief(brief,{},db)};
+  await db.exec(await readFile(new URL('../migrations/20261126_shared_lore.sql',import.meta.url),'utf8'));
+  const deps={prior:async()=>[],discover:async()=>({data}),generate:async()=>({concept}),save:brief=>saveBrief(brief,{},db)};
   await assert.rejects(agentAccessRequest(request,{ideaDependencies:deps}),/funded/);
   const report=await agentAccessRequest(request,{paidResearch:true,ideaDependencies:deps});
   assert.equal(report.status,'completed');assert.match(report.deliverableMarkdown,/Test milestone/);assert.equal(report.result.chainId,4663);
@@ -32,4 +33,23 @@ test('quiet checked coverage can return wait; outages cannot become a paid wait 
  const quiet={...data,ideas:[],coverage:{...coverage,quiet:1}};
  assert.equal((await communityBrief({...options,discover:async()=>({data:quiet})})).result.outcome,'wait');
  await assert.rejects(communityBrief({...options,discover:async()=>({data:{...quiet,coverage:{...coverage,screened:0}}})}),/unavailable/);
+});
+
+test('chat and marketplace compete for the same story format and preserve the winning brief',async()=>{
+ const db=new PGlite();
+ try{
+  await db.exec(await readFile(new URL('../migrations/20261126_agent_ideas.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../migrations/20261126_shared_lore.sql',import.meta.url),'utf8'));
+  const {createDraftStore}=await import('../src/draft-store.mjs');
+  const {storyKey,similarActivity}=await import('../src/creator-lore.mjs');
+  const store=await createDraftStore({db}),story=storyKey(asset.symbol,article.title),format='design and vote / public exhibit';
+  const results=await Promise.allSettled([
+   saveBrief({asset,article,concept,format},{},db),
+   store.reserveLore('creator',story,format,'different name','different activity',{...concept,name:'Other',activity:'Something entirely different'})
+  ]);
+  assert.equal(results.filter(r=>r.status==='fulfilled'&&r.value).length,1);
+  const used=(await db.query('SELECT * FROM public.dinn_prior_ideas($1)',[story])).rows;
+  assert.equal(used.length,1);assert.equal(used[0].format,format);
+  assert.ok(similarActivity('Draw a new mascot for your community and share the sketch', [{concept:{activity:'Draw a new mascot for the community and share your sketch'}}]));
+ }finally{await db.close();}
 });

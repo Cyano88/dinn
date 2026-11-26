@@ -1,4 +1,4 @@
-import {randomInt} from 'node:crypto';
+import {createHash,randomInt} from 'node:crypto';
 import {launchAngle} from '../public/stock-watch.js';
 
 // Assign the community action and the thing members make together. Both matter:
@@ -7,6 +7,16 @@ const forms=['illustrated field guide','playable paper prototype','one-page comi
 const actions=['design and vote','solve a puzzle','reconstruct the sequence','collect firsthand evidence','remix an earlier entry','explain it to a newcomer','stage a friendly competition','build a collaborative edition'];
 const normalize=text=>text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();
 export const loreKey=normalize;
+export const storyKey=(ticker,title)=>createHash('sha256').update(ticker+' '+title.trim().toLowerCase()).digest('hex');
+export function similarActivity(activity,used){
+ const words=value=>new Set(normalize(value).split(' ').filter(w=>w.length>2&&!['the','and','your','for','with','then','this','their','community'].includes(w)));
+ const next=words(activity);
+ return used.some(({concept})=>{
+  const prior=words(concept.activity);
+  const shared=[...next].filter(word=>prior.has(word)).length;
+  return shared>=4&&2*shared/(next.size+prior.size)>=0.75;
+ });
+}
 export function chooseFormats(used){
  const options=actions.flatMap(action=>forms.map(form=>({action,form,key:action+' / '+form}))).filter(v=>!used.includes(v.key));
  const choices=[];

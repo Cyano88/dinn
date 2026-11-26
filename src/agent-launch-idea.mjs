@@ -1,7 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {discoverBaseLaunchStories,discoverLaunchStories} from './launch-story-discovery.mjs';
-import {chooseFormats,composeLore,loreKey} from './creator-lore.mjs';
+import {chooseFormats,composeLore,loreKey,similarActivity,storyKey} from './creator-lore.mjs';
 
 export const ideaService='stock.launch-idea';
 let pool;
@@ -31,7 +31,8 @@ export async function originalFinding(token,env,connection){
  const {article,checkedAt,concept}=row.brief;
  return {article,checkedAt,concept,transactionHash:row.transaction_hash};
 }
-export async function communityBrief({env,chainId,discover,generate=composeLore,save=saveBrief,fetchImpl=fetch}){
+async function priorIdeas(story,env){return (await database(env).query('SELECT * FROM public.dinn_prior_ideas($1)',[story])).rows;}
+export async function communityBrief({env,chainId,discover,generate=composeLore,prior=priorIdeas,save=saveBrief,fetchImpl=fetch}){
  if(![8453,4663].includes(chainId))throw Error('Choose Base or Robinhood Chain.');
  const {data}=discover?await discover():chainId===8453?await discoverBaseLaunchStories({fetchImpl,env}):await discoverLaunchStories();
  const venue=chainId===8453?'Bankr on Base':'Pons on Robinhood Chain';
@@ -45,13 +46,21 @@ export async function communityBrief({env,chainId,discover,generate=composeLore,
  }
  const {asset,article,blockNumber}=idea;
  let brief,id;
- const used=[];
+ const story=storyKey(asset.symbol,article.title),rejected=[];
  for(let attempt=0;attempt<3;attempt++){
-  const {concept,format}=await generate(asset.symbol,article,chooseFormats(used.map(x=>x.format)),{env,fetchImpl,used});
-  brief={...scope,outcome:'idea',asset,article,blockNumber,concept};
+  const used=[...await prior(story,env),...rejected];
+  const formats=chooseFormats(used.map(x=>x.format));
+  if(!formats.length)break;
+  let generated;
+  try{generated=await generate(asset.symbol,article,formats,{env,fetchImpl,used});}
+  catch(error){if(error instanceof TypeError&&attempt<2)continue;throw error;}
+  const {concept,format}=generated;
+  if(similarActivity(concept.activity,used)){rejected.push(generated);continue;}
+  brief={...scope,outcome:'idea',asset,article,blockNumber,concept,format};
   try{({id}=await save(brief,env));break;}
-  catch(error){if(error.code!=='23505'||attempt===2)throw error;used.push({concept,format});}
+  catch(error){if(error.code!=='23505')throw error;rejected.push(generated);}
  }
+ if(!id)throw Error('A distinct community idea could not be verified.');
  const {concept}=brief;
  const openUrl='https://dinnlabs.com/#idea='+id;
  const markdown=['Powered by Dinn Research',article.title,article.source+' · '+article.publishedAt+' · '+article.url,'Community idea: '+concept.name+' ($'+concept.symbol+')',concept.activity,'What to watch: '+concept.question,'Pair checked: '+(asset.stockSymbol||asset.symbol)+' via '+venue+'. '+coverageText,'Open this brief in Dinn: '+openUrl].join('\n\n');
