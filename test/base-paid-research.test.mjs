@@ -13,7 +13,7 @@ const services=[
  ['stock.launch-idea',{chainId:8453},{outcome:'wait',chainId:8453}],
  ['pons.stock.research',{query:'NVDA'},{classification:'verified-robinhood-stock',stock:{symbol:'NVDA'}}],
  ['pons.stock-paired.research',{address:payer},{address:payer,classification:'verified-pons-stock-pair',ponsState:{pair:{address:payTo}},stock:{address:payTo}}],
- ['base.stock.research',{query:'NVDAc'},{identity:{status:'matched',symbol:'NVDAc'}}],
+ ['base.stock.research',{query:'NVIDIA'},{address:payTo,identity:{status:'matched',symbol:'NVDAc'}}],
  ['base.stock-paired.research',{address:payer},{classification:'verified-bankr-stock-paired-token'}],
  ['base.stock-paired.discover',{metric:'liquidity'},{candidates:[]}],
  ['token.research',{address:payer},{protocol:{name:'Pons v2'}}]
@@ -39,7 +39,7 @@ test('all supported report types use the same settlement and recovery path',asyn
   chain:{getBlockNumber:async()=>50n,getLogs:async()=>[{transactionHash:tx}],getTransactionReceipt:async()=>({status:'success',logs:[{
    address:usdc,topics:encodeEventTopics({abi:[parseAbiItem('event Transfer(address indexed from,address indexed to,uint256 value)')],args:{from:payer,to:payTo}}),
    data:encodeAbiParameters([{type:'uint256'}],[100000n])}]})}};
- const deps={runtime,lookup:async()=>({sources:{coinbase:{status:'available'}},stocks:[{symbol:'NVDAc'}]}),
+ const deps={runtime,lookup:async()=>({sources:{coinbase:{status:'available'}},stocks:[{address:payTo,symbol:'NVDAc',name:'NVIDIA Corporation'}]}),
   report:async(req,{paidResearch:paid})=>{assert.equal(paid,true);reportCalls++;return {status:'completed',service:req.service,result:services.find(s=>s[0]===req.service)[2]};}};
  try{
   for(const [i,[service,input]] of services.entries()){
@@ -58,6 +58,12 @@ test('all supported report types use the same settlement and recovery path',asyn
   assert.equal((await paidResearch({...req,service:'swap.quote'},null,deps)).status,400);
   assert.equal((await paidResearch(req,'invalid',deps)).status,400);
   assert.equal((await paidResearch(req,signed(20),{...deps,report:async()=>({status:'completed',result:{identity:{status:'mismatch'}}})})).status,422);
+  assert.equal((await paidResearch(req,signed(20),{...deps,report:async()=>({status:'completed',result:{address:payer,identity:{status:'matched'}}})})).status,422);
+  const tesla={...req,input:{query:'Tesla'}};
+  const stock={address:payTo,name:'Tesla, Inc.',symbol:'TSLAc'};
+  const lookup=stocks=>async()=>({sources:{coinbase:{status:'available'}},stocks});
+  assert.equal((await paidResearch(tesla,null,{...deps,lookup:lookup([stock])})).status,402);
+  assert.equal((await paidResearch(tesla,null,{...deps,lookup:lookup([stock,{...stock,address:payer}])})).status,422);
   let notifyEntered,finish;
   const entered=new Promise(resolve=>{notifyEntered=resolve;});
   const waiting=new Promise(resolve=>{finish=resolve;});

@@ -17,8 +17,10 @@ Powered by Dinn Research. Ask the owner which launch chain to research before pa
 > Research NVDAc on Base with Dinn Labs. Verify its token address, show the Coinbase reference value and its timestamp if available, and compare that with trading activity in its most liquid reported pool. Show me the quote before paying. My maximum is 0.10 USDC for this report.
 
 ```json
-{"requestId":"my-first-nvdac-report","service":"base.stock.research","input":{"query":"NVDAc"}}
+{"requestId":"my-first-tesla-report","service":"base.stock.research","input":{"query":"Tesla"}}
 ```
+
+For Tesla, Dinn checks TSLAc on Base and looks for dated TSLA news and available SEC filings. A company headline gives context for the token market. Price causation requires separate evidence.
 
 Coinbase stock reports check supported transfer controls and pause flags. Dinn checks the exact stock address in Base PinkLock V2, legacy UNCX token vesting and the Clanker v4 launch vault. Counts include historical records. Reports read up to five schedules per deployment and identify unavailable reads. Dinn also searches Sablier indexed streams and Hedgey lockup and vesting plans for the exact token. Each source has a separate status. An end date alone does not say how many tokens are still locked. Dinn also checks its dated catalog of Magna Airlock V2.1 escrows. Allocation dates require a public proof validated by the escrow; balance alone gives no date. Where a holder snapshot is available, Dinn probes up to three leading addresses for compatible project-specific vesting schedules and checks their answers against token balances. Other schedules may exist.
 

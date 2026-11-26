@@ -82,7 +82,7 @@ async function initialize(env){
   url:origin.origin+path,mimeType:'application/json',serviceName:'Dinn Labs',
   iconUrl:new URL('/brand/dinn-icon.png',origin).href,
   tags:['Token research','Tokenized stocks','Base','Bankr','Pons'],
-  description:'Research tokenized stocks and stock-paired tokens on Base and Robinhood Chain. Check Bankr and Pons launches for market activity, holders and available lock schedules. Ask for a stock-inspired community launch idea on either chain and get a sourced brief or a dated wait finding. One report per call.'
+  description:'Research tokenized stocks and stock-paired tokens on Base and Robinhood Chain. Read dated company news and available SEC filings alongside market activity, holder data and lock schedules for supported assets. Ask for a stock-inspired community launch idea on either chain and get a sourced brief or a dated wait finding. One report per call.'
  };
  const facilitator=new HTTPFacilitatorClient(createFacilitatorConfig(env.CDP_API_KEY_ID,env.CDP_API_KEY_SECRET));
  const server=new x402ResourceServer(facilitator).register(network,new ExactEvmScheme());
@@ -100,6 +100,18 @@ async function initialize(env){
  return {server,requirements,resource,challenge,db,chain};
 }
 
+async function paidStockTarget(input,lookup){
+ const query=input.query.trim().toLowerCase();
+ const result=await lookup(/^0x/i.test(query)?{address:query}:{query});
+ if(result.sources?.coinbase?.status!=='available')return {error:problem(503,'Coinbase stock registry unavailable.')};
+ const matches=(result.stocks||[]).filter(s=>{
+  const name=s.name?.toLowerCase()||'',symbol=s.symbol?.toLowerCase()||'';
+  const company=name.replace(/(?:[,\s]+(?:incorporated|inc|corporation|corp|plc|ltd|limited)\.?)+$/g,'').trim();
+  return [s.address?.toLowerCase(),symbol,name,company,symbol.replace(/c$/,'')].includes(query);
+ });
+ if(matches.length!==1||!isAddress(matches[0].address||''))return {error:problem(422,'Use a company name, exact stock ticker or Base contract address that identifies one Coinbase stock token.')};
+ return {address:matches[0].address.toLowerCase()};
+}
 export async function paidResearch(request,signature,{env=process.env,lookup=baseStockLookup,report=agentAccessRequest,runtime}={}){
  if(!runtime&&!paidResearchConfigured(env))return problem(503,'Direct Base payments are not enabled.');
  if(!Object.hasOwn(examples,request?.service)||!request.requestId)return problem(400,'Choose a supported research service and supply a stable requestId.');
@@ -114,10 +126,8 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
  const {server,requirements,resource,db}=state;
  if(!signature){
   if(service==='base.stock.research'){
-   const query=input.query.trim();
-   const result=await lookup(/^0x/i.test(query)?{address:query}:{query});
-   if(result.sources?.coinbase?.status==='unavailable')return problem(503,'Coinbase stock registry unavailable.');
-   if(!result.stocks?.some(s=>[s.name,s.symbol,s.address].some(v=>v?.toLowerCase()===query.toLowerCase())))return problem(422,'Use an exact Coinbase stock name, ticker or Base contract address.');
+   const target=await paidStockTarget(input,lookup);
+   if(target.error)return target.error;
   }
   return reply(402,state.challenge,{'PAYMENT-REQUIRED':encodePaymentRequiredHeader(state.challenge)});
  }
@@ -162,14 +172,17 @@ export async function paidResearch(request,signature,{env=process.env,lookup=bas
   }
   const verification=await server.verifyPayment(payment,requirements,extension);
   if(!verification.isValid||verification.payer?.toLowerCase()!==payer)return problem(402,'Payment authorization was not verified.');
+  const target=service==='base.stock.research'?await paidStockTarget(input,lookup):null;
+  if(target?.error)return target.error;
+  const reportRequest=target?{...request,input:{...input,query:target.address}}:request;
   let result;
-  try{result=await report(request,{paidResearch:true,env});}
+  try{result=await report(reportRequest,{paidResearch:true,env});}
   catch(error){if(service!=='stock.launch-idea')throw error;return problem(503,'The sourced idea brief is unavailable. No settlement was requested.');}
   if(service==='stock.launch-idea' && (!['idea','wait'].includes(result?.result?.outcome)||result?.result?.chainId!==input.chainId))return problem(422,'No supported idea brief was delivered. No settlement was requested.');
   if(result.status!=='completed'||service==='token.research'&&result.result?.protocol?.name!=='Pons v2'||
     service==='pons.stock.research'&&(result.result?.classification!=='verified-robinhood-stock'||![result.result?.stock?.address,result.result?.stock?.symbol].some(v=>v?.toLowerCase()===input.query.toLowerCase()))||
     service==='pons.stock-paired.research'&&(result.result?.classification!=='verified-pons-stock-pair'||result.result?.address?.toLowerCase()!==input.address.toLowerCase()||result.result?.ponsState?.pair?.address?.toLowerCase()!==result.result?.stock?.address?.toLowerCase())||
-    service==='base.stock.research'&&(result.result?.identity?.status!=='matched'||![result.result.address,result.result.identity?.symbol,result.result.identity?.name].some(v=>v?.toLowerCase()===input.query.trim().toLowerCase()))||
+    service==='base.stock.research'&&(result.result?.identity?.status!=='matched'||result.result.address?.toLowerCase()!==target.address)||
     service==='base.stock-paired.research'&&result.result?.classification!=='verified-bankr-stock-paired-token')return problem(422,'The requested research target could not be verified. No settlement was requested.');
   const startBlock=await state.chain.getBlockNumber();
   const saved=await client.query('INSERT INTO dinn_base_research_payments(payer,request_id,nonce,proof,request_hash,report,start_block,valid_before) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING RETURNING request_id',[payer,requestId,nonce,proof,requestHash,result,startBlock.toString(),auth.validBefore]);
