@@ -35,6 +35,18 @@ export function outsideResearchScope(text){
  const execute=/^(?:please\s+)?(?:(?:buy|sell|swap|transfer|bridge|stake)\s+(?:this|that|my|all|some|the token|0x[0-9a-f]{40}|[0-9]+)\b|send funds\b|claim fees\b|execute (?:a |the )?trade\b|monitor daily\b|watch daily\b)/im;
  return execute.test(text)||foreignNetwork.test(text)||namedNetwork.test(text)||(base.test(text)&&nonStock.test(text));
 }
+// Marketplace briefs often give a target first, then describe the evidence the buyer needs.
+function stockResearchLead(value){
+ const head=value.match(/^(.+?\bon\s+(?:base(?:\s+chain)?|robinhood(?:\s+chain)?|pons))\s*(?:[.!?]\s+|\r?\n+)([\s\S]+)$/i);
+ if(!head)return value;
+ const instructions=head[2];
+ if(/\b(?:solana|arbitrum|ethereum|polygon|avalanche|x\s*layer|bankr|robinhood|pons|on\s+base)\b/i.test(instructions)
+  ||/\b[A-Z][A-Z0-9]{1,12}c\b|\$[A-Za-z]|0x[\da-f]{40}/.test(instructions)
+  ||/\b(?:execute|broadcast|sign|swap|transfer\s+(?!controls?\b|restrictions?\b|polic(?:y|ies)\b)|buy\s+(?:it|some|the|\$|\d)|sell\s+(?:it|some|the|\$|\d)|compare\s+(?:it\s+)?(?:with|to)|also\s+research)\b/i.test(instructions))return null;
+ const clauses=instructions.split(/(?:[.!?]\s+|\r?\n+)/).map(v=>v.trim()).filter(Boolean);
+ if(!clauses.every(v=>/^(?:please\s+)?(?:check|verify|include|report|show|assess|flag|look\s+for|focus\s+on|explain|identify|list|summarize|determine|evaluate|is\s+it|i(?:['\u2019]m|\s+am)\s+(?:evaluating|considering))\b/i.test(v)))return null;
+ return head[1];
+}
 function requestedResearchInput(row,job){
  const brief=row?.job,sources=[brief?.description];
  if(job.origin==='a2a'&&row.latestMessage!=null){
@@ -74,12 +86,14 @@ function requestedResearchInput(row,job){
  if(!services.length&&!chainLines.length&&!addresses.length){
   const title=brief?.title;
   const natural=[...new Set([...sources,title].filter(x=>typeof x==='string').map(x=>x.trim()))];
-  const robinhood=natural.map(x=>/^(?:please\s+)?(?:research|check|inspect)\s+\$?([a-z][\w.-]{0,19})\s+on\s+(?:pons|robinhood(?: chain)?)[.!?]?$/i.exec(x)?.[1]).filter(Boolean);
+  const leads=natural.map(stockResearchLead);
+  if(leads.includes(null))return null;
+  const robinhood=leads.map(x=>/^(?:please\s+)?(?:research|check|inspect)\s+\$?([a-z][\w.-]{0,19})\s+on\s+(?:pons|robinhood(?: chain)?)[.!?]?$/i.exec(x)?.[1]).filter(Boolean);
   if(new Set(robinhood.map(x=>x.toLowerCase())).size===1&&!/\b(?:base|bankr|solana|arbitrum|ethereum)\b/i.test(text))return {service:'pons.stock.research',query:robinhood[0]};
   const ticker=/^(?:please\s+)?(?:research|check|inspect|look up)\s+\$?([a-z][a-z0-9._-]{0,14})\s+on\s+base(?:\s+chain)?[.!?]?$/i;
-  const matches=[...new Set(natural.map(x=>ticker.exec(x)?.[1]?.toUpperCase()).filter(Boolean))];
+  const matches=[...new Set(leads.map(x=>ticker.exec(x)?.[1]?.toUpperCase()).filter(Boolean))];
   if(matches.length===1&&!/\b(?:robinhood|pons|bankr|solana|arbitrum|ethereum)\b/i.test(text)){
-   return {service:'base.stock.research',query:natural.map(x=>ticker.exec(x)?.[1]).find(Boolean)};
+   return {service:'base.stock.research',query:leads.map(x=>ticker.exec(x)?.[1]).find(Boolean)};
   }
   if(job.isPrivate && (job.origin==='a2a'||job.isTestRun===false)){
    const candidate=natural.find(x=>discoveryStep(x)?.metric);

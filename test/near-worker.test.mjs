@@ -360,21 +360,21 @@ test('missing-target hire gets one prompt and can choose a ranked contract in th
 });
 
 test('one paid A2A call delivers a plain English stock brief or reaches a confirmed decline',async()=>{
- for(const description of ['Research NVDAc on Base','NVDAc','Research aMissingTicker on Base']){
-  const {row,fullJob}=fixture({jobKind:'instant',origin:'a2a',isPrivate:true,title:description,description,assignment:{escrowToken:'X402',escrowAmount:'0.1000',...(description==='NVDAc'?{startedAt:'2026-11-22T00:00:00Z'}:{})},
+ for(const description of ['Research NVDAc on Base','NVDAc','Research aMissingTicker on Base',websiteAlphabetBrief]){
+  const {row,fullJob}=fixture({jobKind:'instant',origin:description===websiteAlphabetBrief?null:'a2a',isPrivate:true,title:description===websiteAlphabetBrief?'Hire: Dinn Labs':description,description,assignment:{escrowToken:description===websiteAlphabetBrief?'USDC':'X402',escrowAmount:'0.1000',...(description==='NVDAc'?{startedAt:'2026-11-22T00:00:00Z'}:{})},
    latestMessage:{senderSide:'buyer',origin:'direct',body:description,truncated:false,attachments:[]}});
   const calls=[],lock={data:null};
   const store={acquire:async()=>lock,renew:async()=>{},save:async(_,v)=>{lock.data=v;},event:async()=>{},release:async()=>{}};
   const client={job:async()=>fullJob,assignment:async()=>row,start:async()=>calls.push('start'),
-   submit:async()=>{calls.push('submit');return {assignmentId,status:'accepted'};},
+   submit:async()=>{calls.push('submit');return {assignmentId,status:description===websiteAlphabetBrief?'submitted':'accepted'};},
    decline:async(_,reason)=>{calls.push(reason);return {assignmentId,status:'cancelled'};}};
   const worker=createNearWorker({agentId,...options,minimumEscrow:'0.1000',store,client,wait:async()=>{},report:async req=>{
    assert.equal(req.service,'base.stock.research');
-   if(req.input.query!=='NVDAc')throw Error('unknown stock');
+   if(!['NVDAc','GOOGLc'].includes(req.input.query))throw Error('unknown stock');
    return {status:'completed',deliverableMarkdown:'Verified stock evidence',evidence:{sha256:'d'.repeat(64)}};
   }});
   const outcome=await worker.process(row);
-  assert.equal(outcome.state,description==='Research NVDAc on Base'?'accepted-payout-pending':'declined');
+  assert.equal(outcome.state,description===websiteAlphabetBrief?'submitted':description==='Research NVDAc on Base'?'accepted-payout-pending':'declined');
   assert.deepEqual(calls,description==='NVDAc'?['rejected']:description.includes('aMissing')?['start','failed']:['start','submit']);
  }
 });
@@ -418,4 +418,13 @@ test('a paid idea hire submits its report in one call without a ticker or follow
  }});
  assert.equal((await worker.process(row)).state,'accepted-payout-pending');
  assert.deepEqual(calls,['start','submit']);
+});
+const websiteAlphabetBrief="Research GOOGLc on Base. Check its official identity, current reference value, transfer controls, liquidity, market activity, holder data, and relevant Alphabet news or SEC filings. I'm evaluating whether it's suitable for a small $1 trade right now. Flag anything that would make you recommend skipping the trade.";
+test('a paid website brief with due-diligence instructions resolves one stock without granting execution',()=>{
+ const parse=description=>{const {row,fullJob}=fixture({jobKind:'instant',isPrivate:true,title:'Hire: Dinn Labs',description});return eligibleNearResearchJob(row,fullJob,agentId,options);};
+ assert.deepEqual(parse(websiteAlphabetBrief),{service:'base.stock.research',query:'GOOGLc'});
+ assert.deepEqual(parse(websiteAlphabetBrief.replace("I'm","I\u2019m")),{service:'base.stock.research',query:'GOOGLc'});
+ for(const tail of [' Buy it for me.',' Then execute the trade.',' Compare it with NVDAc.',' Research Tesla on Base as well.',' Check liquidity on Solana.']){
+  assert.equal(parse(websiteAlphabetBrief+tail),null,tail);
+ }
 });
