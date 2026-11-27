@@ -41,3 +41,17 @@ test('review, approval, pending protection and verified stock receipt',async()=>
  receipt.logs=[{address:stock.address,topics:[topic,hash,'0x'+account.slice(2).padStart(64,'0')],data:'0x186a0'}];
  assert.match(await stockReceipt(account,storage,reading),/NFLXc received/);assert.match(await stockReceipt(account,storage,reading),/NFLXc received/);
 });
+
+test('wallet stays selected across the temporary Base switch and returns to its original chain',async()=>{
+ const review=await stockQuote(args,mock({data:sample()}));
+ let chain='0x1237',guard=false;
+ const provider={request:async({method,params})=>{
+  if(method==='eth_chainId')return chain;
+  if(method==='wallet_switchEthereumChain'){assert.ok(guard);chain=params[0].chainId;return;}
+  if(method==='eth_accounts')return [account];
+  if(method==='eth_sendTransaction'){assert.equal(chain,'0x2105');return hash;}
+ }};
+ const storage={getItem:()=>null,setItem:async()=>{}};
+ assert.equal(await sendStockBuy(review,{storage,provider,current:()=>guard,onSwitch:value=>{guard=value;}},client),hash);
+ assert.equal(chain,'0x1237');assert.equal(guard,false);
+});

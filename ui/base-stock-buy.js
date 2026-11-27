@@ -65,13 +65,26 @@ export async function stockQuote({symbol,budget,account,expectedPair}, {read=fet
  return {message,tx,gas,expiry,account,token:stock.address,minimum:q.minBuyAmount,permission:!!allowance,spend:String(amount),symbol:stock.symbol};
 }
 
-export async function sendStockBuy(review,{provider,embedded,storage,current},client=rpc){
+export async function sendStockBuy(review,options,client=rpc){
+ const {provider,onSwitch=()=>{}}=options;
+ const original=await provider.request({method:'eth_chainId'});
+ if(BigInt(original)===8453n)return submitStockBuy(review,options,client);
+ onSwitch(true);
+ try{
+  await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:'0x2105'}]});
+  return await submitStockBuy(review,options,client);
+ }finally{
+  let restored=false;
+  try{if(BigInt(await provider.request({method:'eth_chainId'}))!==BigInt(original))await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:original}]});restored=true;}catch{/* Preserve the recorded submission if the wallet cannot switch back. */}finally{onSwitch(false,restored);}
+ }
+}
+
+async function submitStockBuy(review,{provider,embedded,storage,current},client){
  const {account,tx,expiry}=review,recordKey=key(account);
  const valid=()=>current()&&Date.now()<expiry;
  if(!valid())throw Error('Request a fresh stock quote.');
  const previous=JSON.parse(storage.getItem(recordKey)||'null');
  if(previous&&!previous.result)throw Error('Say "check stock purchase" before trying again.');
- await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:'0x2105'}]});
  ensure(same((await provider.request({method:'eth_accounts'}))[0],account)&&BigInt(await provider.request({method:'eth_chainId'}))===8453n);
  let gas;
  try{await client.call({account,...tx});gas=await client.estimateGas({account,...tx});}

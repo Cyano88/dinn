@@ -488,16 +488,17 @@ $('chat').onsubmit=async e=>{
    if(!current())return;
    recordSetupReply(text,prefix+review.message);
    if(review.tx)chatPendingApproval={label:review.permission?'USDC permission':'Base stock purchase',run:async body=>{
-    const hash=await sendStockBuy(review,{provider,embedded:source==='embedded'?walletSendTransaction:null,storage,current});
-    if(!current())return;
+    const hash=await sendStockBuy(review,{provider,embedded:source==='embedded'?walletSendTransaction:null,storage,current,onSwitch:walletNetworkSwitch});
+    const sameViewer=()=>user===owner&&account===wallet&&body.isConnected;
+    if(!sameViewer())return;
     appendChatActionNote(body,'Submitted on Base.',{hash,chainId:8453});
-    for(let i=0;i<10&&current();i++){
+    for(let i=0;i<10&&sameViewer();i++){
      const status=await stockReceipt(wallet,storage);
-     if(!current())return;
+     if(!sameViewer())return;
      if(!status.startsWith('Pending on Base')){appendChatActionNote(body,status.split(' [View Base transaction]')[0]+(status.startsWith('?')&&savedBuy?.funding?' Say "review my opening purchase" to continue your launch.':''));return;}
      await new Promise(resolve=>setTimeout(resolve,1500));
     }
-    if(current())appendChatActionNote(body,'Say "check stock purchase" for the receipt.');
+    if(sameViewer())appendChatActionNote(body,'Say "check stock purchase" for the receipt.');
    }};
   }catch(error){if(current())recordSetupReply(text,prefix+error.message);}
   finally{if(epoch===session)setupBusy=false;}
@@ -1011,6 +1012,7 @@ function appendChatActionNote(body,text,{success=false,pending=false,hash,chainI
  if(matches.length===1){const reply=matches[0];reply.content+='\n\n'+text;actionHistoryText.set(body,reply.content);try{save('chat',{messages:history,results:chatResults});}catch{}}
  scrollChat();return p;
 }
+const walletNetworkSwitch=(value,restored)=>{walletNetworkBusy=value;if(!value&&restored)window.dispatchEvent(new CustomEvent('dinn:wallet-network-restored'));};
 const activeSwapChecks=new WeakSet();
 function watchChatSwap(body,record,initialText){
  if(activeSwapChecks.has(body))return;
@@ -1232,7 +1234,7 @@ async function startSignIn(){
 }
 void startSignIn();
 void fetch('/api/status').then(r=>{if(!r.ok)throw Error();return r.json();}).then(status=>{renderToolDirectory(status.capabilities);renderAgentAccess(null,true);fetch('/.well-known/dinn.json').then(r=>r.ok?r.json():null).then(data=>renderAgentAccess(data,false)).catch(()=>renderAgentAccess(null,false));if(status.legalLinks){$('terms-link').href=status.legalLinks.terms;$('privacy-link').href=status.legalLinks.privacy;}}).catch(()=>renderAgentAccess(null,false));
-void (async()=>{const {mountRobinhoodWallet}=await import('/pons/entry.js');walletUI=mountRobinhoodWallet({api,getAccount:()=>account,getProvider:()=>provider,getSendTransaction:()=>walletSource==='embedded'?walletSendTransaction:null,getWalletSource:()=>walletSource,getEpoch:()=>epoch,onSwitch:(value,restored)=>{walletNetworkBusy=value;if(!value&&restored)window.dispatchEvent(new CustomEvent('dinn:wallet-network-restored'));}});if(account)walletUI.changed('',false);})().catch(()=>{$('wallet-status').textContent='Wallet tools could not load. Reload to try again.';});
+void (async()=>{const {mountRobinhoodWallet}=await import('/pons/entry.js');walletUI=mountRobinhoodWallet({api,getAccount:()=>account,getProvider:()=>provider,getSendTransaction:()=>walletSource==='embedded'?walletSendTransaction:null,getWalletSource:()=>walletSource,getEpoch:()=>epoch,onSwitch:walletNetworkSwitch});if(account)walletUI.changed('',false);})().catch(()=>{$('wallet-status').textContent='Wallet tools could not load. Reload to try again.';});
 
 
 
