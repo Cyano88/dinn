@@ -1,3 +1,4 @@
+import {bankrDirectoryMarket} from './bankr-directory-market.mjs';
 import {linkVerifiedBrief} from './agent-launch-idea.mjs';
 import {getClient,PONS_FACTORY,snapshot} from './pons.mjs';
 import {factoryAbi} from './pons-fee-abi.mjs';
@@ -53,15 +54,7 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
    const items=await mapLimit(rows.items,3,async item=>{if(item.chainId===8453){
     const key='8453:'+item.token.toLowerCase(),cached=metricsCache.get(key);
     if(cached&&now()-cached.at<60000)return {...item,metrics:cached.value};
-    let market=null;
-    try{
-     const response=await fetchImpl('https://api.dexscreener.com/latest/dex/pairs/base/'+item.curve,{signal:AbortSignal.timeout(3000),redirect:'error'});
-     if(response.ok){
-      const pool=(await response.json()).pairs?.find(p=>p.chainId==='base'&&p.pairAddress?.toLowerCase()===item.curve.toLowerCase()&&p.baseToken?.address?.toLowerCase()===item.token.toLowerCase()&&p.quoteToken?.address?.toLowerCase()===item.pairToken.toLowerCase());
-      const usd=n=>typeof n==='number'&&Number.isFinite(n)&&n>0?String(n):null;
-      if(pool)market={fdvUsd:usd(pool.fdv),marketCapUsd:usd(pool.marketCap)};
-     }
-    }catch{/* The verified launch remains visible without market coverage. */}
+    const market=await bankrDirectoryMarket(item,fetchImpl);
     const metrics={market};metricsCache.set(key,{at:now(),value:metrics});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);
     return {...item,metrics};
    }try{const key=item.token.toLowerCase(),cached=metricsCache.get(key);let metrics,logo=cached?.logo;if(cached&&now()-cached.at<60000)metrics=cached.value;else{const state=await readMetrics({address:item.token},{includeLogo:!item.logo,launchValuation:true});metrics=publicMetrics(state);logo=state.logo;metricsCache.set(key,{at:now(),value:metrics,logo});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);}return {...publicLaunch(item),logo:item.logo||logo||null,metrics};}catch{return {...publicLaunch(item),metrics:null};}});

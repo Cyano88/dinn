@@ -14,7 +14,7 @@ function imageSource(value){
 }
 function formatUsd(value){const number=typeof value==='string'?Number(value):NaN;if(!Number.isFinite(number)||number<0)return 'Unavailable';return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:number>0&&number<0.01?8:2}).format(number);}
 function ago(value){if(!value)return 'Launch date unavailable';const date=new Date(value);if(!Number.isFinite(date.getTime()))return 'Launch date unavailable';const seconds=Math.max(0,Math.floor((Date.now()-date.getTime())/1000));if(seconds<60)return 'just launched';if(seconds<3600)return `${Math.floor(seconds/60)}m ago`;if(seconds<86400)return `${Math.floor(seconds/3600)}h ago`;const days=Math.floor(seconds/86400);return days<30?`${days}d ago`:`${Math.floor(days/30)}mo ago`;}
-function addressShort(value){return address(value)?`${value.slice(0,6)}…${value.slice(-4)}`:'Token address unavailable';}
+function inPool(item){return Number(item.chainId)===8453?Boolean(item.curve):item.metrics?.phase===2;}
 
 export function mountDinnLaunches({host,apiBase='/api/dinn/launches',getAccessToken,onStart=()=>{},onResearch=()=>{},interval=120000,doc=document}){
  const $=id=>doc.getElementById(id),list=$('dinn-launch-list'),search=$('dinn-launch-search'),status=$('dinn-launch-status'),more=$('dinn-launch-more'),filters=[...doc.querySelectorAll('[data-launch-filter]')];
@@ -22,38 +22,35 @@ export function mountDinnLaunches({host,apiBase='/api/dinn/launches',getAccessTo
  const node=(tag,cls,text)=>{const element=doc.createElement(tag);if(cls)element.className=cls;if(text!==undefined)element.textContent=text;return element;};
  function skeletons(){list.replaceChildren();for(let i=0;i<4;i++){const row=node('div','launch-row-skeleton');row.setAttribute('aria-hidden','true');row.append(node('span','launch-skeleton-avatar'),node('span','launch-skeleton-copy'),node('span','launch-skeleton-value'),node('span','launch-skeleton-value'));list.append(row);}}
  function card(item){
-  if(item.origin==='bankr'||item.chainId===8453){
-   const row=node('article','dinn-launch-row'),identity=node('div','dinn-launch-identity'),title=node('div','dinn-launch-title'),actions=node('div','dinn-launch-actions');
-   const logo=node('span','dinn-launch-logo',(item.symbol||'D')[0]),url=imageSource(item.logo);
-   if(url){const image=node('img');image.src=url;image.alt='';image.onerror=()=>{logo.textContent=(item.symbol||'D')[0];};logo.replaceChildren(image);}
-   const saved=item.origin==='dinn-bankr',pair=item.stockPair||item.pairSymbol;
-   title.append(node('strong','',item.name||item.symbol||'Bankr token'),node('span','',[item.symbol,saved?'Launched through Dinn':'Found on Bankr'].filter(Boolean).join(' \u00b7 ')),node('span','',[pair,addressShort(item.token),item.launchedAt&&ago(item.launchedAt)].filter(Boolean).join(' \u00b7 ')));identity.append(logo,title);
-   if(pair){const research=node('button','subtle','Research stock pair');research.type='button';research.onclick=()=>onResearch(item.token,8453);actions.append(research);}
-   const open=node('a','subtle','Open on Bankr');open.href='https://bankr.bot/trade/'+item.token;open.target='_blank';open.rel='noopener noreferrer';actions.append(open);
-   row.append(identity,node('span','',formatUsd(item.metrics?.market?.fdvUsd)),node('span','',formatUsd(item.metrics?.market?.marketCapUsd)),node('span','','Bankr \u00b7 Base'),actions);return row;
-  }
- const row=node('article','dinn-launch-row'),identity=node('div','dinn-launch-identity'),logo=node('span','dinn-launch-logo'),source=imageSource(item.logo);if(source){const image=node('img');image.src=source;image.alt='';image.loading='lazy';image.referrerPolicy='no-referrer';image.onerror=()=>{image.remove();logo.textContent=(item.symbol||'D').slice(0,1).toUpperCase();};logo.append(image);}else logo.textContent=(item.symbol||'D').slice(0,1).toUpperCase();const title=node('div','dinn-launch-title');title.append(node('strong','',item.name||'Unnamed token'),node('span','',item.symbol?`$${item.symbol} · ${item.origin==='pons'?'Found on Pons':'Launched through Dinn'}`:'Ticker unavailable'));const metrics=item.metrics,pairSymbol=metrics?.pair?.symbol||(item.pairToken?.toLowerCase()==='0x'+'0'.repeat(40)?'ETH':item.pairToken?addressShort(item.pairToken):'Pair unavailable');title.append(node('span','',[pairSymbol,addressShort(item.token),item.launchedAt?ago(item.launchedAt):null].filter(Boolean).join(' · ')));identity.append(logo,title);row.append(identity);
-  const reported=metrics?.market?.fdvUsd,curveEstimate=metrics?.curveFdvUsd,fdv=reported||curveEstimate,fdvLabel=reported?'FDV':'Curve FDV estimate',marketCap=metrics?.market?.marketCapUsd,market=node('div','dinn-launch-market');market.append(node('span','metric-label',fdvLabel),node('strong','',fdv?formatUsd(fdv):'Unavailable'),node('small','',reported?'Reported by GeckoTerminal':curveEstimate?'Estimated from curve and pair price':'No verified FDV'));row.append(market);
-  const cap=node('div','dinn-launch-market');
-  const outsideUsd=metrics?.outsideValueUsd, outsideQuote=metrics?.outsideValueQuote;
-  if(metrics?.launchCap?.usd!=null||metrics?.launchCap?.quote!=null){
-   const valuation=metrics.launchCap;
-   const value=valuation.usd!=null?formatUsd(valuation.usd):Number(valuation.quote).toLocaleString(undefined,{maximumSignificantDigits:5})+' '+pairSymbol;
-   cap.append(node('span','metric-label','Market cap'),node('strong','',value),node('small','','Reported by Pons'));
-  }else if(marketCap){
-   cap.append(node('span','metric-label','Market cap'),node('strong','',formatUsd(marketCap)),node('small','','Reported by GeckoTerminal'));
-  }else if(outsideQuote!=null){
-   const value=outsideUsd!=null?formatUsd(outsideUsd):Number(outsideQuote).toLocaleString(undefined,{maximumSignificantDigits:5})+' '+pairSymbol;
-   cap.append(node('span','metric-label','Value outside curve'),node('strong','','\u2248 '+value),node('small','','At curve price \u00b7 may include locked tokens'));
-  }else{
-   cap.append(node('span','metric-label','Market cap'),node('small','',metrics?'Circulating supply unconfirmed':'Market data could not be loaded'));
-  }
-  row.append(cap);
-  const phase=node('div','dinn-launch-phase'),onCurve=metrics?.phase===0,graduated=metrics?.phase===2,progress=onCurve&&Number.isFinite(Number(metrics.curve?.progressPercent));phase.append(node('span',`launch-state ${onCurve?'on-curve':graduated?'graduated':'unknown'}`,metrics?.status||'Metrics unavailable'));if(progress){const track=node('span','launch-progress'),bar=node('span');bar.style.width=`${Math.max(0,Math.min(100,Number(metrics.curve.progressPercent)))}%`;track.append(bar);phase.append(track,node('small','',`${metrics.curve.progressPercent}% of quote-reserve target`));}const price=metrics?.market?.priceUsd||metrics?.curvePriceUsd;if(price)phase.append(node('small','',`Price ${formatUsd(price)}${metrics?.market?.priceUsd?' · GeckoTerminal':' · curve estimate'}`));else if(metrics?.checkedAt)phase.append(node('small','',`Checked at block ${metrics.blockNumber}`));row.append(phase);
-  const actions=node('div','dinn-launch-actions'),research=node('button','subtle','Research'),open=node('a','subtle','Open on Pons');research.type='button';research.onclick=()=>onResearch(item.token);open.href=`https://ponsfamily.com/launchpad/${item.token}`;open.target='_blank';open.rel='noopener noreferrer';actions.append(research,open);row.append(actions);
-  row.title=`${item.name||''} ${item.symbol||''} · ${fdvLabel}`;return row;
+  const base=Number(item.chainId)===8453||item.origin==='bankr'||item.origin==='dinn-bankr';
+  const platform=base?'Bankr':'Pons',m=item.metrics||{},market=m.market||{};
+  const row=node('article','dinn-launch-row'),identity=node('div','dinn-launch-identity'),title=node('div','dinn-launch-title'),logo=node('span','dinn-launch-logo',(item.symbol||'D')[0]);
+  const url=imageSource(item.logo);
+  if(url){const img=node('img');img.src=url;img.alt='';img.loading='lazy';img.onerror=()=>logo.textContent=(item.symbol||'D')[0];logo.replaceChildren(img);}
+  const pair=item.stockPair||m.pair?.symbol||item.pairSymbol||(item.pairToken==='0x'+'0'.repeat(40)?'ETH':null);
+  title.append(node('strong','',item.name||item.symbol||'Unnamed token'),node('span','',[ [item.symbol,pair].filter(Boolean).join(' / '),platform,item.launchedAt&&ago(item.launchedAt)].filter(Boolean).join(' · ')));
+  identity.append(logo,title);
+  const details=node('details','dinn-launch-details'),summary=node('summary','','Details'),body=node('div','launch-details-body');details.append(summary,body);
+  const detail=(label,value)=>{if(value)body.append(node('p','',label+' '+value));};
+  detail('Contract',item.token);detail('Network',base?'Base':'Robinhood Chain');
+  const metric=(label,value,source)=>{const cell=node('div','dinn-launch-market');cell.append(node('span','metric-label',label),node('strong','',value||'Unavailable'));detail(label,source);return cell;};
+  const fdv=market.fdvUsd||m.curveFdvUsd,fdvSource=market.fdvUsd?(market.fdvSource||(base?'DEX Screener':'GeckoTerminal')):m.curveFdvUsd?'Estimated from the curve and pair price':null;
+  const fdvCell=metric('FDV',fdv?(market.fdvUsd?'':'≈ ')+formatUsd(fdv):null,fdvSource);
+  const cap=m.launchCap,capValue=cap?.usd!=null?formatUsd(cap.usd):cap?.quote!=null?Number(cap.quote).toLocaleString(undefined,{maximumSignificantDigits:5})+' '+(pair||''):market.marketCapUsd?formatUsd(market.marketCapUsd):null;
+  const capCell=metric('Market cap',capValue,cap?.usd!=null||cap?.quote!=null?'Pons':market.marketCapUsd?(market.marketCapSource||(base?'DEX Screener':'GeckoTerminal')):null);
+  if(m.outsideValueUsd!=null)detail('Value outside curve',formatUsd(m.outsideValueUsd));
+  else if(m.outsideValueQuote!=null)detail('Value outside curve',m.outsideValueQuote+' '+(pair||''));
+  const phase=node('div','dinn-launch-phase'),onCurve=!base&&m.phase===0,pool=inPool(item);
+  phase.append(node('span','launch-state '+(onCurve?'on-curve':pool?'graduated':'unknown'),onCurve?'On bonding curve':pool?'In pool':base?'Bankr launch':m.status||'Stage unavailable'));
+  if(onCurve&&m.curve?.progressPercent!=null)detail('Curve progress',m.curve.progressPercent+'% of the quote-reserve target');
+  if(market.priceUsd||m.curvePriceUsd)detail('Price',formatUsd(market.priceUsd||m.curvePriceUsd)+(m.curvePriceUsd&&!market.priceUsd?' (curve estimate)':''));
+  const actions=node('div','dinn-launch-actions');
+  if(!base||pair){const research=node('button','subtle','Research');research.type='button';research.setAttribute('aria-label','Research '+(item.name||item.symbol));research.onclick=()=>onResearch(item.token,base?8453:4663);actions.append(research);}
+  const open=node('a','','Open on '+platform);open.href=(base?'https://bankr.bot/trade/':'https://ponsfamily.com/launchpad/')+item.token;open.target='_blank';open.rel='noopener noreferrer';body.append(open);
+  details.dataset.token=(item.chainId||4663)+':'+item.token;
+  row.append(identity,fdvCell,capCell,phase,actions,details);return row;
  }
- function render(){const visible=items.filter(item=>filter==='all'||filter==='curve'&&item.metrics?.phase===0||filter==='graduated'&&item.metrics?.phase===2);list.replaceChildren();if(!items.length){const empty=node('div','dinn-launch-empty');empty.append(node('h3','',query?'No matching launches found':'No Dinn launches yet'),node('p','',query?'Try a token name, ticker, or address.':'Paste a Bankr or Pons contract address to find a launch.'));list.append(empty);}else if(!visible.length){list.append(node('p','dinn-launch-empty-note','No launches match this filter.'));}else for(const item of visible)list.append(card(item));more.hidden=offset>=total||items.length===0;more.disabled=loadingMore;more.textContent=loadingMore?'Loading…':'Show more';}
+ function render(){const expanded=new Set([...list.querySelectorAll('details[open]')].map(el=>el.dataset.token));const visible=items.filter(item=>filter==='all'||filter==='curve'&&item.metrics?.phase===0||filter==='graduated'&&inPool(item));list.replaceChildren();if(!items.length){const empty=node('div','dinn-launch-empty');empty.append(node('h3','',query?'No matching launches found':'No Dinn launches yet'),node('p','',query?'Try a token name, ticker, or address.':'Paste a Bankr or Pons contract address to find a launch.'));list.append(empty);}else if(!visible.length){list.append(node('p','dinn-launch-empty-note','No launches match this filter.'));}else for(const item of visible){const row=card(item),details=row.querySelector('details');details.open=expanded.has(details.dataset.token);list.append(row);}more.hidden=offset>=total||items.length===0;more.disabled=loadingMore;more.textContent=loadingMore?'Loading…':'Show more';}
  function schedule(){clearTimeout(timer);if(active&&!doc.hidden)timer=setTimeout(()=>void load({append:false,quiet:true}),interval);}
  async function load({append=false,quiet=false}={}){if(!active)return;controller?.abort();const request=new AbortController();controller=request;const epoch=ownerEpoch;if(!append){offset=0;if(!quiet&&!items.length)skeletons();}else loadingMore=true;if(!quiet)status.textContent='';try{const token=await getAccessToken();if(request!==controller||epoch!==ownerEpoch||!active)return;if(!token)throw Error('Sign in again to view Dinn launches.');const response=await fetch(apiBase+'/list',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify({query,limit:10,offset:append?offset:0}),signal:request.signal});const data=await response.json();if(!response.ok)throw Error(data.error||'Launches could not be loaded.');if(request!==controller||epoch!==ownerEpoch||!active)return;const combined=append?[...items,...data.items]:[...data.items,...(data.external||[])];items=[...new Map(combined.map(row=>[(row.chainId||4663)+':'+row.token.toLowerCase(),row])).values()];total=data.total;offset=(append?offset:0)+data.items.length;render();const newest=items[0]?.metrics?.checkedAt;status.textContent=data.searchNotice||(query?(items.length?items.length+(items.length===1?' launch found':' launches found'):''):!items.length?'':newest?`Dinn launches · ${items.length} of ${total} · metrics checked ${new Date(newest).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:`Dinn launches · ${items.length} of ${total}`);}catch(error){if(error.name!=='AbortError'&&request===controller&&epoch===ownerEpoch){if(!items.length){list.replaceChildren();const empty=node('div','dinn-launch-empty');empty.append(node('h3','','Launches could not load'),node('p','',error.message));list.append(empty);}status.textContent=error.message;}}finally{if(request===controller&&epoch===ownerEpoch){loadingMore=false;more.disabled=false;more.textContent='Show more';schedule();}}}
  function activate(){if(active)return;active=true;ownerEpoch++;void load();}
