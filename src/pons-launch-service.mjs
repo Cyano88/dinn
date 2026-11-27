@@ -1,3 +1,4 @@
+import {poolCandles,poolStats,rankLaunches} from './launch-directory-trends.mjs';
 import {bankrDirectoryMarket} from './bankr-directory-market.mjs';
 import {linkVerifiedBrief} from './agent-launch-idea.mjs';
 import {getClient,PONS_FACTORY,snapshot} from './pons.mjs';
@@ -21,7 +22,7 @@ function publicMetrics(state){
  const outside=state.phase===0?state.curve?.outsideSupply:null;
  const outsideValueQuote=outside!=null&&curve?usdProduct(outside,curve.priceQuote,8):null;
  const outsideValueUsd=outsideValueQuote!==null&&pairUsd?usdProduct(outsideValueQuote,pairUsd.unitPriceUsd):null;
- return {launchCap:state.launchCap||null,outsideValueUsd,outsideValueQuote,status:state.status,phase:state.phase,pair:{symbol:state.pair?.symbol||null,address:state.pair?.address||null},curve,market:{priceUsd:state.market?.priceUsd||null,marketCapUsd:state.market?.marketCapUsd||null,fdvUsd:state.market?.fdvUsd||null,source:state.market?.source||'Unavailable',checkedAt:state.market?.checkedAt||null},curvePriceUsd,curveFdvUsd,curveUsdSource:pairUsd?.source||pairUsd?.basis||null,blockNumber:state.blockNumber,checkedAt:state.checkedAt};
+ return {launchCap:state.launchCap||null,outsideValueUsd,outsideValueQuote,status:state.status,phase:state.phase,pair:{symbol:state.pair?.symbol||null,address:state.pair?.address||null},curve,market:{...poolStats(state.market?.liquidityUsd,state.market?.change24h,state.market?.volume24hUsd,state.market?.chartPool),priceUsd:state.market?.priceUsd||null,marketCapUsd:state.market?.marketCapUsd||null,fdvUsd:state.market?.fdvUsd||null,source:state.market?.source||'Unavailable',checkedAt:state.market?.checkedAt||null},curvePriceUsd,curveFdvUsd,curveUsdSource:pairUsd?.source||pairUsd?.basis||null,blockNumber:state.blockNumber,checkedAt:state.checkedAt};
 }
 async function mapLimit(items,limit,fn){const out=new Array(items.length);let next=0;await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{while(next<items.length){const index=next++;try{out[index]=await fn(items[index]);}catch{out[index]=null;}}}));return out;}
 
@@ -44,24 +45,49 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
   if(!PATHS.has(path))return {status:404,body:{error:'Unknown launch history action.'}};
   if(!enabled())return {status:503,body:{error:'Dinn launch history is unavailable.'}};
   if(!data||typeof data!=='object'||Array.isArray(data))return {status:400,body:{error:'Invalid launch history request.'}};
-  if(!env.DATABASE_URL&&env.DINN_DRAFT_SYNC_URL){if(path.endsWith('/list')&&Object.keys(data).some(k=>!['query','limit','offset'].includes(k))||path.endsWith('/register')&&Object.keys(data).some(k=>!['hash','configuration','quote'].includes(k)))return {status:400,body:{error:'Unexpected launch history field.'}};if(path.endsWith('/register')&&(!hashValid(data.hash)||!data.configuration||!data.quote))return {status:400,body:{error:'Invalid verified launch record.'}};return proxy(path,req,data);}
+  if(!env.DATABASE_URL&&env.DINN_DRAFT_SYNC_URL){if(path.endsWith('/list')&&Object.keys(data).some(k=>!['query','limit','offset','filter'].includes(k))||path.endsWith('/register')&&Object.keys(data).some(k=>!['hash','configuration','quote'].includes(k)))return {status:400,body:{error:'Unexpected launch history field.'}};if(path.endsWith('/register')&&(!hashValid(data.hash)||!data.configuration||!data.quote))return {status:400,body:{error:'Invalid verified launch record.'}};return proxy(path,req,data);}
   let owner;try{owner=await ownerFrom(req);}catch(error){return {status:error.status||401,body:{error:error.message}};}
   if(path.endsWith('/list')){
-   if(Object.keys(data).some(k=>!['query','limit','offset'].includes(k)))return {status:400,body:{error:'Unexpected launch history field.'}};
+   if(Object.keys(data).some(k=>!['query','limit','offset','filter'].includes(k)))return {status:400,body:{error:'Unexpected launch history field.'}};
    const query=data.query===undefined?'':data.query;if(typeof query!=='string'||query.length>64||/[\x00-\x1f\x7f]/.test(query))return {status:400,body:{error:'Search must be 64 characters or fewer.'}};
    const limit=data.limit===undefined?10:data.limit,offset=data.offset===undefined?0:data.offset;if(!Number.isInteger(limit)||limit<1||limit>10||!Number.isInteger(offset)||offset<0||offset>10000)return {status:400,body:{error:'Invalid launch history page.'}};
-   const rows=await (await getStore()).list({query:query.trim(),limit,offset});
-   const items=await mapLimit(rows.items,3,async item=>{if(item.chainId===8453){
+   const filter=data.filter??'all';if(!['all','trending','curve','graduated'].includes(filter))return {status:400,body:{error:'Unknown launch filter.'}};
+   const store=await getStore();
+   const rows=await store.list({query:query.trim(),limit:10,offset:0});
+   while(rows.items.length<rows.total){
+    const next=await store.list({query:query.trim(),limit:100,offset:rows.items.length});
+    if(!next.items.length)break;
+    rows.items.push(...next.items);
+   }
+   const enriched=await mapLimit(rows.items,3,async item=>{if(item.chainId===8453){
     const key='8453:'+item.token.toLowerCase(),cached=metricsCache.get(key);
     if(cached&&now()-cached.at<60000)return {...item,metrics:cached.value};
     const market=await bankrDirectoryMarket(item,fetchImpl);
     const metrics={market};metricsCache.set(key,{at:now(),value:metrics});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);
     return {...item,metrics};
-   }try{const key=item.token.toLowerCase(),cached=metricsCache.get(key);let metrics,logo=cached?.logo;if(cached&&now()-cached.at<60000)metrics=cached.value;else{const state=await readMetrics({address:item.token},{includeLogo:!item.logo,launchValuation:true});metrics=publicMetrics(state);logo=state.logo;metricsCache.set(key,{at:now(),value:metrics,logo});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);}return {...publicLaunch(item),logo:item.logo||logo||null,metrics};}catch{return {...publicLaunch(item),metrics:null};}});
+   }try{const key=item.token.toLowerCase(),cached=metricsCache.get(key);let metrics,logo=cached?.logo;if(cached&&now()-cached.at<60000)metrics=cached.value;else{const state=await readMetrics({address:item.token},{includeLogo:!item.logo,launchValuation:true});metrics=publicMetrics(state);logo=state.logo;
+    const pool=metrics.market.chartPool;
+    if(pool){try{
+     const response=await fetchImpl('https://api.geckoterminal.com/api/v2/networks/robinhood/pools/'+pool,{signal:AbortSignal.timeout(3000),redirect:'error'});
+     const record=response.ok?(await response.json()).data:null;
+     if(record?.attributes?.address?.toLowerCase()===pool.toLowerCase()&&record.relationships?.base_token?.data?.id?.toLowerCase()==='robinhood_'+key){
+      const a=record.attributes;
+      Object.assign(metrics.market,poolStats(a.reserve_in_usd,a.price_change_percentage?.h24,a.volume_usd?.h24,pool));
+     }
+    }catch{/* Token-level figures remain available. */}}metricsCache.set(key,{at:now(),value:metrics,logo});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);}return {...publicLaunch(item),logo:item.logo||logo||null,metrics};}catch{return {...publicLaunch(item),metrics:null};}});
+   const items=enriched.filter(Boolean);
+   const ranked=rankLaunches(items,filter);
+   const withCandles=async row=>{
+    if(!row.metrics?.market?.chartPool)return row;
+    const key='candles:'+String(row.chainId||4663)+':'+row.token,cached=metricsCache.get(key);
+    const candles=cached&&now()-cached.at<120000?cached.value:await poolCandles(row,fetchImpl,now());
+    metricsCache.set(key,{at:now(),value:candles});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);
+    return {...row,metrics:{...row.metrics,market:{...row.metrics.market,candles}}};
+   };
    const external=[];
    let searchNotice='';
    const term=query.trim().replace(/^\$/,'');
-   if(!offset&&(validAddress(term)||term.length>=2&&!/^0x/i.test(term))){
+   if((!offset||data.filter!==undefined)&&(validAddress(term)||term.length>=2&&!/^0x/i.test(term))){
     try{
      let candidates=[term];
      if(!validAddress(term)){
@@ -87,7 +113,7 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
      external.push(...matches.filter(Boolean));
     }catch{searchNotice='Pons search is unavailable. Try the token contract address.';}
    }
-   if(!offset&&validAddress(term)&&!items.some(item=>item.chainId===8453&&item.token.toLowerCase()===term.toLowerCase())){
+   if((!offset||data.filter!==undefined)&&validAddress(term)&&!items.some(item=>item.chainId===8453&&item.token.toLowerCase()===term.toLowerCase())){
     try{
      const response=await fetchImpl('https://api.bankr.bot/token-launches/'+term.toLowerCase(),{signal:AbortSignal.timeout(5000),redirect:'error'});
      if(response.ok){
@@ -96,7 +122,11 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
      }else if(response.status!==404)throw Error();
     }catch{searchNotice=[searchNotice,'Bankr lookup is temporarily unavailable.'].filter(Boolean).join(' ');}
    }
-   return {status:200,body:{items,external,searchNotice,total:rows.total,limit,offset,source:'Dinn verified launch receipts'}};
+   const found=rankLaunches(external,filter);
+   const combined=data.filter===undefined?ranked:rankLaunches([...ranked,...found],filter);
+   const page=await mapLimit(combined.slice(offset,offset+limit),3,withCandles);
+   return {status:200,body:{items:page,external:data.filter===undefined?found:[],searchNotice,total:combined.length,limit,offset,source:'Dinn verified launch receipts'}};
+
   }
   if(Object.keys(data).some(k=>!['hash','configuration','quote'].includes(k))||!hashValid(data.hash)||!data.configuration||!data.quote||JSON.stringify(data.quote).length>10000)return {status:400,body:{error:'Invalid verified launch record.'}};
   let configuration;try{configuration=launchConfig(data.configuration);}catch(error){return {status:400,body:{error:error.message}};}
