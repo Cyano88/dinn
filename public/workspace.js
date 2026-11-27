@@ -548,7 +548,7 @@ $('chat').onsubmit=async e=>{
      const current=()=>user===owner&&epoch===run&&account?.toLowerCase()===preview.launcher.toLowerCase();
      chatPendingApproval={label:'Base spending permission',run:async body=>{
       if(!current()||!provider||!['embedded','external'].includes(walletSource)||walletSource==='embedded'&&!walletSendTransaction)throw Error('Select the reviewed Base wallet.');
-      const hash=await submitBankrPermission({review:preview,storage:accountRecords.scope(),provider,sendEmbedded:walletSource==='embedded'?walletSendTransaction:null,current});
+      const hash=await submitBankrPermission({review:preview,storage:accountRecords.scope(),provider,sendEmbedded:walletSource==='embedded'?walletSendTransaction:null,current,onSwitch:walletNetworkSwitch});
       if(current())appendChatActionNote(body,'Spending permission submitted. [View Base transaction](https://basescan.org/tx/'+hash+'). Once confirmed, say "review my Base launch" for the final quote. No token has been launched.');
      }};
     }
@@ -557,7 +557,7 @@ $('chat').onsubmit=async e=>{
      chatPendingApproval={label:'Base token launch',run:async body=>{
       if(!current()||!['embedded','external'].includes(walletSource)||walletSource==='embedded'&&!walletSendTransaction)throw Error('Select the reviewed launch wallet.');
       const storage=accountRecords.scope();
-      const record=await submitBankrLaunch({review:preview,storage,provider,sendEmbedded:walletSource==='embedded'?walletSendTransaction:null,current});
+      const record=await submitBankrLaunch({review:preview,storage,provider,sendEmbedded:walletSource==='embedded'?walletSendTransaction:null,current,onSwitch:walletNetworkSwitch});
       if(!current())return;
       say('Base launch submitted. [View transaction](https://basescan.org/tx/'+record.hash+')');
       for(let attempt=0;attempt<8&&current();attempt++){

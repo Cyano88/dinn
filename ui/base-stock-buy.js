@@ -1,3 +1,4 @@
+import {withBaseNetwork} from '../public/bankr-launch-action.js';
 import {createPublicClient,decodeAbiParameters,encodeFunctionData,toEventSelector,erc20Abi,formatUnits,http,parseAbiParameters,parseAbi,parseUnits,zeroAddress} from 'viem';
 import {base} from 'viem/chains';
 
@@ -66,17 +67,7 @@ export async function stockQuote({symbol,budget,account,expectedPair}, {read=fet
 }
 
 export async function sendStockBuy(review,options,client=rpc){
- const {provider,onSwitch=()=>{}}=options;
- const original=await provider.request({method:'eth_chainId'});
- if(BigInt(original)===8453n)return submitStockBuy(review,options,client);
- onSwitch(true);
- try{
-  await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:'0x2105'}]});
-  return await submitStockBuy(review,options,client);
- }finally{
-  let restored=false;
-  try{if(BigInt(await provider.request({method:'eth_chainId'}))!==BigInt(original))await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:original}]});restored=true;}catch{/* Preserve the recorded submission if the wallet cannot switch back. */}finally{onSwitch(false,restored);}
- }
+ return withBaseNetwork(options,()=>submitStockBuy(review,options,client));
 }
 
 async function submitStockBuy(review,{provider,embedded,storage,current},client){

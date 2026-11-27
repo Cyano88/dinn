@@ -1,13 +1,28 @@
 ﻿const txHash=value=>/^0x[0-9a-f]{64}$/i.test(value||'');
 export const bankrRecordKey=address=>'dinn.multi.bankr-launch.v1:'+address.toLowerCase();
 
-export async function submitBankrLaunch({review,storage,provider,sendEmbedded,current}){
+export async function withBaseNetwork({provider,onSwitch=()=>{}},action){
+ const original=await provider.request({method:'eth_chainId'});
+ if(BigInt(original)===8453n)return action();
+ onSwitch(true);
+ try{
+  await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:'0x2105'}]});
+  return await action();
+ }finally{
+  let restored=false;
+  try{if(BigInt(await provider.request({method:'eth_chainId'}))!==BigInt(original))await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:original}]});restored=true;}catch{/* Preserve the recorded submission if the wallet cannot switch back. */}finally{onSwitch(false,restored);}
+ }
+}
+
+export function submitBankrLaunch(options){
+ return withBaseNetwork(options,()=>sendBankrLaunch(options));
+}
+async function sendBankrLaunch({review,storage,provider,sendEmbedded,current}){
  const {execution:tx,launcher}=review,key=bankrRecordKey(launcher);
  if(!current()||!provider||Date.now()>=tx.expiry)throw Error('Refresh the Base launch review before approving.');
  const saved=JSON.parse(storage.getItem(key)||'null');
  if(saved&&!['verified','reverted'].includes(saved.state))throw Error('Check the previous Base launch before sending another.');
  if(saved?.state==='verified'&&saved.token===review.predictedToken)throw Error('This token was already launched.');
- await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:'0x2105'}]});
  const accounts=await provider.request({method:'eth_accounts'});
  if(!current()||accounts[0]?.toLowerCase()!==launcher.toLowerCase()||BigInt(await provider.request({method:'eth_chainId'}))!==8453n)throw Error('Choose the reviewed wallet on Base.');
  const request={from:launcher,to:tx.to,data:tx.data,value:'0x0',gas:tx.gas};
@@ -44,7 +59,10 @@ export function readOpeningPurchase(text,asset){
  return match[1].startsWith('.')?'0'+match[1]:match[1];
 }
 
-export async function submitBankrPermission({review,provider,sendEmbedded,current,storage}){
+export function submitBankrPermission(options){
+ return withBaseNetwork(options,()=>sendBankrPermission(options));
+}
+async function sendBankrPermission({review,provider,sendEmbedded,current,storage}){
  const tx=review.approval,launcher=review.launcher;
  const key='dinn.multi.bankr-buy-permission.v1:'+launcher.toLowerCase()+':'+tx.to.toLowerCase();
  const saved=JSON.parse(storage.getItem(key)||'null');
@@ -55,7 +73,6 @@ export async function submitBankrPermission({review,provider,sendEmbedded,curren
  }
  const valid=()=>current()&&Date.now()<tx.expiry;
  if(!valid())throw Error('Refresh the opening purchase review.');
- await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:'0x2105'}]});
  if(BigInt(await provider.request({method:'eth_chainId'}))!==8453n||(await provider.request({method:'eth_accounts'}))[0]?.toLowerCase()!==launcher.toLowerCase())throw Error('Choose the reviewed wallet on Base.');
  const request={from:launcher,to:tx.to,data:tx.data,value:'0x0'};
  await provider.request({method:'eth_call',params:[request,'latest']});
