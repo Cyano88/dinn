@@ -1,3 +1,4 @@
+import {deploymentTermsText} from './bankr-deployment-terms.mjs';
 import {chatSwap,swapAmountPrompt} from './chat-swap.mjs';
 import {comparisonMessage} from './base-stock-comparison.mjs';
 import {discoverBaseLaunchStories,discoverLaunchStories} from './launch-story-discovery.mjs';
@@ -57,6 +58,7 @@ function baseStockResearchMessage(data){
  const token0=data.fees?.token0Label||'token',token1=data.fees?.token1Label||'paired asset';
  const feeAmounts=value=>value&&typeof value==='object'?['token0','token1'].filter(key=>number(value[key])).map(key=>amount(value[key])+' '+(key==='token0'?token0:token1)).join(', ')||'not available':'not available';
  const lifetime=data.fees?.lifetime,lifetimeLine=lifetime?.status==='reported'?Number(lifetime.lifetimeEarnedWeth)===0?'Bankr reports no lifetime creator earnings yet.':'Bankr reports total past earnings of '+amount(lifetime.lifetimeEarnedWeth)+' WETH (wrapped ETH) over '+amount(lifetime.earningDays)+' days'+(lifetime.bestDay?'; best day: '+lifetime.bestDay.date+' with '+amount(lifetime.bestDay.weth)+' WETH':'')+'.':'Past earnings are not available from Bankr'+(lifetime?.reason?': '+lifetime.reason:'')+'.';
+ const confirmed=deploymentTermsText(data.deploymentTerms);
  const feeLine=data.fees?'Creator’s reported share of fees: '+(data.fees.share||'not available')+'. Fees ready to claim: '+feeAmounts(data.fees.claimable)+'. Fees already claimed: '+feeAmounts(data.fees.claimed)+'. '+lifetimeLine:'Bankr has not returned fee figures for this launch.';
  const vesting=data.vesting,allocationShare=vesting?.allocationPercentOfSupply!=null?', about '+vesting.allocationPercentOfSupply+'% of the reported supply':'';
  const phase=vesting?.phase==='cliff'?'before the first release':vesting?.phase==='completed'?'schedule complete':vesting?.phase||'not available';
@@ -87,7 +89,7 @@ function baseStockResearchMessage(data){
  return [
   '**Pairing**\n\n'+pairingLine+'\n\nToken address: '+data.address+'. '+launchLine,
   '**Market**\n\n'+marketItems[0]+(marketItems.length>1?'\n\n'+marketItems.slice(1).map(item=>'- '+item).join('\n'):''),
-  '**Fees and vesting**\n\n'+feeLine+'\n\n'+vestingLine,
+  '**Fees and vesting**\n\n'+[confirmed.fees,feeLine].filter(Boolean).join(' ')+'\n\n'+[confirmed.vesting,vesting?.status==='reported'||!confirmed.vesting?vestingLine:''].filter(Boolean).join(' '),
   ...[chatLockEvidence(data.tokenLocks,symbol),chatLockEvidence(data.stockLocks,stock)].filter(Boolean),
   '**Holders**\n\n'+holderItems.map(item=>'- '+item).join('\n'),
   '**Contract**\n\n'+contractLine+'\n\nThis is not a full safety check and does not confirm that a token can be sold.',
