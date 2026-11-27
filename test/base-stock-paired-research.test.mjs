@@ -130,3 +130,14 @@ test('discovery counts only the receipt-verified pool and preserves missing volu
  }finally{await db.close();}
 
 });
+test('a saved launch survives a missing Bankr API record and still requires the matching Base pool and stock registry',async()=>{
+ for(const testCase of [{},{receiptQuote:other},{registryAddress:other}]){
+  const f=setup(testCase);
+  const fetchImpl=(url,options)=>String(url)==='https://api.bankr.bot/token-launches'?Promise.resolve(response({launches:[]})):f.fetchImpl(url,options);
+  const readVerifiedLaunch=async()=>({chain:'base',status:'deployed',tokenAddress:token,tokenName:'Saved Launch',tokenSymbol:'TEST',poolId,txHash,timestamp:1710000000000,pairedStock:{address:stock,symbol:'NVDAc'}});
+  const r=await researchBaseStockPairedToken({address:token},{...f,fetchImpl,readVerifiedLaunch});
+  assert.equal(r.classification,Object.keys(testCase).length?'insufficient-evidence':'verified-bankr-stock-paired-token');
+  assert.equal(r.coverage.bankrLaunchFeed,'Dinn verified Base launch receipt');
+  assert.equal(r.launch.transactionHash,txHash);
+ }
+});

@@ -22,6 +22,11 @@ export async function createPairCatalog(db) {
   token text PRIMARY KEY, launch jsonb NOT NULL, last_checked timestamptz
  )`);
  return {
+  async verifiedLaunch(token) {
+   const {rows}=await db.query('SELECT transaction_hash, token_address, pool_id, name, symbol, pair_token, pair_symbol, launched_at FROM dinn_bankr_launches WHERE token_address=$1',[token]);
+   const r=rows[0];
+   return r?{chain:'base',status:'deployed',tokenAddress:r.token_address,tokenName:r.name,tokenSymbol:r.symbol,pairedStock:{address:r.pair_token,symbol:r.pair_symbol},poolId:r.pool_id,txHash:r.transaction_hash,timestamp:new Date(r.launched_at).getTime()}:null;
+  },
   async remember(launches) {
    if (!launches.length) return;
    const records = launches.map(l => ({
