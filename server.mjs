@@ -55,8 +55,8 @@ try{process.loadEnvFile(new URL('./.env',import.meta.url));}catch(error){if(erro
 const port=Number(process.env.PORT||4317), host=process.env.RENDER?'0.0.0.0':'127.0.0.1';
 const logoService=createLogoService();
 const creatorPages=createCreatorPages();
-const draftService=createDraftService();
 const ponsLaunchService=createPonsLaunchService();
+const draftService=createDraftService({recordBankr:ponsLaunchService.putBankr});
 const checkInferenceAccess=inferenceAccess();
 let chatAllowanceStore;
 const publicOrigin=process.env.DINN_PUBLIC_URL||process.env.RENDER_EXTERNAL_URL;

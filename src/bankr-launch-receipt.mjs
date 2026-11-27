@@ -1,6 +1,6 @@
 ﻿import {createLaunchClient} from '@bankr/launch-sdk';
-import {isAddress,keccak256} from 'viem';
-import {getTransaction,getTransactionReceipt,getBlockNumber,getBlock} from 'viem/actions';
+import {isAddress,keccak256,erc20Abi} from 'viem';
+import {getTransaction,getTransactionReceipt,getBlockNumber,getBlock,readContract} from 'viem/actions';
 import {serverRpcUrl} from './rpc-config.mjs';
 
 export async function checkBankrReceipt(review,env){
@@ -18,5 +18,8 @@ export async function checkBankrReceipt(review,env){
  if(receipt.status==='reverted')return {state:'reverted'};
  const launch=sdk.parseLaunchReceipt(receipt,token);
  if(launch.poolId!==poolId||launch.launcher.toLowerCase()!==launcher.toLowerCase()||launch.quote.toLowerCase()!==quote.toLowerCase()||String(launch.launchpadId)!==env.DINN_BANKR_BASE_LAUNCHPAD_ID)throw Error('Launch mismatch');
- return {state:'verified',token:launch.token,hash};
+ const read=(address,functionName)=>readContract(client,{address,abi:erc20Abi,functionName,blockNumber:receipt.blockNumber});
+ const [name,symbol,pairSymbol]=await Promise.all([read(launch.token,'name'),read(launch.token,'symbol'),read(launch.quote,'symbol')]);
+ return {state:'verified',token:launch.token,hash,item:{hash,token:launch.token,poolId:launch.poolId,name,symbol,pairToken:launch.quote,pairSymbol,metadataUri:launch.metadataUri,blockNumber:String(receipt.blockNumber),launchedAtSeconds:Number(block.timestamp)}};
+
 }

@@ -4,6 +4,7 @@ function imageSource(value){
  try{
   const url=new URL(value);
   if(url.username||url.password)return null;
+  if(url.origin==='https://dinn-pasy.onrender.com'&&/^\/media\/logos\/[a-f0-9-]{36}\.png$/i.test(url.pathname))return url.pathname;
   const gateway='https://gateway.pinata.cloud/ipfs/';
   if(url.protocol==='ipfs:')return gateway+value.slice(7).replace(/^ipfs\//,'');
   if(url.protocol!=='https:')return null;
@@ -21,11 +22,15 @@ export function mountDinnLaunches({host,apiBase='/api/dinn/launches',getAccessTo
  const node=(tag,cls,text)=>{const element=doc.createElement(tag);if(cls)element.className=cls;if(text!==undefined)element.textContent=text;return element;};
  function skeletons(){list.replaceChildren();for(let i=0;i<4;i++){const row=node('div','launch-row-skeleton');row.setAttribute('aria-hidden','true');row.append(node('span','launch-skeleton-avatar'),node('span','launch-skeleton-copy'),node('span','launch-skeleton-value'),node('span','launch-skeleton-value'));list.append(row);}}
  function card(item){
-  if(item.origin==='bankr'){
-   const row=node('article','dinn-launch-row'),identity=node('div','dinn-launch-title'),actions=node('div','dinn-launch-actions');
-   identity.append(node('strong','',item.name||item.symbol||'Bankr token'),node('span','',[item.symbol,'Found on Bankr',addressShort(item.token)].filter(Boolean).join(' ? ')));
-   if(item.stockPair){const research=node('button','subtle','Research stock pair');research.type='button';research.onclick=()=>onResearch(item.token,8453);actions.append(research);}
-   const open=node('a','subtle','Open on Bankr');open.href='https://bankr.bot/trade/'+item.token;open.target='_blank';open.rel='noopener noreferrer';actions.append(open);row.append(identity,node('span','',item.stockPair?'Stock pair ? '+item.stockPair:'Base'),actions);return row;
+  if(item.origin==='bankr'||item.chainId===8453){
+   const row=node('article','dinn-launch-row'),identity=node('div','dinn-launch-identity'),title=node('div','dinn-launch-title'),actions=node('div','dinn-launch-actions');
+   const logo=node('span','dinn-launch-logo',(item.symbol||'D')[0]),url=imageSource(item.logo);
+   if(url){const image=node('img');image.src=url;image.alt='';image.onerror=()=>{logo.textContent=(item.symbol||'D')[0];};logo.replaceChildren(image);}
+   const saved=item.origin==='dinn-bankr',pair=item.stockPair||item.pairSymbol;
+   title.append(node('strong','',item.name||item.symbol||'Bankr token'),node('span','',[item.symbol,saved?'Launched through Dinn':'Found on Bankr'].filter(Boolean).join(' \u00b7 ')),node('span','',[pair,addressShort(item.token),item.launchedAt&&ago(item.launchedAt)].filter(Boolean).join(' \u00b7 ')));identity.append(logo,title);
+   if(pair){const research=node('button','subtle','Research stock pair');research.type='button';research.onclick=()=>onResearch(item.token,8453);actions.append(research);}
+   const open=node('a','subtle','Open on Bankr');open.href='https://bankr.bot/trade/'+item.token;open.target='_blank';open.rel='noopener noreferrer';actions.append(open);
+   row.append(identity,node('span','',formatUsd(item.metrics?.market?.fdvUsd)),node('span','',formatUsd(item.metrics?.market?.marketCapUsd)),node('span','','Bankr \u00b7 Base'),actions);return row;
   }
  const row=node('article','dinn-launch-row'),identity=node('div','dinn-launch-identity'),logo=node('span','dinn-launch-logo'),source=imageSource(item.logo);if(source){const image=node('img');image.src=source;image.alt='';image.loading='lazy';image.referrerPolicy='no-referrer';image.onerror=()=>{image.remove();logo.textContent=(item.symbol||'D').slice(0,1).toUpperCase();};logo.append(image);}else logo.textContent=(item.symbol||'D').slice(0,1).toUpperCase();const title=node('div','dinn-launch-title');title.append(node('strong','',item.name||'Unnamed token'),node('span','',item.symbol?`$${item.symbol} · ${item.origin==='pons'?'Found on Pons':'Launched through Dinn'}`:'Ticker unavailable'));const metrics=item.metrics,pairSymbol=metrics?.pair?.symbol||(item.pairToken?.toLowerCase()==='0x'+'0'.repeat(40)?'ETH':item.pairToken?addressShort(item.pairToken):'Pair unavailable');title.append(node('span','',[pairSymbol,addressShort(item.token),item.launchedAt?ago(item.launchedAt):null].filter(Boolean).join(' · ')));identity.append(logo,title);row.append(identity);
   const reported=metrics?.market?.fdvUsd,curveEstimate=metrics?.curveFdvUsd,fdv=reported||curveEstimate,fdvLabel=reported?'FDV':'Curve FDV estimate',marketCap=metrics?.market?.marketCapUsd,market=node('div','dinn-launch-market');market.append(node('span','metric-label',fdvLabel),node('strong','',fdv?formatUsd(fdv):'Unavailable'),node('small','',reported?'Reported by GeckoTerminal':curveEstimate?'Estimated from curve and pair price':'No verified FDV'));row.append(market);

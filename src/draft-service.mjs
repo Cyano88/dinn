@@ -7,7 +7,7 @@ import {chatLimit,createChatAllowanceStore} from './chat-allowance.mjs';
 import {PrivyClient} from '@privy-io/node';
 import {validateDraft} from '../public/draft-data.js';
 import {createDraftStore} from './draft-store.mjs';
-export function createDraftService({env=process.env,verify,storeFactory=createDraftStore,fetchImpl=fetch,research=equityContext,generate=composeLore,nameConcept=nameSavedConcept,allowanceFactory=createChatAllowanceStore}={}){
+export function createDraftService({env=process.env,verify,recordBankr,storeFactory=createDraftStore,fetchImpl=fetch,research=equityContext,generate=composeLore,nameConcept=nameSavedConcept,allowanceFactory=createChatAllowanceStore}={}){
  let client,pending,usage;
  const enabled=()=>!!env.DATABASE_URL||!!env.DINN_DRAFT_SYNC_URL;
  return {enabled,async metadata(id){pending||=storeFactory({env}).catch(error=>{pending=null;throw error;});return (await pending).metadata(id);},async findings(id){
@@ -34,8 +34,18 @@ export function createDraftService({env=process.env,verify,storeFactory=createDr
   }
   if(path.endsWith('/bankr-receipt')){
    const {checkBankrReceipt}=await import('./bankr-launch-receipt.mjs');
-   try{return {status:200,body:await checkBankrReceipt(data,env)};}
-   catch{return {status:422,body:{error:'Could not verify this Base launch against its review.'}};}
+   let result;
+   try{result=await checkBankrReceipt(data,env);}catch{return {status:422,body:{error:'Could not verify this Base launch against its review.'}};}
+   const {item,...receipt}=result;
+   if(item){
+    try{
+     const id=item.metadataUri?.match(/\/media\/token-metadata\/([a-f0-9]{64})\.json$/)?.[1];
+     let logo='';
+     if(id){pending||=storeFactory({env}).catch(error=>{pending=null;throw error;});logo=(await (await pending).metadata(id))?.image||'';}
+     await recordBankr({...item,logo});
+    }catch{return {status:503,body:{error:'Base confirmed your token. Check Base launch again to finish adding it to Launches.'}};}
+   }
+   return {status:200,body:receipt};
   }
   if(path.endsWith('/bankr-register')){
    try{const {registrationReview}=await import('./bankr-registration.mjs');return {status:200,body:await registrationReview(data.address,env)};}

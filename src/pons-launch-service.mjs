@@ -39,7 +39,7 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
  async function ownerFrom(req){const token=req.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];if(!token||token.length>12000)throw Object.assign(Error('Sign in to view Dinn launches.'),{status:401});try{let owner;if(verify)owner=await verify(token);else{client||=new PrivyClient({appId:env.PRIVY_APP_ID,appSecret:env.PRIVY_APP_SECRET});owner=(await client.utils().auth().verifyAccessToken(token)).user_id;}if(typeof owner!=='string'||!owner||owner.length>256)throw Error();return owner;}catch{throw Object.assign(Error('Your sign-in expired. Sign in again.'),{status:401});}}
  async function getStore(){storePromise||=storeFactory({env}).catch(error=>{storePromise=null;throw error;});return storePromise;}
  async function proxy(path,req,data){let target;try{target=new URL(env.DINN_DRAFT_SYNC_URL);}catch{throw Error('Account launch history is unavailable.');}if(target.protocol!=='https:'||target.username||target.password||target.pathname!=='/'||target.search||target.hash)throw Error('Account launch history is unavailable.');const response=await fetchImpl(target.origin+path,{method:'POST',headers:{'content-type':'application/json',authorization:req.headers.authorization},body:JSON.stringify(data),signal:AbortSignal.timeout(20000),redirect:'error'});const result=await response.json();return {status:response.status,body:result};}
- return {enabled,async handle(req,path,data){
+ return {enabled,async putBankr(item){await (await getStore()).putBankr(item);},async handle(req,path,data){
   if(!PATHS.has(path))return {status:404,body:{error:'Unknown launch history action.'}};
   if(!enabled())return {status:503,body:{error:'Dinn launch history is unavailable.'}};
   if(!data||typeof data!=='object'||Array.isArray(data))return {status:400,body:{error:'Invalid launch history request.'}};
@@ -50,7 +50,21 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
    const query=data.query===undefined?'':data.query;if(typeof query!=='string'||query.length>64||/[\x00-\x1f\x7f]/.test(query))return {status:400,body:{error:'Search must be 64 characters or fewer.'}};
    const limit=data.limit===undefined?10:data.limit,offset=data.offset===undefined?0:data.offset;if(!Number.isInteger(limit)||limit<1||limit>10||!Number.isInteger(offset)||offset<0||offset>10000)return {status:400,body:{error:'Invalid launch history page.'}};
    const rows=await (await getStore()).list({query:query.trim(),limit,offset});
-   const items=await mapLimit(rows.items,3,async item=>{try{const key=item.token.toLowerCase(),cached=metricsCache.get(key);let metrics,logo=cached?.logo;if(cached&&now()-cached.at<60000)metrics=cached.value;else{const state=await readMetrics({address:item.token},{includeLogo:!item.logo,launchValuation:true});metrics=publicMetrics(state);logo=state.logo;metricsCache.set(key,{at:now(),value:metrics,logo});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);}return {...publicLaunch(item),logo:item.logo||logo||null,metrics};}catch{return {...publicLaunch(item),metrics:null};}});
+   const items=await mapLimit(rows.items,3,async item=>{if(item.chainId===8453){
+    const key='8453:'+item.token.toLowerCase(),cached=metricsCache.get(key);
+    if(cached&&now()-cached.at<60000)return {...item,metrics:cached.value};
+    let market=null;
+    try{
+     const response=await fetchImpl('https://api.dexscreener.com/latest/dex/pairs/base/'+item.curve,{signal:AbortSignal.timeout(3000),redirect:'error'});
+     if(response.ok){
+      const pool=(await response.json()).pairs?.find(p=>p.chainId==='base'&&p.pairAddress?.toLowerCase()===item.curve.toLowerCase()&&p.baseToken?.address?.toLowerCase()===item.token.toLowerCase()&&p.quoteToken?.address?.toLowerCase()===item.pairToken.toLowerCase());
+      const usd=n=>typeof n==='number'&&Number.isFinite(n)&&n>0?String(n):null;
+      if(pool)market={fdvUsd:usd(pool.fdv),marketCapUsd:usd(pool.marketCap)};
+     }
+    }catch{/* The verified launch remains visible without market coverage. */}
+    const metrics={market};metricsCache.set(key,{at:now(),value:metrics});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);
+    return {...item,metrics};
+   }try{const key=item.token.toLowerCase(),cached=metricsCache.get(key);let metrics,logo=cached?.logo;if(cached&&now()-cached.at<60000)metrics=cached.value;else{const state=await readMetrics({address:item.token},{includeLogo:!item.logo,launchValuation:true});metrics=publicMetrics(state);logo=state.logo;metricsCache.set(key,{at:now(),value:metrics,logo});if(metricsCache.size>500)metricsCache.delete(metricsCache.keys().next().value);}return {...publicLaunch(item),logo:item.logo||logo||null,metrics};}catch{return {...publicLaunch(item),metrics:null};}});
    const external=[];
    let searchNotice='';
    const term=query.trim().replace(/^\$/,'');
@@ -80,7 +94,7 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
      external.push(...matches.filter(Boolean));
     }catch{searchNotice='Pons search is unavailable. Try the token contract address.';}
    }
-   if(!offset&&validAddress(term)){
+   if(!offset&&validAddress(term)&&!items.some(item=>item.chainId===8453&&item.token.toLowerCase()===term.toLowerCase())){
     try{
      const response=await fetchImpl('https://api.bankr.bot/token-launches/'+term.toLowerCase(),{signal:AbortSignal.timeout(5000),redirect:'error'});
      if(response.ok){
@@ -89,7 +103,7 @@ export function createPonsLaunchService({env=process.env,verify,storeFactory=cre
      }else if(response.status!==404)throw Error();
     }catch{searchNotice=[searchNotice,'Bankr lookup is temporarily unavailable.'].filter(Boolean).join(' ');}
    }
-   return {status:200,body:{items,external,searchNotice,total:rows.total,limit,offset,source:'Dinn verified Pons launch receipts'}};
+   return {status:200,body:{items,external,searchNotice,total:rows.total,limit,offset,source:'Dinn verified launch receipts'}};
   }
   if(Object.keys(data).some(k=>!['hash','configuration','quote'].includes(k))||!hashValid(data.hash)||!data.configuration||!data.quote||JSON.stringify(data.quote).length>10000)return {status:400,body:{error:'Invalid verified launch record.'}};
   let configuration;try{configuration=launchConfig(data.configuration);}catch(error){return {status:400,body:{error:error.message}};}
