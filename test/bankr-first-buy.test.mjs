@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {erc20Abi,encodeFunctionData} from 'viem';
 import {bankrLaunchPreview,purchaseUsdEstimate} from '../src/bankr-launch-preview.mjs';
-import {readOpeningPurchase} from '../public/bankr-launch-action.js';
+import {stockFundingReply,readOpeningPurchase} from '../public/bankr-launch-action.js';
 
 const address=n=>'0x'+n.repeat(40);
 const launcher=address('1'),quote=address('2'),factory=address('3'),treasury=address('4'),token=address('5');
@@ -73,4 +73,14 @@ test('stock simulation calls approve and launch sequentially without submitting 
  const c=await firstBuySimulation({publicClient:rpc},launcher,quote,100n);
  const result=await c.publicClient.request({method:'eth_call',params:[{from:launcher,to:actualFactory,data:'0x3dea0225',value:'0x0'},'latest']});
  assert.equal(result,'0x1234');assert.deepEqual(methods,['eth_call','eth_simulateV1']);
+});
+
+test('funding requests distinguish purchases from sales',()=>{
+ for(const t of ['use our Dinn wallet to buy','buy 0.01 NFLXc','swap ETH for NFLXc'])assert.equal(stockFundingReply(t,'NFLXc'),'buy');
+ for(const t of ['swap NFLXc for ETH','spend 0.01 NFLXc'])assert.equal(stockFundingReply(t,'NFLXc'),null);
+ assert.equal(stockFundingReply('I funded it','NFLXc'),'recheck');
+});
+test('funding prompt reports the exact shortfall',async()=>{
+ const r=await bankrLaunchPreview({...input,openingPurchase:'0.01'},options({balance:250000n}));
+ assert.equal(r.fundingRequired,true);assert.match(r.message,/Add 0.0075 NFLXc/);assert.equal(r.execution,undefined);
 });

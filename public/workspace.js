@@ -1,5 +1,5 @@
 import {createBaseAssets} from './base-creator-assets.js';
-import {readOpeningPurchase,submitBankrPermission,bankrRecordKey,submitBankrLaunch,refreshBankrLaunch} from './bankr-launch-action.js';
+import {stockFundingReply,readOpeningPurchase,submitBankrPermission,bankrRecordKey,submitBankrLaunch,refreshBankrLaunch} from './bankr-launch-action.js';
 import {accountRecords} from './account-records.js';
 import {loadAuthConfig} from './auth-boot.js';
 import {setupInvite,sharedFinding,launchStory,ideaDescription,ideaInvite,ideaChoice,ideaReply,bankrBrief,awaitingValuation,valuationQuestion,launchAngle,selectLaunchStory,asksForLaunchIdeas,watchIntent,snapshot,watchReply,launchCandidate,researchDescription} from './stock-watch.js';
@@ -457,12 +457,57 @@ $('chat').onsubmit=async e=>{
  const purchase=watch?.basePurchase;
  const savedBuy=purchase&&account&&purchase.wallet===account.toLowerCase()&&purchase.symbol===watch.concept?.symbol&&purchase.source===watch.ideaSource?.url?purchase:null;
  const lastReply=history.at(-1)?.content||'';
- const answeringBuy=savedBuy&&(lastReply.includes('"skip purchase"')||lastReply.includes('Would you like to buy some $'));
- const resumeBuy=savedBuy&&/^review (?:my |the )?(?:base launch|opening purchase)[.!?]?$/i.test(text.trim());
+ const answeringBuy=savedBuy&&(lastReply.includes('After funding this address')||lastReply.includes('"skip purchase"')||lastReply.includes('Would you like to buy some $'));
+ const fundingPrompt=savedBuy&&(lastReply.includes('Your Base wallet holds')||lastReply.includes('After funding this address'));
+ const fundingStep=fundingPrompt||(savedBuy?.funding&&/^(?:i |i['?]ve |i have )?(?:funded|topped up)\b/i.test(text.trim()));
+ const fundingIntent=fundingStep?stockFundingReply(text,watch.ticker+'c'):null;
+ const directStock=!/\b(?:usdc|usdt|wbtc)\b/i.test(text.split(/\s+(?:using|with|for)\s+/i)[0])&&text.match(/^buy\s+([A-Z][A-Z0-9.]{0,10}c)(?: on Base)?(?: (?:with|for|using) (.+))?[.!]?$/i);
+ const priorStock=lastReply.match(/^Buying ([A-Z][A-Z0-9.]{0,10}c) on Base\b/i)?.[1];
+ const stockStatus=/^check (?:my )?stock purchase[.!]?$/i.test(text);
+ const budgetReply=priorStock&&/^(?:(?:use|pay|spend) )?(?:\d|\.)/i.test(text);
+ if(fundingIntent==='buy'||directStock||budgetReply||stockStatus){
+  $('prompt').value='';
+  if(!account||!provider){recordSetupReply(text,'Select your Dinn wallet or an external wallet to buy a stock on Base.');return;}
+  if(setupBusy||controller||launchBusy)return;
+  const owner=user,wallet=account,session=epoch,source=walletSource;
+  const current=()=>user===owner&&account===wallet&&walletSource===source&&epoch===session;
+  const storage=accountRecords.scope();
+  const symbol=fundingIntent==='buy'?watch.ticker+'c':directStock?.[1]||priorStock;
+  const prefix='Buying '+symbol+' on Base. ';
+  setupBusy=true;
+  try{
+   const {stockBudget,stockQuote,sendStockBuy,stockReceipt}=await import('/pons/entry.js');
+   if(stockStatus){
+    const result=await stockReceipt(wallet,storage);
+    if(current())recordSetupReply(text,result+(savedBuy?.funding&&result.startsWith('?')?' Say "review my opening purchase" to refresh your launch.':''));
+    return;
+   }
+   const budget=stockBudget(directStock?.[2]||(budgetReply?text:''));
+   if(!budget){if(current())recordSetupReply(text,prefix+'How much ETH or USDC would you like to spend? The minimum is $1. Enter an amount, for example ?1 USDC?.');return;}
+   const review=await stockQuote({account:wallet,symbol,budget,expectedPair:savedBuy&&symbol.toLowerCase()===(watch.ticker+'c').toLowerCase()&&watch.launchChainId===8453?watch.pairAddress:undefined});
+   if(!current())return;
+   recordSetupReply(text,prefix+review.message);
+   if(review.tx)chatPendingApproval={label:review.permission?'USDC permission':'Base stock purchase',run:async body=>{
+    const hash=await sendStockBuy(review,{provider,embedded:source==='embedded'?walletSendTransaction:null,storage,current});
+    if(!current())return;
+    appendChatActionNote(body,'Submitted on Base.',{hash,chainId:8453});
+    for(let i=0;i<10&&current();i++){
+     const status=await stockReceipt(wallet,storage);
+     if(!current())return;
+     if(!status.startsWith('Pending on Base')){appendChatActionNote(body,status.split(' [View Base transaction]')[0]+(status.startsWith('?')&&savedBuy?.funding?' Say "review my opening purchase" to continue your launch.':''));return;}
+     await new Promise(resolve=>setTimeout(resolve,1500));
+    }
+    if(current())appendChatActionNote(body,'Say "check stock purchase" for the receipt.');
+   }};
+  }catch(error){if(current())recordSetupReply(text,prefix+error.message);}
+  finally{if(epoch===session)setupBusy=false;}
+  return;
+ }
+ const resumeBuy=fundingIntent==='recheck'||savedBuy&&/^review (?:my |the )?(?:base launch|opening purchase)[.!?]?$/i.test(text.trim());
  const editBuy=savedBuy&&/^(?:(?:change|edit|add|set)(?: my| the| an?)? (?:first buy|opening purchase|dev buy)|(?:i (?:want|would like) to )?buy (?:some |my )?dev supply)[.!?]?$/i.test(text.trim());
  if(editBuy){recordSetupReply(text,'How much '+watch.ticker+'c would you like to spend on $'+watch.concept.symbol+' at launch? Enter an amount or say "skip purchase".');$('prompt').value='';return;}
  const amount=answeringBuy?readOpeningPurchase(text,watch.ticker+'c'):null;
- if(answeringBuy&&amount===null&&/^(?:yes|nope|\d|\.|buy|spend|skip|use)/i.test(text.trim())){
+ if(answeringBuy&&!resumeBuy&&amount===null&&/^(?:yes$|nope$|\d|\.|skip purchase$)/i.test(text.trim())){
   recordSetupReply(text,'Enter how much '+watch.ticker+'c to spend, or say "skip purchase".');$('prompt').value='';return;
  }
  const resumeBaseAssets=/^check base launch terms[.!?]?$/i.test(text.trim());
@@ -494,7 +539,7 @@ $('chat').onsubmit=async e=>{
     const preview=idea.symbol?await accountRequest('bankr-preview',{ticker:watch.ticker,name:idea.name,symbol:idea.symbol,launcher:account,assets:baseAssets.assets(),...(watch.launchChainId===8453?{expectedPair:watch.pairAddress}:{}),...(fdv?{startFdv:fdv}:{}),...(openingPurchase?{openingPurchase}:{})},owner):{message:'Ask for a named token idea to check its Base launch terms.'};
     if(user!==owner||run!==epoch)return;answer=bankrBrief(watch,preview.message);
     if(['purchase','approval','simulated'].includes(preview.status)){
-     watch={...watch,basePurchase:{wallet:account.toLowerCase(),source:watch.ideaSource.url,symbol:idea.symbol,fdv,amount:openingPurchase}};
+     watch={...watch,basePurchase:{wallet:account.toLowerCase(),source:watch.ideaSource.url,symbol:idea.symbol,fdv,amount:openingPurchase,funding:preview.fundingRequired===true}};
      await accountRecords.setItem(key('stock-watch'),JSON.stringify(watch));
      if(user!==owner||run!==epoch)return;
     }
@@ -1091,7 +1136,7 @@ function renderToolDirectory(capabilities){
  const back=document.createElement('button');back.type='button';back.className='tools-back';back.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg><span>Networks</span>';back.onclick=()=>{activeToolNetwork=null;renderToolDirectory(capabilities);heading.focus();};host.append(back);
  const actions={
    idea:{title:'Tokenized Research',description:'Find a sourced stock story and turn it into a launch idea for your community.',prompt:activeToolNetwork==='base'?'Find stock launch ideas on Base':'Find stock launch ideas on Pons'},
-   baseStock:{title:'Research a Coinbase stock token',description:'Check the official stock registry against the Base token’s B20 data, including its transfer rules and pause state. See dated NAV, market pairs, and holder evidence when available. If Bankr lists the stock, continue there for its live quote and location check.',prompt:'Research Coinbase stock token NVDAc'},
+   baseStock:{title:'Research a Coinbase stock token',description:'Check the official stock registry against the Base token’s B20 data, including its transfer rules and pause state. See dated NAV, market pairs, and holder evidence when available. Ask to buy the stock with ETH or USDC on Base for a wallet-specific quote.',prompt:'Research Coinbase stock token NVDAc'},
    baseResearch:{title:'Research a Bankr stock-paired launch',description:'Check whether the Bankr launch, Base transaction, and stock registry match. See available pool activity, fees, creator vesting, contract details, and sampled holder data when configured. Signed-in Dinn chat and paid NEAR hires can include a holder snapshot; free previews skip it. Dinn does not provide a safety verdict.',prompt:'Research a Base token paired with a stock'},
   rhStock:{title:'Research a stock token',description:'Check a Robinhood stock token, its reference price and available lock records.',prompt:'Research a stock token on Robinhood Chain'},
   rhPair:{title:'Research a stock-paired launch',description:'Verify the stock behind a Pons pair and check the launch activity and unlock dates.',prompt:'Research a stock-paired launch on Pons'},

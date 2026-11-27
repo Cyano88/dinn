@@ -36,3 +36,4 @@ export async function requestPonsApproval({prepared,configuration,provider,sendT
  try{await storage.setItem(key,JSON.stringify(record));}catch{record.storageWarning=true;}return record;
  });
 }
+export {stockBudget,stockQuote,sendStockBuy,stockReceipt} from './base-stock-buy.js';

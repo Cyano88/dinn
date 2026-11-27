@@ -70,3 +70,12 @@ export async function submitBankrPermission({review,provider,sendEmbedded,curren
  try{await storage.setItem(key,JSON.stringify({hash}));}catch{throw Error('Save the spending permission transaction ID: '+hash);}
  return hash;
 }
+export function stockFundingReply(text,asset){
+ const t=text.trim().toLowerCase().replaceAll('’',"'").replace(/[.!?]+$/,'');
+ if(/^(?:(?:i |i've |i have |just )?(?:funded|topped up)(?: it| my wallet)?|retry|check again|(?:recheck|check) (?:my |the )?(?:funding|balance))$/.test(t))return 'recheck';
+ const symbol=asset.toLowerCase();
+ const words=t.split(/\s+/),index=words.indexOf(symbol);
+ if(index>0&&(/\b(?:buy|get|acquire)\b/.test(words.slice(0,index).join(' '))||(/\bswap\b/.test(t)&&['for','into','to'].includes(words[index-1]))))return 'buy';
+ if(/^(?:please )?(?:use (?:my|our|the) dinn wallet to buy(?: it)?|buy it(?: with (?:my|our) dinn wallet)?)$/.test(t))return 'buy';
+ return null;
+}

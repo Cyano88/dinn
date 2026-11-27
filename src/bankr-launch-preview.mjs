@@ -56,7 +56,7 @@ export async function bankrLaunchPreview({ticker,name,symbol,launcher,startFdv,e
   if(amount<=0n)return {status:'purchase',message:askBuy};
   const [balance,market]=await Promise.all([readBalance(client.publicClient,stock.address,launcher),readMarket(stock.address.toLowerCase(),{fetchImpl:fetch,signal:AbortSignal.timeout(3000)}).catch(()=>null)]);
   usdEstimate=purchaseUsdEstimate(stock,openingPurchase,market);
-  if(balance<amount)return {status:'purchase',message:openingPurchase+' '+stock.symbol+'. '+usdEstimate+'\n\nYour Base wallet holds '+formatUnits(balance,stock.decimals)+' '+stock.symbol+'. '+(balance===0n?'Fund your wallet with '+stock.symbol+' and retry,':'Enter a smaller amount')+' or say "skip purchase".'};
+  if(balance<amount)return {status:'purchase',fundingRequired:true,message:openingPurchase+' '+stock.symbol+'. '+usdEstimate+'\n\nYour Base wallet holds '+formatUnits(balance,stock.decimals)+' '+stock.symbol+'. '+('Add '+formatUnits(amount-balance,stock.decimals)+' '+stock.symbol+' and say "I funded it", or ask me to buy '+stock.symbol+' here'+(balance>0n?', enter a smaller amount':''))+' or say "skip purchase".'};
   input.devBuy={amount,slippageBps:100};
   if(!providedClient){
    const simulated=await firstBuySimulation(client,launcher,stock.address,amount);
